@@ -54,3 +54,8 @@ Godot 4.7.2で追加後の26項目が成功。`preview-turret.png` は試験用�
 燃料追加後：生産33項目、UI35項目、移動対戦23項目。石炭変換・燃料保存と消費上限・燃料切れでの射撃継続・走行距離との対応・段階出現・予告砲撃回避・クリックによって自動進軍が変化しないことを検証。
 
 視点切替による再生状態の維持、車内視点での戦闘継続、走行中の配置・撤去、一時停止中の編集、再戦時の準備復帰を検証。
+
+## Roguelike expedition
+
+Run `Godot --headless --path . --script res://tests/run_test.gd` for 40 checks covering seeded choices, finite resources, upgrades, cargo/hull carry-over, a five-sector run with a second production line, final boss and retreat.
+Run `Godot --path . --script res://tests/run_ui_test.gd` for 7 real-click checks of rewards, route selection, sector start and retreat; this captures preview-reward.png and preview-route.png.
