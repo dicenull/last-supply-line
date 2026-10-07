@@ -11,6 +11,7 @@ const LIMITS = {"belt": 80, "furnace": 4, "press": 4, "splitter": 6, "depot": 3}
 const RECIPES = {"furnace": ["scrap", "steel", 6], "press": ["steel", "shell", 8]}
 var cells: Dictionary = {}
 var running = false
+var auto_fire = true
 var clock = 0.0
 var elapsed = 0.0
 var ticks = 0
@@ -196,17 +197,24 @@ func simulate_tick():
 				c.made += 1
 				completed.append(p)
 				if c.kind == "press": manufactured += 1
-	fire_clock += TICK
-	var interval = 60.0 / rate
-	while fire_clock + 0.00001 >= interval:
-		fire_clock -= interval
-		var success = ammo > 0
-		if success:
-			ammo -= 1
-			shots += 1
-		else: missed += 1
-		history.append([elapsed,success])
+	if auto_fire:
+		fire_clock += TICK
+		var interval = 60.0 / rate
+		while fire_clock + 0.00001 >= interval:
+			fire_clock -= interval
+			fire_round()
+	else:
+		fire_clock = 0.0
 	while not history.is_empty() and history[0][0] <= elapsed - 30.0: history.pop_front()
+
+func fire_round() -> bool:
+	var success = ammo > 0
+	if success:
+		ammo -= 1
+		shots += 1
+	else: missed += 1
+	history.append([elapsed,success])
+	return success
 
 func step(dt: float):
 	if not running: return
