@@ -8,6 +8,7 @@ var sector_config: Dictionary = {}
 var route_length = ROUTE_LENGTH
 var fuel_multiplier = 1.0
 var resource_sites: Array = []
+var collection_events: Array = []
 var player: Node3D
 var enemies: Array = []
 var bolts: Array = []
@@ -173,9 +174,7 @@ func tick_battle(factory, delta: float):
 	for site in resource_sites:
 		if not site.taken and distance >= site.distance:
 			site.taken = true
-			factory.collect("scrap",site.scrap)
-			factory.collect("coal",site.coal)
-			factory.ammo = mini(factory.ammo_capacity,factory.ammo+site.shells)
+			recover(factory,{"scrap":site.scrap,"coal":site.coal,"shell":site.shells})
 			site.node.visible = false
 	# Small pitch motion and tracks make actual world movement readable.
 	player.rotation.z = sin(elapsed*9)*0.006*minf(speed,1)
@@ -269,7 +268,7 @@ func update_gun(factory, delta: float):
 				impact(destination)
 				if shot.target.hp == 0:
 					kills += 1
-					if not sector_config.is_empty(): factory.collect("scrap",2)
+					if not sector_config.is_empty(): recover(factory,{"scrap":2})
 					shot.target.mark.visible = false
 					shot.target.node.scale.y = 0.35
 			shot.node.queue_free()
@@ -286,3 +285,15 @@ func fire_visual():
 	recoil = 0.25
 	shot_time = 0.14
 	visual_shots += 1
+
+func recover(factory, items: Dictionary):
+	for kind in items:
+		var amount = int(items[kind])
+		if amount <= 0: continue
+		var accepted = 0
+		if kind == "shell":
+			accepted = mini(amount,factory.ammo_capacity-factory.ammo)
+			factory.ammo += accepted
+		else: accepted = factory.collect(kind,amount)
+		collection_events.append({"item":kind,"accepted":accepted,"lost":amount-accepted})
+	while collection_events.size() > 12: collection_events.pop_front()

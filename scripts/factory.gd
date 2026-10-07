@@ -140,12 +140,11 @@ func rotate(p: Vector2i):
 	if cells.has(p) and not PORTS.has(p): edit(p, cells[p].kind, (cells[p].dir + 1) % 4)
 
 func can_receive(c: Dictionary, item: String) -> bool:
-	if c.kind in ["source","coal_source"]: return false
-	if c.kind == "engine": return item == "fuel" and fuel <= 11.0
-	if c.kind == "gun": return item == "shell" and ammo < ammo_capacity
-	if c.kind == "depot": return item == "shell" and c.items.size() < 8
+	if not accepts_kind(c,item): return false
+	if c.kind == "engine": return fuel <= 11.0
+	if c.kind == "gun": return ammo < ammo_capacity
+	if c.kind == "depot": return c.items.size() < 8
 	if not c.items.is_empty(): return false
-	if RECIPES.has(c.kind): return item == RECIPES[c.kind][0]
 	return true
 
 func output_item(c: Dictionary) -> String:
@@ -293,3 +292,36 @@ func collect(raw: String, amount: int) -> int:
 	reserves[raw] += accepted
 	collected[raw] += accepted
 	return accepted
+
+func accepts_kind(c: Dictionary, item: String) -> bool:
+	if c.kind in ["source","coal_source"]: return false
+	if c.kind in ["gun","depot"]: return item == "shell"
+	if c.kind == "engine": return item == "fuel"
+	if RECIPES.has(c.kind): return item == RECIPES[c.kind][0]
+	return true
+
+func diagnostic(p: Vector2i) -> Dictionary:
+	if not cells.has(p): return {"code":"idle","item":""}
+	var c: Dictionary = cells[p]
+	if c.kind in ["gun","engine"]:
+		var amount = ammo if c.kind == "gun" else fuel
+		var capacity = ammo_capacity if c.kind == "gun" else 12
+		return {"code":"empty" if amount <= 0 else "full" if (amount > capacity-1 if c.kind == "engine" else amount >= capacity) else "ready","item":"shell" if c.kind == "gun" else "fuel"}
+	if c.work > 0: return {"code":"processing","item":RECIPES[c.kind][0]}
+	if c.items.is_empty():
+		if c.kind in ["source","coal_source"]:
+			var raw = "scrap" if c.kind == "source" else "coal"
+			return {"code":"empty" if finite_resources and reserves[raw] <= 0 else "ready","item":raw}
+		return {"code":"waiting","item":RECIPES[c.kind][0] if RECIPES.has(c.kind) else "shell" if c.kind == "depot" else ""}
+	var item = output_item(c)
+	if item == "": return {"code":"incompatible","item":c.items[0]}
+	var connected = false
+	var compatible = false
+	for d in ([c.dir,(c.dir+1)%4] if c.kind == "splitter" else [c.dir]):
+		var dest: Vector2i = p+DIRS[d]
+		if not cells.has(dest): continue
+		connected = true
+		if not accepts_kind(cells[dest],item): continue
+		compatible = true
+		if can_receive(cells[dest],item): return {"code":"ready","item":item}
+	return {"code":"disconnected" if not connected else "incompatible" if not compatible else "full" if c.kind == "depot" and c.items.size() >= 8 else "blocked","item":item}
