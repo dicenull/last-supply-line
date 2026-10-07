@@ -7,7 +7,7 @@ const P = {
 	"rust":"905238", "rust_hi":"cb8651", "red":"a94735", "fire":"f39d3c", "yellow":"ffe88a",
 	"steel":"7f9e9f", "steel_hi":"c3dcce", "steel_dark":"466469", "inlet":"70d4cc", "wood":"80613e", "wood_hi":"b38d55"
 }
-const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit"]
+const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock"]
 var cache: Dictionary = {}
 var canvas: Image
 
@@ -182,6 +182,17 @@ func texture(kind: String) -> ImageTexture:
 			rect(5,12,22,2,"gold_hi")
 			rect(14,7,5,13,"steel_hi")
 			poly([[9,18],[24,18],[17,25]],"white")
+		"lock":
+			disk(16,11,8,"ink")
+			disk(16,11,6,"steel_hi")
+			disk(16,11,3,"deep")
+			plate(5,13,23,16,"gold")
+			rect(7,15,19,2,"gold_hi")
+			rect(7,26,19,1,"bronze")
+			disk(16,20,3,"ink")
+			rect(15,21,3,5,"ink")
+			rivet(8,19)
+			rivet(24,23)
 		"example":
 			plate(4,3,24,27,"steel_dark")
 			for y in [7,13,19,25]: rect(6,y,19,1,"steel")

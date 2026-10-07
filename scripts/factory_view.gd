@@ -18,9 +18,11 @@ var battle_mode = false
 var started = false
 const RunSave = preload("res://scripts/run_save.gd")
 const RunMenu = preload("res://scripts/run_menu.gd")
+const Blueprints = preload("res://scripts/blueprints.gd")
 const RunHistory = preload("res://scripts/run_history.gd")
 var history = RunHistory.new()
 var history_path = "user://run_history.json"
+var new_blueprints: Array = []
 var checkpoint = RunSave.new()
 var checkpoint_path = "user://run_save.mfv"
 var show_start_menu = true
@@ -159,6 +161,7 @@ func refresh_view():
 
 func reset_battle():
 	if battlefield == null: return
+	new_blueprints.clear()
 	battle_container.queue_free()
 	battlefield = null
 	battle_mode = false
@@ -539,7 +542,21 @@ func draw_battle():
 			for pip in range(battlefield.enemies[i].max_hp):
 				panel(Rect2(pos+Vector2(-29+pip*21,40),Vector2(16,8)),GOLD if pip < battlefield.enemies[i].hp else BG)
 
+func can_apply_blueprint() -> bool:
+	return expedition.phase == "prepare" and expedition.sector == 1 and not started
+
+func apply_blueprint(id: String) -> bool:
+	if not can_apply_blueprint() or id not in history.unlocked or id not in Blueprints.IDS: return false
+	factory.remember()
+	if not factory.restore(Blueprints.layout(id)): return false
+	menu.refresh()
+	return true
+
 func record_result() -> bool:
+	var previous = history.unlocked.duplicate()
+	if not history.unlock_for_clear(history_path,expedition.cleared): return false
+	for id in history.unlocked:
+		if id not in previous and id not in new_blueprints: new_blueprints.append(id)
 	if expedition.phase not in ["won","lost","retreated"]: return true
 	return history.record(history_path,expedition.run_seed,expedition.phase,expedition.cleared,int(factory.manufactured))
 
@@ -558,6 +575,7 @@ func choose_run_option(index: int):
 			factory.ammo_capacity = expedition.modifiers.magazine
 	elif expedition.phase == "route":
 		if expedition.choose_route(index):
+			new_blueprints.clear()
 			battle_container.queue_free()
 			battlefield = null
 			started = false
@@ -567,6 +585,10 @@ func choose_run_option(index: int):
 	refresh_view()
 
 func draw_expedition():
+	if not new_blueprints.is_empty() and expedition.phase in ["reward","route","won"]:
+		panel(Rect2(945,20,150,54),PANEL,GOLD)
+		symbol("example",Vector2(980,47),1.1)
+		text_at("+"+str(new_blueprints.size()),Vector2(1015,57),26,GOLD)
 	if retreat_button.visible: symbol("retreat",Vector2(891,47),0.8)
 	# Sector lamps and bounded raw-material reserve counters.
 	for i in range(RunState.SECTORS):
@@ -625,6 +647,7 @@ func load_checkpoint() -> bool:
 		menu_status = "defeat"
 		menu.refresh()
 		return false
+	new_blueprints.clear()
 	record_result()
 	menu_was_running = false
 	menu_title = false
