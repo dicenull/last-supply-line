@@ -35,10 +35,18 @@ func _initialize():
 	print("Parallel lines: ",parallel.recent_rate()," rounds/min")
 	check(parallel.recent_rate() > baseline * 1.5,"parallel production measurably improves throughput")
 	check(parallel.cells[Vector2i(4,2)].made > 30 and parallel.cells[Vector2i(4,5)].made > 30,"both production branches remain active at merge")
-	var inventory = parallel.ammo + parallel.shots
+	var inventory = parallel.ammo + parallel.shots + parallel.fuel + parallel.fuel_used
 	for c in parallel.cells.values(): inventory += c.items.size()
 	check(inventory == parallel.injected,"material conserved through manufacture, merge, storage and firing")
 	check(parallel.ammo <= 12,"receiver respects capacity")
+	check(single.fuel > 0 and single.fuel <= 12,"example refines coal and fills engine fuel tank")
+	check(not single.can_receive(single.make_cell("engine",0),"shell"),"engine rejects ammunition")
+	check(not single.can_receive(single.make_cell("refinery",0),"scrap"),"refinery accepts coal only")
+	var fuel_before = single.fuel
+	var used = single.consume_fuel(0.5)
+	check(is_equal_approx(used,0.5) and is_equal_approx(single.fuel,fuel_before-0.5),"fuel consumption removes exactly the requested quantity")
+	single.consume_fuel(100)
+	check(single.fuel == 0 and single.consume_fuel(1) == 0,"fuel consumption cannot become negative")
 	var disconnected = Factory.new()
 	disconnected.example()
 	disconnected.cells.erase(Vector2i(9,3))

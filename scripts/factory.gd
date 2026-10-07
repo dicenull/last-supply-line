@@ -6,15 +6,18 @@ const TICK = 0.25
 const DIRS = [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]
 const BLOCKS: Array[Vector2i] = []
 const AMMO_PORT = Vector2i(9,4)
-const PORTS = {Vector2i(0,2): "source", Vector2i(0,5): "source", AMMO_PORT: "gun"}
-const LIMITS = {"belt": 80, "furnace": 4, "press": 4, "splitter": 6, "depot": 3}
-const RECIPES = {"furnace": ["scrap", "steel", 6], "press": ["steel", "shell", 8]}
+const FUEL_PORT = Vector2i(4,7)
+const PORTS = {Vector2i(0,2): "source", Vector2i(0,5): "source", AMMO_PORT: "gun", Vector2i(0,7): "coal_source", FUEL_PORT: "engine"}
+const LIMITS = {"belt": 80, "furnace": 4, "press": 4, "splitter": 6, "depot": 3, "refinery": 3}
+const RECIPES = {"furnace": ["scrap", "steel", 6], "press": ["steel", "shell", 8], "refinery": ["coal", "fuel", 8]}
 var cells: Dictionary = {}
 var running = false
 var auto_fire = true
 var clock = 0.0
 var elapsed = 0.0
 var ticks = 0
+var fuel = 0.0
+var fuel_used = 0.0
 var ammo = 0
 var rate = 60
 var fire_clock = 0.0
@@ -61,6 +64,8 @@ func reset_trial():
 	elapsed = 0
 	ticks = 0
 	ammo = 0
+	fuel = 0.0
+	fuel_used = 0.0
 	fire_clock = 0
 	shots = 0
 	supplied = 0
@@ -129,7 +134,8 @@ func rotate(p: Vector2i):
 	if cells.has(p) and not PORTS.has(p): edit(p, cells[p].kind, (cells[p].dir + 1) % 4)
 
 func can_receive(c: Dictionary, item: String) -> bool:
-	if c.kind == "source": return false
+	if c.kind in ["source","coal_source"]: return false
+	if c.kind == "engine": return item == "fuel" and fuel <= 11.0
 	if c.kind == "gun": return item == "shell" and ammo < 12
 	if c.kind == "depot": return item == "shell" and c.items.size() < 8
 	if not c.items.is_empty(): return false
@@ -180,14 +186,16 @@ func simulate_tick():
 		if target.kind == "gun":
 			ammo += 1
 			supplied += 1
+		elif target.kind == "engine":
+			fuel += 1.0
 		else:
 			target.items.append(winner.item)
 			if RECIPES.has(target.kind): target.work = RECIPES[target.kind][2]
 		moves.append({"from":winner.from,"to":dest,"item":winner.item})
 	for p in cells:
 		var c: Dictionary = cells[p]
-		if c.kind == "source" and ticks % 4 == 0 and c.items.is_empty():
-			c.items.append("scrap")
+		if c.kind in ["source","coal_source"] and ticks % 4 == 0 and c.items.is_empty():
+			c.items.append("coal" if c.kind == "coal_source" else "scrap")
 			injected += 1
 		if RECIPES.has(c.kind) and c.work > 0:
 			c.work -= 1
@@ -259,4 +267,13 @@ func example():
 	for x in range(5,AMMO_PORT.x+1): cells[Vector2i(x,2)] = make_cell("belt",0)
 	cells[Vector2i(AMMO_PORT.x,2)].dir = 1
 	cells[Vector2i(AMMO_PORT.x,3)] = make_cell("belt",1)
+	cells[Vector2i(1,7)] = make_cell("belt",0)
+	cells[Vector2i(2,7)] = make_cell("refinery",0)
+	cells[Vector2i(3,7)] = make_cell("belt",0)
 	message = "見本は1系統だけ。60発/分には足りません。分配や並列化を試してください。"
+
+func consume_fuel(amount: float) -> float:
+	var consumed = minf(fuel,maxf(amount,0.0))
+	fuel -= consumed
+	fuel_used += consumed
+	return consumed
