@@ -149,6 +149,7 @@ func ensure_battle():
 		battlefield.sector_config = expedition.current.duplicate(true)
 		battlefield.hull = expedition.hull
 		battlefield.fuel_multiplier = expedition.modifiers.fuel
+		battlefield.reload_multiplier = expedition.modifiers.get("reload",1.0)
 		battle_viewport.add_child(battlefield)
 
 func refresh_view():
@@ -170,6 +171,7 @@ func reset_battle():
 	expedition = RunState.new(int(Time.get_unix_time_from_system()*1000000))
 	factory.work_multiplier = 1.0
 	factory.ammo_capacity = 12
+	factory.reserve_capacity = 100
 	factory.reserves = {"scrap":48,"coal":32}
 	factory.collected = {"scrap":0,"coal":0}
 	factory.reset_trial()
@@ -272,6 +274,8 @@ func _process(delta):
 	battle_retry.visible = battle_mode and expedition.phase in ["won","lost","retreated"]
 	retreat_button.visible = expedition.phase in ["prepare","travel"]
 	for i in range(choice_buttons.size()):
+		choice_buttons[i].position = choice_rect(i).position
+		choice_buttons[i].size = choice_rect(i).size
 		choice_buttons[i].visible = expedition.phase == "reward" or (expedition.phase == "route" and i < 2)
 	queue_redraw()
 
@@ -568,11 +572,16 @@ func retreat_run():
 	battle_mode = true
 	refresh_view()
 
+func choice_rect(index: int) -> Rect2:
+	return Rect2(55+index*(700 if expedition.phase == "route" else 460),796,650 if expedition.phase == "route" else 420,112)
+
 func choose_run_option(index: int):
 	if expedition.phase == "reward":
 		if expedition.choose_reward(index):
 			factory.work_multiplier = expedition.modifiers.work
 			factory.ammo_capacity = expedition.modifiers.magazine
+			factory.reserve_capacity = expedition.modifiers.get("cargo",100)
+			if battlefield != null: battlefield.reload_multiplier = expedition.modifiers.get("reload",1.0)
 	elif expedition.phase == "route":
 		if expedition.choose_route(index):
 			new_blueprints.clear()
@@ -590,22 +599,27 @@ func draw_expedition():
 		symbol("example",Vector2(980,47),1.1)
 		text_at("+"+str(new_blueprints.size()),Vector2(1015,57),26,GOLD)
 	if retreat_button.visible: symbol("retreat",Vector2(891,47),0.8)
+	if battlefield != null:
+		symbol(expedition.current.get("terrain","road"),Vector2(1303,119),0.65)
+		symbol(expedition.current.get("formation","patrol"),Vector2(1362,119),0.65)
 	# Sector lamps and bounded raw-material reserve counters.
 	for i in range(RunState.SECTORS):
 		draw_circle(Vector2(1160+i*20,119),5,GOLD if i < expedition.sector else BG)
 	for i in range(2):
 		var raw = "scrap" if i == 0 else "coal"
 		item_at(raw,Vector2(1170+i*125,750),0.55)
-		text_at(str(factory.reserves[raw]),Vector2(1187+i*125,756),15,MUTED)
+		text_at("%d/%d" % [factory.reserves[raw],factory.reserve_capacity],Vector2(1187+i*125,756),13,MUTED)
 	if expedition.phase not in ["reward","route"]: return
 	metal_panel(Rect2(24,776,1392,154))
 	var count = 3 if expedition.phase == "reward" else 2
 	for i in range(count):
-		var at = Vector2(55+i*460,796)
-		panel(Rect2(at,Vector2(420,112)),PANEL,GOLD)
+		var rect = choice_rect(i)
+		var at = rect.position
+		panel(rect,PANEL,GOLD)
 		if expedition.phase == "reward":
-			symbol(["press","fuel","depot"][i],at+Vector2(65,54),1.4)
-			text_at(["×0.85","×0.80","+4"][i],at+Vector2(130,65),29,GOLD)
+			var reward = expedition.reward_options[i]
+			symbol({"production":"press","economy":"fuel","magazine":"depot","autoload":"autoload","cargo":"cargo"}[reward],at+Vector2(65,54),1.4)
+			text_at({"production":"×0.85","economy":"×0.80","magazine":"+4","autoload":"×0.80","cargo":"+25"}[reward],at+Vector2(130,65),29,GOLD)
 		else:
 			var route: Dictionary = expedition.route_options[i]
 			symbol({"scrapyard":"scrap","coalfield":"coal","arsenal":"gun"}[route.kind],at+Vector2(45,44),1.2)
@@ -614,10 +628,15 @@ func draw_expedition():
 			text_at(str(route.scrap),at+Vector2(150,43),22,INK)
 			item_at("coal",at+Vector2(125,78),0.7)
 			text_at(str(route.coal),at+Vector2(150,86),22,INK)
-			symbol("battle",at+Vector2(260,35),0.65)
-			text_at(str(route.enemy_hp),at+Vector2(290,43),22,INK)
+			symbol(route.get("formation","patrol"),at+Vector2(260,35),0.9)
+			text_at(str(RunState.total_health(route)),at+Vector2(290,43),22,INK)
 			symbol("move",at+Vector2(260,78),0.65)
 			text_at(str(int(route.length)),at+Vector2(290,86),22,INK)
+			var surface = RunState.condition(route)
+			symbol(route.get("terrain","road"),at+Vector2(420,35),0.9)
+			text_at("%.1f m/s" % surface.speed,at+Vector2(455,43),22,INK)
+			symbol("fuel",at+Vector2(420,78),0.7)
+			text_at("×%.2f" % surface.fuel,at+Vector2(455,86),22,INK)
 
 func open_menu(title: bool = false):
 	menu_title = title

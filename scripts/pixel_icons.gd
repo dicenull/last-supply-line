@@ -7,7 +7,7 @@ const P = {
 	"rust":"905238", "rust_hi":"cb8651", "red":"a94735", "fire":"f39d3c", "yellow":"ffe88a",
 	"steel":"7f9e9f", "steel_hi":"c3dcce", "steel_dark":"466469", "inlet":"70d4cc", "wood":"80613e", "wood_hi":"b38d55"
 }
-const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock"]
+const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo"]
 var cache: Dictionary = {}
 var canvas: Image
 
@@ -182,6 +182,53 @@ func texture(kind: String) -> ImageTexture:
 			rect(5,12,22,2,"gold_hi")
 			rect(14,7,5,13,"steel_hi")
 			poly([[9,18],[24,18],[17,25]],"white")
+		"road", "mud", "rubble":
+			poly([[10,2],[22,2],[30,30],[2,30]],"bronze" if kind == "mud" else "shade")
+			line(Vector2i(10,2),Vector2i(2,30),"light")
+			line(Vector2i(22,2),Vector2i(30,30),"light")
+			if kind == "road":
+				for y in [5,13,23]: rect(15,y,2,5,"gold_hi")
+			elif kind == "mud":
+				for y in [8,17,25]:
+					rect(10,y,13,3,"deep")
+					rect(11,y,9,1,"steel_dark")
+				for pos in [[8,22],[24,27],[13,5]]: px(pos[0],pos[1],"rust_hi")
+			else:
+				for pos in [[13,6],[9,17],[21,22]]:
+					plate(pos[0],pos[1],6,5,"steel")
+					px(pos[0]+2,pos[1]+1,"white")
+		"patrol", "raiders", "battery":
+			if kind == "battery":
+				plate(3,17,26,10,"deep")
+				plate(5,12,22,11,"olive")
+				plate(10,6,12,12,"rust")
+				rect(15,1,4,12,"steel_dark")
+				rect(15,1,1,10,"steel_hi")
+				for x in [5,10,15,20,25]: rect(x,25,2,3,"steel")
+			else:
+				for pos in [[2,10],[17,17]]:
+					plate(pos[0],pos[1]+5,13,9,"deep")
+					plate(pos[0]+2,pos[1]+2,9,9,"rust" if kind == "raiders" else "olive")
+					rect(pos[0]+6,pos[1]-3,2,10,"steel_hi")
+					rivet(pos[0]+3,pos[1]+5)
+				if kind == "raiders":
+					line(Vector2i(19,3),Vector2i(23,6),"gold_hi",2)
+					line(Vector2i(23,6),Vector2i(19,9),"gold_hi",2)
+		"cargo":
+			plate(2,16,14,14,"wood")
+			plate(16,16,14,14,"wood")
+			plate(9,3,14,14,"wood_hi")
+			for x in [6,20]: rect(x,18,3,10,"steel_dark")
+			rect(13,5,3,10,"steel")
+			rivet(7,20)
+			rivet(21,20)
+		"autoload":
+			bullet(8,11)
+			line(Vector2i(7,7),Vector2i(24,7),"steel_hi",3)
+			line(Vector2i(7,7),Vector2i(4,12),"steel_hi",3)
+			poly([[21,2],[30,8],[21,12]],"gold_hi")
+			line(Vector2i(24,25),Vector2i(8,25),"steel",3)
+			poly([[10,20],[2,26],[10,30]],"gold")
 		"lock":
 			disk(16,11,8,"ink")
 			disk(16,11,6,"steel_hi")
