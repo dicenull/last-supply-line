@@ -16,6 +16,10 @@ var battle_container: SubViewportContainer
 var factory_container: SubViewportContainer
 var battle_mode = false
 var started = false
+const RunState = preload("res://scripts/run_state.gd")
+var expedition = RunState.new(int(Time.get_unix_time_from_system()))
+var choice_buttons: Array = []
+var retreat_button: Button
 var battle_retry: Button
 const PixelIcons = preload("res://scripts/pixel_icons.gd")
 var pixel_icons = PixelIcons.new()
@@ -38,6 +42,7 @@ var notice_bad = false
 var last_message = ""
 
 func _ready():
+	factory.finite_resources = true
 	factory.auto_fire = false
 	factory.example()
 	factory.undo_stack.clear()
@@ -64,6 +69,11 @@ func _ready():
 	icon_button("battle",Rect2(935,25,110,42),toggle_battle,"B")
 	battle_retry = add_button("",Rect2(730,807,80,78),reset_battle)
 	battle_retry.visible = false
+	retreat_button = add_button("",Rect2(865,25,52,42),retreat_run)
+	for i in range(3):
+		var index = i
+		choice_buttons.append(add_button("",Rect2(55+i*460,796,420,112),func(): choose_run_option(index)))
+		choice_buttons.back().visible = false
 	var kinds = ["belt","furnace","press","splitter","depot","erase"]
 	for i in kinds.size():
 		var kind: String = kinds[i]
@@ -82,9 +92,11 @@ func _ready():
 		icon_button("rate",Rect2(1147+i*84,691,76,38),func(): factory.rate = target,str(target))
 
 func toggle_running():
+	if expedition.phase not in ["prepare","travel"]: return
 	ensure_battle()
 	if battlefield.result != 0: return
 	if not started:
+		expedition.start_sector()
 		started = true
 		world.playback_only = true
 		battle_mode = true
@@ -111,6 +123,9 @@ func ensure_battle():
 		battle_viewport.msaa_3d = Viewport.MSAA_2X
 		battle_container.add_child(battle_viewport)
 		battlefield = BattleWorld.new()
+		battlefield.sector_config = expedition.current.duplicate(true)
+		battlefield.hull = expedition.hull
+		battlefield.fuel_multiplier = expedition.modifiers.fuel
 		battle_viewport.add_child(battlefield)
 
 func refresh_view():
@@ -118,7 +133,7 @@ func refresh_view():
 	if battle_container != null: battle_container.visible = battle_mode
 	hover = Vector2i(-1,-1)
 	for entry in icon_buttons:
-		entry.button.visible = (not battle_mode and (not started or live_control(entry.icon,entry.rect))) or entry.icon in ["battle","play"]
+		entry.button.visible = (expedition.phase in ["prepare","travel"]) and ((not battle_mode and (not started or live_control(entry.icon,entry.rect))) or entry.icon in ["battle","play"])
 	queue_redraw()
 
 func reset_battle():
@@ -128,6 +143,11 @@ func reset_battle():
 	battle_mode = false
 	started = false
 	world.playback_only = false
+	expedition = RunState.new(int(Time.get_ticks_usec()))
+	factory.work_multiplier = 1.0
+	factory.ammo_capacity = 12
+	factory.reserves = {"scrap":48,"coal":32}
+	factory.collected = {"scrap":0,"coal":0}
 	factory.reset_trial()
 	ensure_battle()
 	refresh_view()
@@ -171,8 +191,8 @@ func add_button(title: String, rect: Rect2, action: Callable, color: Color = MUT
 	b.add_theme_font_override("font",font)
 	b.add_theme_font_size_override("font_size",15)
 	b.add_theme_color_override("font_color",INK)
-	b.add_theme_stylebox_override("normal",style(PANEL,color.darkened(0.35)))
-	b.add_theme_stylebox_override("hover",style(Color("354953"),color))
+	b.add_theme_stylebox_override("normal",style(Color.TRANSPARENT,color.darkened(0.35)))
+	b.add_theme_stylebox_override("hover",style(Color(1,1,1,0.06),color))
 	b.pressed.connect(action)
 	add_child(b)
 	return b
@@ -214,13 +234,20 @@ func _process(delta):
 	for kind in tool_buttons:
 		tool_buttons[kind].add_theme_color_override("font_color",GOLD if selected == kind else MUTED)
 	if started: battlefield.tick_battle(factory,minf(delta,0.1))
+	if started and battlefield.result != 0 and expedition.phase == "travel":
+		expedition.finish_sector(battlefield.result == 1,battlefield.hull)
+		battle_mode = true
+		refresh_view()
 	if not battle_mode:
 		world.sync(factory,hover,selected,direction,delta)
 		if started:
 			world.turret.rotation.y = battlefield.turret.rotation.y
 			world.barrel.position.x = battlefield.barrel.position.x
 			world.muzzle.visible = battlefield.muzzle.visible
-	battle_retry.visible = battle_mode and started and battlefield.result != 0
+	battle_retry.visible = battle_mode and expedition.phase in ["won","lost","retreated"]
+	retreat_button.visible = expedition.phase in ["prepare","travel"]
+	for i in range(choice_buttons.size()):
+		choice_buttons[i].visible = expedition.phase == "reward" or (expedition.phase == "route" and i < 2)
 	queue_redraw()
 
 func cell_at(pos: Vector2) -> Vector2i:
@@ -230,6 +257,7 @@ func cell_at(pos: Vector2) -> Vector2i:
 	return world.screen_cell(canvas_pos-WORLD_RECT.position)
 
 func paint(p: Vector2i, erase: bool):
+	if expedition.phase not in ["prepare","travel"]: return
 	if p == last_paint: return
 	last_paint = p
 	var was_running = factory.running
@@ -241,13 +269,16 @@ func _input(event):
 		hover = cell_at(event.position)
 
 func _unhandled_input(event):
+	if expedition.phase not in ["prepare","travel"]:
+		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R and expedition.phase in ["won","lost","retreated"]: reset_battle()
+		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_B:
 		toggle_battle()
 		return
 	if battle_mode:
 		if event is InputEventKey and event.pressed and not event.echo:
 			if event.keycode == KEY_SPACE: toggle_running()
-			if event.keycode == KEY_R and started and battlefield.result != 0: reset_battle()
+			if event.keycode == KEY_R and expedition.phase in ["won","lost","retreated"]: reset_battle()
 			if event.keycode == KEY_TAB and not battle_mode: world.toggle_roof()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -351,6 +382,7 @@ func _draw():
 		text_at(str(counts[item]),Vector2(387+i*113,57),26,INK)
 	if battle_mode:
 		draw_battle()
+		draw_expedition()
 		return
 	metal_panel(Rect2(1130,99,286,658))
 	instrument_panel()
@@ -386,6 +418,8 @@ func _draw():
 			draw_line(Vector2(1385,895),Vector2(1375,905),color,2)
 		else: draw_polyline(PackedVector2Array([Vector2(1374,900),Vector2(1378,904),Vector2(1387,893)]),color,2)
 
+	draw_expedition()
+
 func instrument_panel():
 	var center = Vector2(1273,233)
 	draw_circle(center+Vector2(2,3),101,Color("252b20"))
@@ -411,9 +445,9 @@ func instrument_panel():
 	text_at(str(factory.manufactured),Vector2(1205,426),22,GOLD)
 	symbol("gun",Vector2(1302,418),0.55)
 	text_at(str(factory.shots),Vector2(1331,426),20,MINT)
-	for i in range(12):
-		var at = Vector2(1161+(i%6)*39,470+int(i/6)*26)
-		draw_rect(Rect2(at-Vector2(15,9),Vector2(31,18)),Color("282f24"))
+	for i in range(factory.ammo_capacity):
+		var at = Vector2(1161+(i%8)*28,470+int(i/8)*18)
+		draw_rect(Rect2(at-Vector2(12,7),Vector2(24,14)),Color("282f24"))
 		if i < factory.ammo: item_at("shell",at,0.7)
 	if factory.cells.has(hover):
 		var c: Dictionary = factory.cells[hover]
@@ -453,24 +487,77 @@ func draw_battle():
 	text_at("%d / %d" % [battlefield.kills,battlefield.total],Vector2(1260,314),26,INK)
 	item_at("shell",Vector2(1200,415),1.5)
 	text_at(str(factory.ammo),Vector2(1280,426),32,INK)
-	for i in range(12):
-		var pos = Vector2(1175+(i%6)*38,476+int(i/6)*38)
-		panel(Rect2(pos-Vector2(16,13),Vector2(32,26)),BG)
-		if i < factory.ammo: item_at("shell",pos,0.85)
+	for i in range(factory.ammo_capacity):
+		var pos = Vector2(1175+(i%8)*28,476+int(i/8)*18)
+		panel(Rect2(pos-Vector2(12,7),Vector2(24,14)),BG)
+		if i < factory.ammo: item_at("shell",pos,0.6)
 	symbol("fuel",Vector2(1190,572),0.9)
 	text_at("%.1f" % factory.fuel,Vector2(1270,584),26,INK)
 	symbol("move",Vector2(1185,640),0.7)
-	text_at("%.0f / 100" % minf(100,battlefield.distance),Vector2(1220,647),20,INK)
+	text_at("%.0f / %.0f" % [minf(battlefield.route_length,battlefield.distance),battlefield.route_length],Vector2(1220,647),20,INK)
 	panel(Rect2(1160,674,224,9),BG)
-	panel(Rect2(1160,674,224*minf(1,battlefield.distance/100),9),GOLD)
+	panel(Rect2(1160,674,224*minf(1,battlefield.distance/battlefield.route_length),9),GOLD)
 	text_at("%.1f m/s" % battlefield.speed,Vector2(1230,721),19,MUTED)
-	if battlefield.result != 0:
-		symbol("victory" if battlefield.result == 1 else "defeat",Vector2(650,846),1.7)
+	if expedition.phase in ["won","lost","retreated"]:
+		symbol("victory" if expedition.phase == "won" else "retreat" if expedition.phase == "retreated" else "defeat",Vector2(650,846),1.7)
 		symbol("reset",Vector2(770,842),1.0)
 		text_at("R",Vector2(765,883),16,GOLD)
 	else:
 		for i in range(battlefield.total):
 			var pos = Vector2(180+i*205,846)
 			symbol("gun",pos,1.2)
-			for pip in range(3):
+			for pip in range(battlefield.enemies[i].max_hp):
 				panel(Rect2(pos+Vector2(-29+pip*21,40),Vector2(16,8)),GOLD if pip < battlefield.enemies[i].hp else BG)
+
+func retreat_run():
+	if not expedition.retreat(): return
+	factory.running = false
+	ensure_battle()
+	battle_mode = true
+	refresh_view()
+
+func choose_run_option(index: int):
+	if expedition.phase == "reward":
+		if expedition.choose_reward(index):
+			factory.work_multiplier = expedition.modifiers.work
+			factory.ammo_capacity = expedition.modifiers.magazine
+	elif expedition.phase == "route":
+		if expedition.choose_route(index):
+			battle_container.queue_free()
+			battlefield = null
+			started = false
+			factory.running = false
+			ensure_battle()
+			battle_mode = false
+	refresh_view()
+
+func draw_expedition():
+	if retreat_button.visible: symbol("retreat",Vector2(891,47),0.8)
+	# Sector lamps and bounded raw-material reserve counters.
+	for i in range(RunState.SECTORS):
+		draw_circle(Vector2(1160+i*20,119),5,GOLD if i < expedition.sector else BG)
+	for i in range(2):
+		var raw = "scrap" if i == 0 else "coal"
+		item_at(raw,Vector2(1170+i*125,750),0.55)
+		text_at(str(factory.reserves[raw]),Vector2(1187+i*125,756),15,MUTED)
+	if expedition.phase not in ["reward","route"]: return
+	metal_panel(Rect2(24,776,1392,154))
+	var count = 3 if expedition.phase == "reward" else 2
+	for i in range(count):
+		var at = Vector2(55+i*460,796)
+		panel(Rect2(at,Vector2(420,112)),PANEL,GOLD)
+		if expedition.phase == "reward":
+			symbol(["press","fuel","depot"][i],at+Vector2(65,54),1.4)
+			text_at(["×0.85","×0.80","+4"][i],at+Vector2(130,65),29,GOLD)
+		else:
+			var route: Dictionary = expedition.route_options[i]
+			symbol({"scrapyard":"scrap","coalfield":"coal","arsenal":"gun"}[route.kind],at+Vector2(45,44),1.2)
+			if route.shells > 0: text_at("+"+str(route.shells),at+Vector2(28,92),19,GOLD)
+			item_at("scrap",at+Vector2(125,35),0.7)
+			text_at(str(route.scrap),at+Vector2(150,43),22,INK)
+			item_at("coal",at+Vector2(125,78),0.7)
+			text_at(str(route.coal),at+Vector2(150,86),22,INK)
+			symbol("battle",at+Vector2(260,35),0.65)
+			text_at(str(route.enemy_hp),at+Vector2(290,43),22,INK)
+			symbol("move",at+Vector2(260,78),0.65)
+			text_at(str(int(route.length)),at+Vector2(290,86),22,INK)

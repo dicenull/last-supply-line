@@ -2,6 +2,10 @@ extends "res://scripts/tank_world.gd"
 ## Moving encounter: coal-derived fuel powers travel; enemy shells target marked ground.
 const ROUTE_LENGTH = 100.0
 const FUEL_PER_METER = 0.12
+var sector_config: Dictionary = {}
+var route_length = ROUTE_LENGTH
+var fuel_multiplier = 1.0
+var resource_sites: Array = []
 var player: Node3D
 var enemies: Array = []
 var bolts: Array = []
@@ -31,7 +35,7 @@ func tank():
 func terrain():
 	box(self,Vector3(65,-0.3,0),Vector3(260,0.4,160),"mud")
 	var rng = RandomNumberGenerator.new()
-	rng.seed = 1918
+	rng.seed = int(sector_config.get("seed",1918))
 	for i in range(85):
 		var x = rng.randf_range(-25,145)
 		var z = rng.randf_range(-36,36)
@@ -46,8 +50,8 @@ func terrain():
 			box(self,Vector3(x,0,z),Vector3(3.5,0.06,1.2),"coal")
 			for k in range(3): box(self,Vector3(x+k,0.12,z),Vector3(0.22,0.20,1.3),"wood")
 	for z in [-10,10]:
-		box(self,Vector3(ROUTE_LENGTH,2,z),Vector3(0.3,4,0.3),"steel")
-		box(self,Vector3(ROUTE_LENGTH,3.6,z+1),Vector3(0.12,0.8,2),"brass")
+		box(self,Vector3(route_length,2,z),Vector3(0.3,4,0.3),"steel")
+		box(self,Vector3(route_length,3.6,z+1),Vector3(0.12,0.8,2),"brass")
 
 func update_camera():
 	if camera == null: return
@@ -59,6 +63,7 @@ func update_camera():
 	camera.size = zoom
 
 func _ready():
+	route_length = float(sector_config.get("length",ROUTE_LENGTH))
 	super._ready()
 	zoom = 39.0
 	pitch = 1.03
@@ -77,15 +82,27 @@ func _ready():
 	target_marker.scale.y = 0.15
 	target_marker.visible = false
 	add_child(target_marker)
+	if not sector_config.is_empty():
+		for i in range(3):
+			var site = Node3D.new()
+			add_child(site)
+			site.position = Vector3(18+i*34,0,8 if i%2 == 0 else -8)
+			for offset in [-0.8,0.8]:
+				box(site,Vector3(offset,0.5,0),Vector3(1.3,1,1.3),"rust" if i%2 == 0 else "coal")
+			cylinder(site,Vector3(0,2,0),0.1,4,"brass",6)
+			resource_sites.append({"node":site,"distance":18+i*34,"taken":false,"shells":int(sector_config.get("shells",0)/3),"scrap":int(sector_config.scrap/3)+(1 if i < int(sector_config.scrap)%3 else 0),"coal":int(sector_config.coal/3)+(1 if i < int(sector_config.coal)%3 else 0)})
 	for i in range(total):
 		var unit = Node3D.new()
 		add_child(unit)
 		unit.visible = false
+		var boss = bool(sector_config.get("boss",false)) and i == total-1
+		var hp = int(sector_config.get("enemy_hp",3))+(6 if boss else 0)
 		var heavy = i % 3 == 2
+		if boss: unit.scale = Vector3.ONE*1.7
 		box(unit,Vector3(0,0.8,0),Vector3(4.0 if heavy else 3.0,1.1,2.1),"enemy")
 		for side in [-1,1]: box(unit,Vector3(0,0.5,side*1.15),Vector3(3.8,0.8,0.55),"dark")
 		var health: Array = []
-		for pip in range(3): health.append(box(unit,Vector3(-0.7+pip*0.7,2.5,0),Vector3(0.5,0.07,0.25),"brass"))
+		for pip in range(hp): health.append(box(unit,Vector3(-0.7+pip*0.7,2.5,0),Vector3(0.5,0.07,0.25),"brass"))
 		var pivot = Node3D.new()
 		unit.add_child(pivot)
 		cylinder(pivot,Vector3(0,1.65,0),0.9 if heavy else 0.65,0.8,"enemy",6)
@@ -101,7 +118,7 @@ func _ready():
 		mark.scale.y = 0.12
 		mark.visible = false
 		add_child(mark)
-		enemies.append({"node":unit,"health":health,"pivot":pivot,"hp":3,"cooldown":7.0+i,"active":false,"role":i%3,"wave":int(i/2),"mark":mark,"locked":false,"aim":Vector3.ZERO})
+		enemies.append({"node":unit,"health":health,"pivot":pivot,"hp":hp,"max_hp":hp,"cooldown":7.0+i,"active":false,"role":i%3,"wave":int(i/2),"mark":mark,"locked":false,"aim":Vector3.ZERO})
 
 func nearest_enemy():
 	var nearest = null
@@ -131,12 +148,19 @@ func tick_battle(factory, delta: float):
 	if not factory.running or result != 0: return
 	elapsed += delta
 	var heading = Vector3.RIGHT
-	var requested = delta*3.3 if distance < ROUTE_LENGTH else 0.0
-	var travel = factory.consume_fuel(requested*FUEL_PER_METER)/FUEL_PER_METER
+	var requested = delta*3.3 if distance < route_length else 0.0
+	var travel = factory.consume_fuel(requested*FUEL_PER_METER*fuel_multiplier)/(FUEL_PER_METER*fuel_multiplier)
 	if travel > 0: player.rotation.y = rotate_toward(player.rotation.y,atan2(-heading.z,heading.x),delta*1.6)
 	player.position += heading*travel
 	speed = travel/maxf(delta,0.001)
 	distance = maxf(distance,player.position.x)
+	for site in resource_sites:
+		if not site.taken and distance >= site.distance:
+			site.taken = true
+			factory.collect("scrap",site.scrap)
+			factory.collect("coal",site.coal)
+			factory.ammo = mini(factory.ammo_capacity,factory.ammo+site.shells)
+			site.node.visible = false
 	# Small pitch motion and tracks make actual world movement readable.
 	player.rotation.z = sin(elapsed*9)*0.006*minf(speed,1)
 	trail_clock -= delta
@@ -168,7 +192,7 @@ func tick_battle(factory, delta: float):
 			enemy.mark.position = enemy.aim+Vector3(0,0.1,0)
 			enemy.mark.visible = true
 		if enemy.cooldown <= 0:
-			enemy.cooldown = 8.0 if enemy.role != 2 else 11.0
+			enemy.cooldown = float(sector_config.get("attack_period",8.0))+(3 if enemy.role == 2 else 0)
 			enemy.locked = false
 			launch_enemy(enemy)
 	update_gun(factory,delta)
@@ -178,7 +202,7 @@ func tick_battle(factory, delta: float):
 		bolt.node.position = bolt.origin.lerp(bolt.target,t)+Vector3(0,sin(t*PI)*3,0)
 		if t >= 1:
 			if Vector2(player.position.x-bolt.target.x,player.position.z-bolt.target.z).length() < 6:
-				hull = maxi(0,hull-10)
+				hull = maxi(0,hull-int(sector_config.get("damage",10)))
 				shake = 0.3
 			impact(bolt.target)
 			bolt.mark.visible = false
@@ -193,7 +217,7 @@ func tick_battle(factory, delta: float):
 	shake = maxf(0,shake-delta)
 	update_camera()
 	if hull <= 0: result = -1
-	elif kills == total and distance >= ROUTE_LENGTH: result = 1
+	elif kills == total and distance >= route_length: result = 1
 	if result != 0: factory.running = false
 
 func update_gun(factory, delta: float):
@@ -227,6 +251,7 @@ func update_gun(factory, delta: float):
 				impact(destination)
 				if shot.target.hp == 0:
 					kills += 1
+					if not sector_config.is_empty(): factory.collect("scrap",2)
 					shot.target.mark.visible = false
 					shot.target.node.scale.y = 0.35
 			shot.node.queue_free()
