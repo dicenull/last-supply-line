@@ -7,7 +7,7 @@ const P = {
 	"rust":"905238", "rust_hi":"cb8651", "red":"a94735", "fire":"f39d3c", "yellow":"ffe88a",
 	"steel":"7f9e9f", "steel_hi":"c3dcce", "steel_dark":"466469", "inlet":"70d4cc", "wood":"80613e", "wood_hi":"b38d55"
 }
-const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo","disconnected","incompatible","empty","full","blocked","waiting","processing","ready","idle"]
+const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo","disconnected","incompatible","empty","full","blocked","waiting","processing","ready","idle","sound","mute","volume_knob"]
 var cache: Dictionary = {}
 var canvas: Image
 
@@ -272,6 +272,23 @@ func texture(kind: String) -> ImageTexture:
 			line(Vector2i(7,15),Vector2i(13,21),"inlet",3)
 			line(Vector2i(13,21),Vector2i(24,8),"inlet",3)
 		"idle": disk(16,16,4,"shade")
+		"volume_knob":
+			disk(16,16,11,"ink")
+			disk(16,15,10,"bronze")
+			disk(16,14,8,"gold")
+			line(Vector2i(16,7),Vector2i(16,18),"cream",2)
+			rivet(10,12)
+		"sound", "mute":
+			plate(3,11,8,12,"steel_dark")
+			poly([[10,11],[20,4],[20,29],[10,22]],"gold")
+			line(Vector2i(19,6),Vector2i(19,26),"gold_hi",2)
+			if kind == "sound":
+				line(Vector2i(24,9),Vector2i(28,14),"steel_hi",2)
+				line(Vector2i(28,14),Vector2i(28,20),"steel_hi",2)
+				line(Vector2i(28,20),Vector2i(24,25),"steel_hi",2)
+			else:
+				line(Vector2i(23,12),Vector2i(29,22),"red",2)
+				line(Vector2i(29,12),Vector2i(23,22),"red",2)
 		"lock":
 			disk(16,11,8,"ink")
 			disk(16,11,6,"steel_hi")

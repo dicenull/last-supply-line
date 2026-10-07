@@ -4,6 +4,9 @@ var game
 var actions: Array = []
 var blueprint_buttons: Array = []
 var previews: Array = []
+var volume_slider: HSlider
+var mute_button: Button
+var previous_volume = 0.35
 func _ready():
 	position = Vector2.ZERO
 	size = Vector2(1440,940)
@@ -36,11 +39,50 @@ func _ready():
 		add_child(button)
 		blueprint_buttons.append(button)
 		previews.append(game.Blueprints.layout(id))
+	volume_slider = HSlider.new()
+	volume_slider.position = Vector2(440,558)
+	volume_slider.size = Vector2(170,28)
+	volume_slider.min_value = 0
+	volume_slider.max_value = 100
+	volume_slider.step = 5
+	volume_slider.focus_mode = Control.FOCUS_NONE
+	var rail = StyleBoxFlat.new()
+	rail.bg_color = Color("252820")
+	rail.border_color = Color("a7a084")
+	rail.set_border_width_all(1)
+	rail.content_margin_top = 3
+	rail.content_margin_bottom = 3
+	volume_slider.add_theme_stylebox_override("slider",rail)
+	var fill = rail.duplicate()
+	fill.bg_color = Color("cfad66")
+	volume_slider.add_theme_stylebox_override("grabber_area",fill)
+	volume_slider.add_theme_stylebox_override("grabber_area_highlight",fill)
+	volume_slider.add_theme_icon_override("grabber",game.pixel_icons.texture("volume_knob"))
+	volume_slider.add_theme_icon_override("grabber_highlight",game.pixel_icons.texture("volume_knob"))
+	volume_slider.value = game.sound.volume*100
+	volume_slider.value_changed.connect(func(value):
+		game.sound.set_volume(value/100.0)
+		queue_redraw())
+	add_child(volume_slider)
+	mute_button = Button.new()
+	mute_button.position = Vector2(390,548)
+	mute_button.size = Vector2(40,40)
+	mute_button.focus_mode = Control.FOCUS_NONE
+	mute_button.flat = true
+	mute_button.pressed.connect(func():
+		if game.sound.volume > 0:
+			previous_volume = game.sound.volume
+			game.sound.set_volume(0)
+		else: game.sound.set_volume(previous_volume)
+		volume_slider.set_value_no_signal(game.sound.volume*100)
+		queue_redraw())
+	add_child(mute_button)
 	visible = false
 
 func refresh():
 	actions[1].disabled = not FileAccess.file_exists(game.checkpoint_path) and not FileAccess.file_exists(game.checkpoint_path+".bak")
 	actions[2].disabled = game.menu_title
+	volume_slider.set_value_no_signal(game.sound.volume*100)
 	for i in range(blueprint_buttons.size()):
 		blueprint_buttons[i].disabled = not game.can_apply_blueprint() or game.Blueprints.IDS[i] not in game.history.unlocked
 	queue_redraw()
@@ -56,6 +98,10 @@ func _draw():
 		draw_rect(Rect2(at,Vector2(110,88)),Color("a7a084"),false,1)
 		var tint = Color(1,1,1,0.25) if actions[i].disabled else Color.WHITE
 		draw_texture_rect(game.pixel_icons.texture(kinds[i]),Rect2(at+Vector2(23,12),Vector2(64,64)),false,tint)
+	draw_texture_rect(game.pixel_icons.texture("mute" if game.sound.volume == 0 else "sound"),Rect2(394,552,32,32),false)
+	draw_string(game.font,Vector2(620,579),str(roundi(game.sound.volume*100)),HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color("e4d7b2"))
+	if game.sound.settings_error:
+		draw_texture_rect(game.pixel_icons.texture("defeat"),Rect2(758,558,28,28),false)
 	if game.menu_status != "":
 		draw_texture_rect(game.pixel_icons.texture(game.menu_status),Rect2(699,551,42,42),false)
 	draw_string(game.font,Vector2(372,598),"Esc",HORIZONTAL_ALIGNMENT_LEFT,-1,15,Color("a7a084"))
