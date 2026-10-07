@@ -16,6 +16,15 @@ var battle_container: SubViewportContainer
 var factory_container: SubViewportContainer
 var battle_mode = false
 var started = false
+const RunSave = preload("res://scripts/run_save.gd")
+const RunMenu = preload("res://scripts/run_menu.gd")
+var checkpoint = RunSave.new()
+var checkpoint_path = "user://run_save.mfv"
+var show_start_menu = true
+var menu
+var menu_title = true
+var menu_status = ""
+var menu_was_running = false
 const RunState = preload("res://scripts/run_state.gd")
 var expedition = RunState.new(int(Time.get_unix_time_from_system()))
 var choice_buttons: Array = []
@@ -42,6 +51,7 @@ var notice_bad = false
 var last_message = ""
 
 func _ready():
+	get_tree().auto_accept_quit = false
 	factory.finite_resources = true
 	factory.auto_fire = false
 	factory.example()
@@ -90,6 +100,13 @@ func _ready():
 	for i in range(3):
 		var target = [30,60,90][i]
 		icon_button("rate",Rect2(1147+i*84,691,76,38),func(): factory.rate = target,str(target))
+	var menu_layer = CanvasLayer.new()
+	menu_layer.layer = 10
+	add_child(menu_layer)
+	menu = RunMenu.new()
+	menu.game = self
+	menu_layer.add_child(menu)
+	if show_start_menu: open_menu(true)
 
 func toggle_running():
 	if expedition.phase not in ["prepare","travel"]: return
@@ -269,6 +286,11 @@ func _input(event):
 		hover = cell_at(event.position)
 
 func _unhandled_input(event):
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		if menu.visible: close_menu()
+		else: open_menu(false)
+		return
+	if menu.visible: return
 	if expedition.phase not in ["prepare","travel"]:
 		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R and expedition.phase in ["won","lost","retreated"]: reset_battle()
 		return
@@ -561,3 +583,57 @@ func draw_expedition():
 			text_at(str(route.enemy_hp),at+Vector2(290,43),22,INK)
 			symbol("move",at+Vector2(260,78),0.65)
 			text_at(str(int(route.length)),at+Vector2(290,86),22,INK)
+
+func open_menu(title: bool = false):
+	menu_title = title
+	menu_was_running = factory.running
+	factory.running = false
+	menu_status = ""
+	menu.visible = true
+	menu.refresh()
+
+func close_menu():
+	menu.visible = false
+	if not menu_title and expedition.phase == "travel": factory.running = menu_was_running
+	menu_title = false
+
+func save_checkpoint() -> bool:
+	var success = checkpoint.write_file(checkpoint_path,checkpoint.snapshot(self))
+	menu_status = "victory" if success else "defeat"
+	if menu != null: menu.refresh()
+	return success
+
+func load_checkpoint() -> bool:
+	var data = checkpoint.read_file(checkpoint_path)
+	if data.is_empty(): data = checkpoint.read_file(checkpoint_path+".bak")
+	if data.is_empty() or not checkpoint.apply(self,data):
+		menu_status = "defeat"
+		menu.refresh()
+		return false
+	menu_was_running = false
+	menu_title = false
+	menu.visible = false
+	return true
+
+func menu_action(index: int):
+	match index:
+		0: close_menu()
+		1: load_checkpoint()
+		2: save_checkpoint()
+		3:
+			ensure_battle()
+			reset_battle()
+			menu_was_running = false
+			menu_title = false
+			menu.visible = false
+		4:
+			if menu_title or save_checkpoint(): get_tree().quit()
+
+func _notification(what: int):
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if menu_title or save_checkpoint():
+			get_tree().quit()
+		else:
+			open_menu(false)
+			menu_status = "defeat"
+			menu.refresh()

@@ -35,6 +35,7 @@ func run():
 	check(f.injected == 1 and f.reserves.scrap == 0,"finite sources cannot create uncollected resources")
 	check(f.collect("coal",1000) == 100 and f.collect("coal",1) == 0,"collection respects cargo capacity")
 	var game = load("res://main.tscn").instantiate()
+	game.show_start_menu = false
 	root.add_child(game)
 	await process_frame
 	game.set_process(false)

@@ -16,6 +16,7 @@ func advance(seconds: float):
 func run():
 	root.size = Vector2i(1440,940)
 	game = load("res://main.tscn").instantiate()
+	game.show_start_menu = false
 	root.add_child(game)
 	await process_frame
 	game.set_process(false)

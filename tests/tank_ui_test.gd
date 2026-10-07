@@ -42,6 +42,7 @@ func screenshot(path: String):
 func run():
 	root.size = Vector2i(1440,940)
 	game = load("res://main.tscn").instantiate()
+	game.show_start_menu = false
 	root.add_child(game)
 	await create_timer(0.7).timeout
 	check(game.factory.count_kind("furnace") == 1 and game.factory.count_kind("press") == 1 and game.factory.count_kind("refinery") == 1,"startup includes ammunition and fuel example lines")
