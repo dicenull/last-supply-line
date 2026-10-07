@@ -61,6 +61,7 @@ var notice_bad = false
 var last_message = ""
 
 func _ready():
+	get_window().min_size = Vector2i(960,628)
 	history.load_file(history_path)
 	get_tree().auto_accept_quit = false
 	factory.finite_resources = true

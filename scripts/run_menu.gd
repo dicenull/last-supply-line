@@ -95,7 +95,7 @@ func _draw():
 	var kinds = ["play","load","save","reset","exit"]
 	for i in range(kinds.size()):
 		var at = Vector2(405+i*130,434)
-		draw_rect(Rect2(at,Vector2(110,88)),Color("a7a084"),false,1)
+		draw_rect(Rect2(at,Vector2(110,88)),Color("a7a084"),false,2)
 		var tint = Color(1,1,1,0.25) if actions[i].disabled else Color.WHITE
 		draw_texture_rect(game.pixel_icons.texture(kinds[i]),Rect2(at+Vector2(23,12),Vector2(64,64)),false,tint)
 	draw_texture_rect(game.pixel_icons.texture("mute" if game.sound.volume == 0 else "sound"),Rect2(394,552,32,32),false)
