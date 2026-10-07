@@ -120,6 +120,7 @@ func _ready():
 	material("inlet","70d4cc",0,0.25)
 	material("outlet","ffcf65",0,0.25)
 	material("kiln","ae4f32")
+	material("fuel","5b9b99")
 	for spec in [["turret_armor","8f916c",0.12],["turret_edge","c6bd91",0.18],["turret_dark","505644",0.22]]:
 		var translucent = material(spec[0],spec[1])
 		translucent.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -326,11 +327,11 @@ func flow_ports(kind: String, parent: Node3D, inputs: Array):
 		var port = Node3D.new()
 		parent.add_child(port)
 		port.rotation.y = -side*PI/2
-		if kind != "source" and side in inputs:
+		if kind not in ["source","coal_source"] and side in inputs:
 			# Recessed receiving tray; geometry communicates flow without small arrows.
 			box(port,Vector3(0.43,0.16,-0.19),Vector3(0.14,0.05,0.25),"dark")
 			for z in [-0.32,-0.06]: box(port,Vector3(0.43,0.20,z),Vector3(0.14,0.035,0.035),"inlet")
-		if kind != "gun" and (side == 0 or (kind == "splitter" and side == 1)):
+		if kind not in ["gun","engine"] and (side == 0 or (kind == "splitter" and side == 1)):
 			box(port,Vector3(0.35,0.17,0.18),Vector3(0.26,0.055,0.27),"outlet")
 
 func machine(kind: String, parent: Node3D, inputs: Array = [2]) -> Dictionary:
@@ -369,13 +370,23 @@ func machine(kind: String, parent: Node3D, inputs: Array = [2]) -> Dictionary:
 			for x in [-0.19,0,0.19]:
 				cylinder(parent,Vector3(x,0.33,-0.30),0.055,0.22,"shell",6)
 				cylinder(parent,Vector3(x,0.48,-0.30),0.055,0.09,"tip",6,0)
-		"source":
+		"source", "coal_source":
 			cylinder(parent,Vector3(0,0.32,0),0.22,0.46,"rust",4,0.44)
 			box(parent,Vector3(0,0.56,0),Vector3(0.56,0.025,0.56),"dark")
 			for offset in [Vector3(-0.15,0.57,0),Vector3(0.12,0.59,0.13),Vector3(0.03,0.57,-0.17)]:
-				var scrap = make_good("scrap")
+				var scrap = make_good("coal" if kind == "coal_source" else "scrap")
 				parent.add_child(scrap)
 				scrap.position = offset
+		"refinery":
+			box(parent,Vector3(0,0.10,0),Vector3(0.65,0.14,0.65),"dark")
+			cylinder(parent,Vector3(-0.14,0.58,0),0.19,0.92,"fuel",6)
+			cylinder(parent,Vector3(0.19,0.39,0),0.14,0.52,"brass",6)
+			beam(parent,Vector3(-0.14,0.98,0),Vector3(0.19,0.65,0),0.045,"steel")
+			box(parent,Vector3(-0.14,0.18,0.19),Vector3(0.18,0.15,0.025),"fire")
+		"engine":
+			box(parent,Vector3(0,0.26,0),Vector3(0.68,0.44,0.60),"fuel")
+			for x in [-0.22,0,0.22]: box(parent,Vector3(x,0.53,0),Vector3(0.09,0.16,0.5),"dark")
+			cylinder(parent,Vector3(0.19,0.77,-0.17),0.07,0.35,"dark",6)
 		"gun":
 			box(parent,Vector3(0,0.22,0),Vector3(0.62,0.40,0.62),"dark")
 			for z in [-0.18,0,0.18]:
@@ -392,6 +403,12 @@ func make_good(kind: String) -> Node3D:
 		"scrap":
 			var a = box(n,Vector3(0,0.06,0),Vector3(0.3,0.12,0.21),"rust")
 			a.rotation_degrees = Vector3(15,20,10)
+		"coal":
+			var chunk = cylinder(n,Vector3(0,0.12,0),0.19,0.23,"coal",5,0.11)
+			chunk.rotation.z = 0.2
+		"fuel":
+			cylinder(n,Vector3(0,0.16,0),0.13,0.3,"fuel",6)
+			for y in [0.06,0.25]: cylinder(n,Vector3(0,y,0),0.14,0.035,"brass",6)
 		"steel":
 			box(n,Vector3(0,0.08,0),Vector3(0.42,0.16,0.28),"steel")
 		"shell":
@@ -403,7 +420,7 @@ func make_good(kind: String) -> Node3D:
 	return n
 
 func good_height(kind: String) -> float:
-	return {"furnace":0.83,"press":0.38,"source":0.4,"depot":0.35,"gun":0.4}.get(kind,0.25)
+	return {"furnace":0.83,"press":0.38,"source":0.4,"depot":0.35,"gun":0.4,"refinery":1.08,"engine":0.65,"coal_source":0.6}.get(kind,0.25)
 
 func item_frames(factory) -> Array:
 	var frames: Array = []
@@ -442,7 +459,7 @@ func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: f
 				var neighbor: Vector2i = p+F.DIRS[side]
 				if not factory.cells.has(neighbor): continue
 				var upstream: Dictionary = factory.cells[neighbor]
-				if upstream.kind == "gun": continue
+				if upstream.kind in ["gun","engine"]: continue
 				var toward = (side+2)%4
 				if upstream.dir == toward or (upstream.kind == "splitter" and (upstream.dir+1)%4 == toward):
 					inputs.append((side-c.dir+4)%4)

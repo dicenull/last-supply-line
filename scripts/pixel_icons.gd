@@ -7,7 +7,7 @@ const P = {
 	"rust":"905238", "rust_hi":"cb8651", "red":"a94735", "fire":"f39d3c", "yellow":"ffe88a",
 	"steel":"7f9e9f", "steel_hi":"c3dcce", "steel_dark":"466469", "inlet":"70d4cc", "wood":"80613e", "wood_hi":"b38d55"
 }
-const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat"]
+const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move"]
 var cache: Dictionary = {}
 var canvas: Image
 
@@ -205,6 +205,32 @@ func texture(kind: String) -> ImageTexture:
 			if kind == "roof_open":
 				rect(15,3,3,5,"gold_hi")
 				poly([[11,5],[20,5],[16,1]],"cream")
+		"coal", "coal_source":
+			poly([[3,20],[7,9],[16,4],[24,10],[29,22],[19,28],[7,27]],"ink")
+			poly([[7,9],[16,4],[18,15],[10,20]],"shade")
+			poly([[18,15],[24,10],[29,22],[21,21]],"deep")
+			line(Vector2i(9,10),Vector2i(14,7),"steel")
+		"fuel":
+			plate(7,5,19,24,"steel_dark")
+			rect(8,7,16,3,"steel_hi")
+			rect(8,23,16,3,"gold")
+			poly([[16,11],[11,19],[13,22],[19,22],[22,19]],"gold_hi")
+		"refinery":
+			plate(3,7,12,22,"steel_dark")
+			plate(5,3,8,5,"steel")
+			plate(21,13,8,16,"gold")
+			line(Vector2i(11,6),Vector2i(25,12),"steel_hi",3)
+			rect(6,22,6,5,"fire")
+			rect(5,10,3,9,"steel_hi")
+		"engine":
+			plate(3,12,25,16,"steel_dark")
+			for x in [6,13,20]: plate(x,7,5,9,"steel")
+			plate(24,3,4,11,"deep")
+			disk(10,23,5,"bronze")
+			disk(10,23,3,"gold_hi")
+		"move":
+			disk(16,16,12,"steel_dark")
+			poly([[16,4],[25,24],[16,20],[7,24]],"gold_hi")
 		"battle":
 			line(Vector2i(5,5),Vector2i(25,25),"steel_hi",3)
 			line(Vector2i(25,5),Vector2i(5,25),"gold_hi",3)
