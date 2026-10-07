@@ -38,6 +38,10 @@ var battle_retry: Button
 const PixelIcons = preload("res://scripts/pixel_icons.gd")
 var pixel_icons = PixelIcons.new()
 var logistics
+var sound
+var quitting = false
+var audio_enabled = true
+var audio_settings_path = "user://audio_settings.json"
 var viewport: SubViewport
 const NAMES = {"belt":"搬送", "furnace":"精錬炉", "press":"砲弾機", "splitter":"分配器", "depot":"弾薬庫", "erase":"撤去", "source":"廃材口", "gun":"試射口"}
 const ITEMS = {"scrap":"廃材", "steel":"鋼材", "shell":"砲弾"}
@@ -113,6 +117,11 @@ func _ready():
 	logistics = preload("res://scripts/logistics_overlay.gd").new()
 	logistics.game = self
 	logistics_layer.add_child(logistics)
+	sound = preload("res://scripts/game_audio.gd").new()
+	sound.game = self
+	sound.enabled = audio_enabled
+	sound.settings_path = audio_settings_path
+	add_child(sound)
 	var menu_layer = CanvasLayer.new()
 	menu_layer.layer = 10
 	add_child(menu_layer)
@@ -122,6 +131,7 @@ func _ready():
 	if show_start_menu: open_menu(true)
 
 func toggle_running():
+	if quitting: return
 	if expedition.phase not in ["prepare","travel"]: return
 	ensure_battle()
 	if battlefield.result != 0: return
@@ -131,6 +141,7 @@ func toggle_running():
 		world.playback_only = true
 		battle_mode = true
 	factory.running = not factory.running
+	if not factory.running: sound.stop_all()
 	refresh_view()
 
 func toggle_battle():
@@ -168,6 +179,8 @@ func refresh_view():
 	queue_redraw()
 
 func reset_battle():
+	if quitting: return
+	sound.stop_all()
 	if battlefield == null: return
 	new_blueprints.clear()
 	battle_container.queue_free()
@@ -254,6 +267,7 @@ func load_layout():
 	else: factory.message = "保存データに配置できない設備があります。現在の配置を維持します。"
 
 func _process(delta):
+	if quitting: return
 	factory.step(minf(delta,0.1))
 	notice_time = maxf(0,notice_time-delta)
 	if factory.message != last_message:
@@ -278,6 +292,7 @@ func _process(delta):
 			world.turret.rotation.y = battlefield.turret.rotation.y
 			world.barrel.position.x = battlefield.barrel.position.x
 			world.muzzle.visible = battlefield.muzzle.visible
+	sound.sync()
 	logistics.sync(delta)
 	battle_retry.visible = battle_mode and expedition.phase in ["won","lost","retreated"]
 	retreat_button.visible = expedition.phase in ["prepare","travel"]
@@ -576,6 +591,8 @@ func record_result() -> bool:
 	return history.record(history_path,expedition.run_seed,expedition.phase,expedition.cleared,int(factory.manufactured))
 
 func retreat_run():
+	if quitting: return
+	sound.stop_all()
 	if not expedition.retreat(): return
 	record_result()
 	factory.running = false
@@ -650,6 +667,8 @@ func draw_expedition():
 			text_at("×%.2f" % surface.fuel,at+Vector2(455,86),22,INK)
 
 func open_menu(title: bool = false):
+	if quitting: return
+	sound.stop_all()
 	menu_title = title
 	menu_was_running = factory.running
 	factory.running = false
@@ -685,6 +704,7 @@ func load_checkpoint() -> bool:
 	return true
 
 func menu_action(index: int):
+	if quitting: return
 	match index:
 		0: close_menu()
 		1: load_checkpoint()
@@ -696,13 +716,25 @@ func menu_action(index: int):
 			menu_title = false
 			menu.visible = false
 		4:
-			if menu_title or save_checkpoint(): get_tree().quit()
+			if menu_title or save_checkpoint(): finish_quit()
 
 func _notification(what: int):
+	if quitting: return
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		if menu_title or save_checkpoint():
-			get_tree().quit()
+			finish_quit()
 		else:
 			open_menu(false)
 			menu_status = "defeat"
 			menu.refresh()
+
+func finish_quit():
+	if quitting: return
+	quitting = true
+	factory.running = false
+	sound.stop_all()
+	menu.hide()
+	sound.queue_free()
+	# Release playback nodes while the audio thread still runs, before engine shutdown.
+	await get_tree().create_timer(0.08).timeout
+	get_tree().quit()

@@ -13,6 +13,7 @@ var player: Node3D
 var enemies: Array = []
 var bolts: Array = []
 var impacts: Array = []
+var impact_serial = 0
 var trails: Array = []
 var hull = 100
 var kills = 0
@@ -156,6 +157,7 @@ func launch_enemy(enemy):
 	bolts.append({"node":node,"origin":origin,"target":target,"age":0.0,"duration":maxf(0.8,origin.distance_to(target)/15.0),"mark":enemy.mark})
 
 func impact(pos: Vector3):
+	impact_serial += 1
 	var flash = cylinder(self,pos,1.3,1.8,"fire",6,0.25)
 	impacts.append({"node":flash,"life":0.4})
 

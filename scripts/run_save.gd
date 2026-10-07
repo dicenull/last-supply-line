@@ -241,6 +241,7 @@ func apply(game, data: Dictionary) -> bool:
 	if not validate(data):
 		error = "invalid_state"
 		return false
+	game.sound.stop_all()
 	var restored_factory = Factory.new()
 	for key in FIELDS: restored_factory.set(key,data.factory[key].duplicate(true) if data.factory[key] is Array or data.factory[key] is Dictionary else data.factory[key])
 	restored_factory.finite_resources = true
