@@ -1,78 +1,55 @@
-# 3D版 検証記録
+# 検証手順
 
-環境：macOS / Apple M3 Pro / Godot 4.7.2 stable / Compatibilityレンダラー。
-
-## 生産のルール
-
-`tests/factory_test.gd`：26項目。
-
-製造、実物資による給弾、並列化、物資保存、接続切断、方向、分配、合流の公平性、素材制約、容量、備蓄放出、集計窓、固定区画、配置制限、編集・停止・回転・履歴、JSON形式と不正保存の拒否を検証する。3D化にあたり生産ロジックは変更していない。
-
-## 3D・入力
-
-`tests/tank_ui_test.gd`：29項目。
-
-- ネイティブの3Dカメラ・車体・屋根が生成される。
-- 4つの床板で画面座標→床の逆変換が一致。
-- 実際のマウス入力で設備配置、機械配置、回転、右クリック撤去、元に戻す。
-- 屋根を閉じると配置不可。Tabで車内表示に戻る。
-- カメラを回しても配置座標が正しい。
-- マウスホイールで拡大、キーでも回転できる。
-- 見本ラインを車内に作り、操作盤から運転開始。
-- 製造・搬送・給弾・試射が進み、3D物資が生成される。
-- 一時停止中の立体物資が動かない。
-- ボタンに説明文がない。
-
-3Dテストでは外観と稼働中のスクリーンショットを保存し、履帯・砲座・装甲・車内グリッドとUIを目視確認する。
+Godot 4.7.2 / Compatibility / macOSで確認。実行場所はプロジェクト直下。
+Godot実行ファイルを指定し、下記のスクリプトを実行する。
 
 ```sh
-godot --headless --path . --script res://tests/factory_test.gd
-godot --path . --script res://tests/tank_ui_test.gd
+/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/factory_test.gd
+/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --path . --script res://tests/variety_test.gd
 ```
 
-UIテストは `preview-exterior.png` と `preview-tank.png` を上書きする。プレイヤーの保存ファイルは変更しない。
+画面描画が必要な試験には `--headless` を付けない。描画完了を待つ処理があるため、画面なしでは終了しない。画面試験は1つずつ実行する。
 
-低性能GPU・他OS・ゲームパッド・タッチ操作は未検証。史実の戦車の寸法や兵器機構を検証するものではない。
+| スクリプト | 項目数 | 画面描画 | 主な検証 |
+|---|---:|---|---|
+| factory_test.gd | 33 | 不要 | 生産・搬送・合流・分岐・保存・燃料 |
+| tank_ui_test.gd | 37 | 必要 | 3D車体・砲塔・可視物資・実入力 |
+| battle_test.gd | 32 | 必要 | 自動走行・射撃・燃料停止・視点切替・走行中編集 |
+| run_test.gd | 40 | 不要 | 5戦・資源・持越・報酬・ルート・ボス・撤退 |
+| run_ui_test.gd | 7 | 必要 | 報酬・ルート・出発・撤退の実クリック |
+| checkpoint_test.gd | 23 | 不要 | 生産・敵・飛翔弾の復元、同一進行、破損・バックアップ |
+| menu_test.gd | 10 | 必要 | 開始・続きから・保存・新ラン・Esc・入力遮断 |
+| history_test.gd | 12 | 必要 | 結果・64bitシード・重複抑止・履歴上限・復旧 |
+| blueprint_test.gd | 29 | 必要 | 開放・旧プロフィール移行・永続化・実クリック・実生産・予備弾16発 |
+| variety_test.gd | 30 | 必要 | 32シード再現・実速度と燃料・編成・装填と積載・新旧保存 |
+| campaign_variety_test.gd | 26 | 不要 | 6シード×2構成の12ラン、物資追加なしの全自動戦闘 |
 
-## 全周砲塔・ピクセルアイコン追加検証
+合計279項目。各スクリプト末尾のRESULTが0 failuresであること、終了コードが0であること、SCRIPT ERROR / ERRORがないことを確認する。
+試験用プロフィールはtests/profile_fixture.gdでプレイヤーの保存先と分離し、終了時に除去する。中断保存の試験も専用の一時保存先を使う。
 
-- 工場の生産を分離した空弾薬試験で、視覚上も発砲しない。
-- 8発を与えると四方向へ2周、順番に試射する。
-- 弾の進行方向が発射時の砲身方向と一致。
-- 弾薬の消費数、シミュレーションの射撃数、表示の射撃数が一致。
-- 発射光・砲身の反動・飛翔する弾が生成される。
-- 23種類のアイコンが32×32で生成され、最近傍表示を使う。
+## 実終了と再開
 
-Godot 4.7.2で追加後の26項目が成功。`preview-turret.png` は試験用に4発を用意して撮影した2方向目の発砲場面で、通常開始時の弾薬は0のまま。
+次を順に別プロセスで実行する。前半は実際にウィンドウ終了通知を受けて保存・終了し、後半は保存を読み取って進行を検証する。
 
-中央前方・上部への砲塔移設と半透明化を3項目追加検証。拡大後も四方向の射撃・弾薬消費・反動を含む29項目がGodot 4.7.2で成功。実画面で下の床とラインが透けて見えることを確認。
+```sh
+/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/exit_save_test.gd
+/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/exit_save_test.gd -- --verify
+```
 
-## 自動対戦
+EXIT SAVE RESULT: PASSを確認する。エディター側の読込は次で確認する。
 
-`Godot --path . --script res://tests/battle_test.gd` で23項目を検証。対戦中の試射停止、配置保持、編集ブロック、製造弾薬との対応、画面往復と一時停止、見本ラインでの勝利、空ラインでの敗北、再戦を確認する。`preview-battle.png` を生成する。
+```sh
+/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --headless --path . --editor --quit
+```
 
-燃料追加後：生産33項目、UI35項目、移動対戦23項目。石炭変換・燃料保存と消費上限・燃料切れでの射撃継続・走行距離との対応・段階出現・予告砲撃回避・クリックによって自動進軍が変化しないことを検証。
+## 画面確認
 
-視点切替による再生状態の維持、車内視点での戦闘継続、走行中の配置・撤去、一時停止中の編集、再戦時の準備復帰を検証。
+画面試験はpreview-*.pngを生成する。設置物・資源・加工品の判別、砲塔の透明度、向きと射撃、アイコン・数値・カードの重なりを目視確認する。
+直近の追加画面はpreview-expanded-reward.png（装填・積載報酬）とpreview-expanded-routes.png（地形・編成・速度・燃料の比較）。
 
-## Roguelike expedition
+## 通しプレイの範囲と残る検証
 
-Run `Godot --headless --path . --script res://tests/run_test.gd` for 40 checks covering seeded choices, finite resources, upgrades, cargo/hull carry-over, a five-sector run with a second production line, final boss and retreat.
-Run `Godot --path . --script res://tests/run_ui_test.gd` for 7 real-click checks of rewards, route selection, sector start and retreat; this captures preview-reward.png and preview-route.png.
+campaign_variety_testは並列／備蓄の2構成から開始し、第2戦前に燃料を並列化、備蓄型は第3戦前に弾薬を増設する。安全寄りのルートと加工・燃費重視の報酬選択を使う。
+6シード×2構成で全5戦の勝利を確認した。出力には勝敗・耐久・残資源・消費弾を残す。これは全ルートを勝てる保証や最終難易度の証拠ではない。
 
-## Checkpoint and menu
-
-Run checkpoint_test.gd headless for 23 checks, and menu_test.gd with rendering for 10 real-input checks. Both use separate fixture save names and clean them up.
-For exit verification run exit_save_test.gd once, then run it again with -- --verify; the second process validates and removes the saved fixture. This checks process exit and durable checkpoint creation.
-
-## 出撃履歴
-
-Godot --path . --script res://tests/history_test.gd
-
-12項目。独立した試験用保存先を利用し、実撤退から履歴追加とメニュー描画まで確認します。
-
-## 配置図アンロック
-
-Godot --path . --script res://tests/blueprint_test.gd
-
-29項目。画面描画を含むためheadlessは付けません。既存のbattle_test.gdも画面撮影を含みます。配置図の生産・備蓄・開放・永続化・UI選択・適用制約を確認します。tests/profile_fixture.gdでゲーム試験の履歴・アンロックをプレイヤーの保存先から隔離し、終了時に除去します。
+原料不足・燃料停止は個別試験を持つが、極端な構成、最悪ルート、長時間連続プレイ、複数解像度、配布ビルドは引き続きROADMAP.mdで追跡する。試験が通ったことだけでは完成判定しない。
