@@ -18,6 +18,9 @@ var battle_mode = false
 var started = false
 const RunSave = preload("res://scripts/run_save.gd")
 const RunMenu = preload("res://scripts/run_menu.gd")
+const RunHistory = preload("res://scripts/run_history.gd")
+var history = RunHistory.new()
+var history_path = "user://run_history.json"
 var checkpoint = RunSave.new()
 var checkpoint_path = "user://run_save.mfv"
 var show_start_menu = true
@@ -26,7 +29,7 @@ var menu_title = true
 var menu_status = ""
 var menu_was_running = false
 const RunState = preload("res://scripts/run_state.gd")
-var expedition = RunState.new(int(Time.get_unix_time_from_system()))
+var expedition = RunState.new(int(Time.get_unix_time_from_system()*1000000))
 var choice_buttons: Array = []
 var retreat_button: Button
 var battle_retry: Button
@@ -51,6 +54,7 @@ var notice_bad = false
 var last_message = ""
 
 func _ready():
+	history.load_file(history_path)
 	get_tree().auto_accept_quit = false
 	factory.finite_resources = true
 	factory.auto_fire = false
@@ -160,7 +164,7 @@ func reset_battle():
 	battle_mode = false
 	started = false
 	world.playback_only = false
-	expedition = RunState.new(int(Time.get_ticks_usec()))
+	expedition = RunState.new(int(Time.get_unix_time_from_system()*1000000))
 	factory.work_multiplier = 1.0
 	factory.ammo_capacity = 12
 	factory.reserves = {"scrap":48,"coal":32}
@@ -253,6 +257,7 @@ func _process(delta):
 	if started: battlefield.tick_battle(factory,minf(delta,0.1))
 	if started and battlefield.result != 0 and expedition.phase == "travel":
 		expedition.finish_sector(battlefield.result == 1,battlefield.hull)
+		record_result()
 		battle_mode = true
 		refresh_view()
 	if not battle_mode:
@@ -522,6 +527,9 @@ func draw_battle():
 	text_at("%.1f m/s" % battlefield.speed,Vector2(1230,721),19,MUTED)
 	if expedition.phase in ["won","lost","retreated"]:
 		symbol("victory" if expedition.phase == "won" else "retreat" if expedition.phase == "retreated" else "defeat",Vector2(650,846),1.7)
+		text_at("#%s" % expedition.run_seed,Vector2(70,829),20,MUTED)
+		symbol("press",Vector2(90,875),0.8)
+		text_at(str(factory.manufactured),Vector2(125,882),24,INK)
 		symbol("reset",Vector2(770,842),1.0)
 		text_at("R",Vector2(765,883),16,GOLD)
 	else:
@@ -531,8 +539,13 @@ func draw_battle():
 			for pip in range(battlefield.enemies[i].max_hp):
 				panel(Rect2(pos+Vector2(-29+pip*21,40),Vector2(16,8)),GOLD if pip < battlefield.enemies[i].hp else BG)
 
+func record_result() -> bool:
+	if expedition.phase not in ["won","lost","retreated"]: return true
+	return history.record(history_path,expedition.run_seed,expedition.phase,expedition.cleared,int(factory.manufactured))
+
 func retreat_run():
 	if not expedition.retreat(): return
+	record_result()
 	factory.running = false
 	ensure_battle()
 	battle_mode = true
@@ -598,7 +611,9 @@ func close_menu():
 	menu_title = false
 
 func save_checkpoint() -> bool:
+	var recorded = record_result()
 	var success = checkpoint.write_file(checkpoint_path,checkpoint.snapshot(self))
+	success = success and recorded
 	menu_status = "victory" if success else "defeat"
 	if menu != null: menu.refresh()
 	return success
@@ -610,6 +625,7 @@ func load_checkpoint() -> bool:
 		menu_status = "defeat"
 		menu.refresh()
 		return false
+	record_result()
 	menu_was_running = false
 	menu_title = false
 	menu.visible = false

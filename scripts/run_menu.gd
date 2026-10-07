@@ -41,3 +41,16 @@ func _draw():
 	if game.menu_status != "":
 		draw_texture_rect(game.pixel_icons.texture(game.menu_status),Rect2(699,551,42,42),false)
 	draw_string(game.font,Vector2(372,598),"Esc",HORIZONTAL_ALIGNMENT_LEFT,-1,15,Color("a7a084"))
+
+	for i in range(mini(3,game.history.entries.size())):
+		var row = game.history.entries[i]
+		var y = 666+i*64
+		draw_rect(Rect2(348,y-28,744,54),Color("414437"))
+		var kind = "victory" if row.phase == "won" else "retreat" if row.phase == "retreated" else "defeat"
+		draw_texture_rect(game.pixel_icons.texture(kind),Rect2(368,y-20,40,40),false)
+		draw_string(game.font,Vector2(430,y+8),"#"+row.seed,HORIZONTAL_ALIGNMENT_LEFT,-1,20,Color("e4d7b2"))
+		draw_string(game.font,Vector2(760,y+8),"%d / 5" % row.cleared,HORIZONTAL_ALIGNMENT_LEFT,-1,22,Color("cfad66"))
+		draw_texture_rect(game.pixel_icons.texture("press"),Rect2(890,y-20,40,40),false)
+		draw_string(game.font,Vector2(954,y+8),str(int(row.shells)),HORIZONTAL_ALIGNMENT_LEFT,-1,22,Color("e4d7b2"))
+	if game.history.error:
+		draw_texture_rect(game.pixel_icons.texture("defeat"),Rect2(1050,560,28,28),false)
