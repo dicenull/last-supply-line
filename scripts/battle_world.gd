@@ -1,5 +1,7 @@
 extends "res://scripts/tank_world.gd"
 ## Moving encounter: coal-derived fuel powers travel; enemy shells target marked ground.
+const RunState = preload("res://scripts/run_state.gd")
+var reload_multiplier = 1.0
 const ROUTE_LENGTH = 100.0
 const FUEL_PER_METER = 0.12
 var sector_config: Dictionary = {}
@@ -34,6 +36,16 @@ func tank():
 
 func terrain():
 	box(self,Vector3(65,-0.3,0),Vector3(260,0.4,160),"mud")
+	var ground = sector_config.get("terrain","road")
+	material("route_ground","39342d" if ground == "mud" else "54544a" if ground == "rubble" else "4b4b40")
+	box(self,Vector3(65,-0.065,0),Vector3(230,0.035,15),"route_ground")
+	if ground == "mud":
+		for x in range(-20,145,9):
+			var pool = cylinder(self,Vector3(x,-0.035,0),4.0,0.02,"dark",8)
+			pool.scale.z = 1.5
+	elif ground == "rubble":
+		for x in range(-20,145,8):
+			for z in [-6,6]: box(self,Vector3(x,0.08,z),Vector3(1.5,0.3,0.7),"stone")
 	var rng = RandomNumberGenerator.new()
 	rng.seed = int(sector_config.get("seed",1918))
 	for i in range(85):
@@ -96,9 +108,11 @@ func _ready():
 		add_child(unit)
 		unit.visible = false
 		var boss = bool(sector_config.get("boss",false)) and i == total-1
-		var hp = int(sector_config.get("enemy_hp",3))+(6 if boss else 0)
-		var heavy = i % 3 == 2
+		var hp = RunState.enemy_health(sector_config,i)
+		var role = RunState.enemy_role(sector_config,i)
+		var heavy = role == 2
 		if boss: unit.scale = Vector3.ONE*1.7
+		elif role == 1: unit.scale = Vector3(0.85,0.8,0.85)
 		box(unit,Vector3(0,0.8,0),Vector3(4.0 if heavy else 3.0,1.1,2.1),"enemy")
 		for side in [-1,1]: box(unit,Vector3(0,0.5,side*1.15),Vector3(3.8,0.8,0.55),"dark")
 		var health: Array = []
@@ -118,7 +132,7 @@ func _ready():
 		mark.scale.y = 0.12
 		mark.visible = false
 		add_child(mark)
-		enemies.append({"node":unit,"health":health,"pivot":pivot,"hp":hp,"max_hp":hp,"cooldown":7.0+i,"active":false,"role":i%3,"wave":int(i/2),"mark":mark,"locked":false,"aim":Vector3.ZERO})
+		enemies.append({"node":unit,"health":health,"pivot":pivot,"hp":hp,"max_hp":hp,"cooldown":7.0+i,"active":false,"role":role,"wave":int(i/2),"mark":mark,"locked":false,"aim":Vector3.ZERO})
 
 func nearest_enemy():
 	var nearest = null
@@ -148,8 +162,10 @@ func tick_battle(factory, delta: float):
 	if not factory.running or result != 0: return
 	elapsed += delta
 	var heading = Vector3.RIGHT
-	var requested = delta*3.3 if distance < route_length else 0.0
-	var travel = factory.consume_fuel(requested*FUEL_PER_METER*fuel_multiplier)/(FUEL_PER_METER*fuel_multiplier)
+	var surface = RunState.condition(sector_config)
+	var requested = minf(delta*surface.speed,maxf(0,route_length-distance))
+	var consumption = FUEL_PER_METER*fuel_multiplier*surface.fuel
+	var travel = factory.consume_fuel(requested*consumption)/consumption
 	if travel > 0: player.rotation.y = rotate_toward(player.rotation.y,atan2(-heading.z,heading.x),delta*1.6)
 	player.position += heading*travel
 	speed = travel/maxf(delta,0.001)
@@ -218,7 +234,9 @@ func tick_battle(factory, delta: float):
 	update_camera()
 	if hull <= 0: result = -1
 	elif kills == total and distance >= route_length: result = 1
-	if result != 0: factory.running = false
+	if result != 0:
+		factory.running = false
+		target_marker.visible = false
 
 func update_gun(factory, delta: float):
 	cooldown = maxf(0,cooldown-delta)
@@ -238,7 +256,7 @@ func update_gun(factory, delta: float):
 			var shot: Dictionary = projectiles.back()
 			shot.target = target
 			shot.duration = shot.origin.distance_to(target.node.position+Vector3(0,1.3,0))/30.0
-			cooldown = 60.0/factory.rate
+			cooldown = 60.0/factory.rate*reload_multiplier
 	muzzle.visible = shot_time > 0
 	for shot in projectiles.duplicate():
 		shot.age += delta

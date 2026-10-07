@@ -77,6 +77,7 @@ func numeric(value, low: float, high: float) -> bool:
 
 func valid_route(route) -> bool:
 	if not route is Dictionary or not route.has_all(["kind","seed","sector","length","scrap","coal","shells","enemy_hp","damage","attack_period","boss","opening"]): return false
+	if route.get("terrain","road") not in RunState.CONDITIONS or route.get("formation","patrol") not in RunState.FORMATIONS: return false
 	return route.kind in RunState.ROUTES and route.seed is int and numeric(route.sector,1,5) and numeric(route.length,80,200) and numeric(route.scrap,0,100) and numeric(route.coal,0,100) and numeric(route.shells,0,100) and numeric(route.enemy_hp,1,10) and numeric(route.damage,1,100) and numeric(route.attack_period,1,30) and route.boss is bool and route.opening is bool
 
 func validate(data) -> bool:
@@ -89,11 +90,16 @@ func validate(data) -> bool:
 	if r.phase not in ["prepare","travel","reward","route","won","lost","retreated"] or not valid_route(r.current): return invalid("validation_7")
 	if not r.modifiers is Dictionary or not r.modifiers.has_all(["work","fuel","magazine"]): return invalid("validation_8")
 	if not numeric(r.modifiers.work,0.4,1) or not numeric(r.modifiers.fuel,0.4,1) or not numeric(r.modifiers.magazine,12,28): return invalid("validation_9")
+	if not numeric(r.modifiers.get("reload",1.0),0.4,1) or r.modifiers.get("cargo",100) not in [100,125,150,175,200]: return invalid("new_modifiers")
 	if not r.route_options is Array or not r.reward_options is Array: return invalid("validation_10")
 	if r.route_options.size() != (2 if r.phase == "route" else 0): return invalid("validation_11")
 	for route in r.route_options:
 		if not valid_route(route): return invalid("validation_13")
-	if r.reward_options != (["production","economy","magazine"] if r.phase == "reward" else []): return invalid("validation_14")
+	if r.reward_options.size() != (3 if r.phase == "reward" else 0): return invalid("reward_count")
+	var seen_rewards = []
+	for reward in r.reward_options:
+		if reward not in RunState.REWARDS or reward in seen_rewards: return invalid("reward_id")
+		seen_rewards.append(reward)
 	if r.phase == "travel" and not data.started: return invalid("validation_15")
 	for key in ["sector","hull","cleared","rewards_taken"]:
 		if not r[key] is int: return invalid("run_integer")
@@ -103,9 +109,9 @@ func validate(data) -> bool:
 		if not f[key] is int: return invalid("factory_integer")
 	if not f.cells is Dictionary or f.cells.size() > 112 or not f.reserves is Dictionary or not f.collected is Dictionary: return invalid("validation_16")
 	for raw in ["scrap","coal"]:
-		if not numeric(f.reserves.get(raw),0,100) or not numeric(f.collected.get(raw),0,1000000): return invalid("validation_18")
+		if not numeric(f.reserves.get(raw),0,f.reserve_capacity) or not numeric(f.collected.get(raw),0,1000000): return invalid("validation_18")
 	if not numeric(f.work_multiplier,0.4,1) or f.ammo_capacity != r.modifiers.magazine or not is_equal_approx(float(f.work_multiplier),float(r.modifiers.work)): return invalid("validation_19")
-	if not numeric(f.ammo,0,f.ammo_capacity) or not numeric(f.fuel,0,12.001) or f.rate not in [30,60,90] or f.reserve_capacity != 100: return invalid("validation_20")
+	if not numeric(f.ammo,0,f.ammo_capacity) or not numeric(f.fuel,0,12.001) or f.rate not in [30,60,90] or f.reserve_capacity != r.modifiers.get("cargo",100): return invalid("validation_20")
 	for key in ["clock","elapsed","ticks","fuel_used","fire_clock","shots","supplied","injected","manufactured","missed"]:
 		if not numeric(f[key],0,1e9): return invalid("validation_22")
 	var rows: Array = []
@@ -152,8 +158,8 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 		var e = b.enemies[i]
 		if not e is Dictionary or not e.has_all(ENEMY_FIELDS) or not e.has_all(["transform","pivot","mark_position","mark_visible"]): return invalid("validation_63")
 		if not e.hp is int: return invalid("enemy_integer")
-		var hp = run.current.enemy_hp+(6 if run.current.boss and i == 5 else 0)
-		if e.max_hp != hp or not numeric(e.hp,0,hp) or not numeric(e.cooldown,-1,100) or e.role != i%3 or e.wave != int(i/2): return invalid("validation_65")
+		var hp = RunState.enemy_health(run.current,i)
+		if e.max_hp != hp or not numeric(e.hp,0,hp) or not numeric(e.cooldown,-1,100) or e.role != RunState.enemy_role(run.current,i) or e.wave != int(i/2): return invalid("validation_65")
 		if not e.transform is Transform3D or not e.aim is Vector3 or not e.mark_position is Vector3 or not numeric(e.pivot,-100000,100000): return invalid("validation_66")
 		if not e.active is bool or not e.locked is bool or not e.mark_visible is bool: return invalid("validation_67")
 		if e.hp == 0: dead += 1
@@ -304,7 +310,7 @@ func apply_battle(b, state: Dictionary):
 		b.impact(effect.position)
 		b.impacts.back().life = effect.life
 	var target = b.nearest_enemy()
-	b.target_marker.visible = target != null
+	b.target_marker.visible = target != null and b.result == 0
 	if target != null: b.target_marker.position = target.node.position+Vector3(0,0.12,0)
 	b.update_camera()
 
