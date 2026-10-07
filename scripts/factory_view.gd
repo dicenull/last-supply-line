@@ -15,6 +15,7 @@ var battlefield
 var battle_container: SubViewportContainer
 var factory_container: SubViewportContainer
 var battle_mode = false
+var started = false
 var battle_retry: Button
 const PixelIcons = preload("res://scripts/pixel_icons.gd")
 var pixel_icons = PixelIcons.new()
@@ -37,6 +38,7 @@ var notice_bad = false
 var last_message = ""
 
 func _ready():
+	factory.auto_fire = false
 	factory.example()
 	factory.undo_stack.clear()
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -80,12 +82,22 @@ func _ready():
 		icon_button("rate",Rect2(1147+i*84,691,76,38),func(): factory.rate = target,str(target))
 
 func toggle_running():
-	if battle_mode and battlefield.result != 0: return
+	ensure_battle()
+	if battlefield.result != 0: return
+	if not started:
+		started = true
+		world.playback_only = true
+		battle_mode = true
 	factory.running = not factory.running
+	refresh_view()
 
 func toggle_battle():
+	ensure_battle()
 	battle_mode = not battle_mode
-	if battle_mode and battlefield == null:
+	refresh_view()
+
+func ensure_battle():
+	if battlefield == null:
 		battle_container = SubViewportContainer.new()
 		battle_container.position = WORLD_RECT.position
 		battle_container.size = WORLD_RECT.size
@@ -100,15 +112,13 @@ func toggle_battle():
 		battle_container.add_child(battle_viewport)
 		battlefield = BattleWorld.new()
 		battle_viewport.add_child(battlefield)
+
+func refresh_view():
 	factory_container.visible = not battle_mode
-	battle_container.visible = battle_mode
-	factory.auto_fire = not battle_mode
-	factory.running = battle_mode and battlefield.result == 0
-	world.old_shots = factory.shots
-	world.pending_shots = 0
+	if battle_container != null: battle_container.visible = battle_mode
 	hover = Vector2i(-1,-1)
 	for entry in icon_buttons:
-		entry.button.visible = not battle_mode or entry.icon in ["battle","play"]
+		entry.button.visible = (not battle_mode and (not started or live_control(entry.icon,entry.rect))) or entry.icon in ["battle","play"]
 	queue_redraw()
 
 func reset_battle():
@@ -116,8 +126,16 @@ func reset_battle():
 	battle_container.queue_free()
 	battlefield = null
 	battle_mode = false
+	started = false
+	world.playback_only = false
 	factory.reset_trial()
-	toggle_battle()
+	ensure_battle()
+	refresh_view()
+
+func live_control(icon: String, rect: Rect2) -> bool:
+	# Whole-layout actions reset simulation; local construction does not.
+	if icon == "erase" and rect.position.y > 850: return false
+	return icon in ["belt","furnace","press","splitter","depot","refinery","erase","rotate","rate","play","battle","roof","camera","save"]
 
 func reset_camera():
 	world.yaw = 0.65
@@ -126,7 +144,9 @@ func reset_camera():
 	world.update_camera()
 
 func icon_button(icon: String, rect: Rect2, action: Callable, keycap: String = "") -> Button:
-	var b = add_button("",rect,action)
+	var b = add_button("",rect,func():
+		if started and not live_control(icon,rect): return
+		action.call())
 	b.add_theme_stylebox_override("normal",style(Color.TRANSPARENT,MUTED.darkened(0.4)))
 	b.add_theme_stylebox_override("hover",style(Color(1,1,1,0.06),GOLD))
 	b.add_theme_stylebox_override("pressed",style(Color(1,0.8,0.4,0.12),GOLD))
@@ -166,6 +186,7 @@ func save_layout():
 	factory.message = "配置を保存しました。物資や計測値は保存しません。"
 
 func load_layout():
+	if started: return
 	if not FileAccess.file_exists("user://ammo_layout.json"):
 		factory.message = "保存済みの配置がありません。"
 		return
@@ -192,11 +213,14 @@ func _process(delta):
 	start_button.text = ""
 	for kind in tool_buttons:
 		tool_buttons[kind].add_theme_color_override("font_color",GOLD if selected == kind else MUTED)
-	if battle_mode:
-		battlefield.tick_battle(factory,minf(delta,0.1))
-	else:
+	if started: battlefield.tick_battle(factory,minf(delta,0.1))
+	if not battle_mode:
 		world.sync(factory,hover,selected,direction,delta)
-	battle_retry.visible = battle_mode and battlefield.result != 0
+		if started:
+			world.turret.rotation.y = battlefield.turret.rotation.y
+			world.barrel.position.x = battlefield.barrel.position.x
+			world.muzzle.visible = battlefield.muzzle.visible
+	battle_retry.visible = battle_mode and started and battlefield.result != 0
 	queue_redraw()
 
 func cell_at(pos: Vector2) -> Vector2i:
@@ -208,7 +232,9 @@ func cell_at(pos: Vector2) -> Vector2i:
 func paint(p: Vector2i, erase: bool):
 	if p == last_paint: return
 	last_paint = p
+	var was_running = factory.running
 	factory.edit(p,"erase" if erase else selected,direction)
+	if started: factory.running = was_running
 
 func _input(event):
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
@@ -221,11 +247,12 @@ func _unhandled_input(event):
 	if battle_mode:
 		if event is InputEventKey and event.pressed and not event.echo:
 			if event.keycode == KEY_SPACE: toggle_running()
-			if event.keycode == KEY_R and battlefield.result != 0: reset_battle()
+			if event.keycode == KEY_R and started and battlefield.result != 0: reset_battle()
+			if event.keycode == KEY_TAB and not battle_mode: world.toggle_roof()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_SPACE: factory.running = not factory.running
+			KEY_SPACE: toggle_running()
 			KEY_TAB: world.toggle_roof()
 			KEY_LEFT:
 				world.yaw -= 0.12
@@ -240,8 +267,12 @@ func _unhandled_input(event):
 				world.pitch = clampf(world.pitch-0.08,0.65,1.35)
 				world.update_camera()
 			KEY_R: direction = (direction+1)%4
-			KEY_Q: factory.rotate(hover)
-			KEY_Z: factory.undo()
+			KEY_Q:
+				var was_running = factory.running
+				factory.rotate(hover)
+				if started: factory.running = was_running
+			KEY_Z:
+				if not started: factory.undo()
 			KEY_1: selected = "belt"
 			KEY_2: selected = "furnace"
 			KEY_3: selected = "press"
@@ -325,6 +356,7 @@ func _draw():
 	instrument_panel()
 	metal_panel(Rect2(24,776,1392,154))
 	for entry in icon_buttons:
+		if not entry.button.visible: continue
 		var rect: Rect2 = entry.rect
 		var picked = selected == entry.icon or (entry.icon == "rate" and str(factory.rate) == entry.key) or (entry.icon == "roof" and world.roof_closed)
 		panel(rect,Color("69664b") if picked else Color("33392d"),GOLD if picked else Color("77765a"))
@@ -411,7 +443,7 @@ func draw_battle():
 	for entry in icon_buttons:
 		if not entry.button.visible: continue
 		panel(entry.rect,PANEL,GOLD)
-		symbol("example" if entry.icon == "battle" else ("pause" if factory.running else "play"),entry.rect.get_center(),0.85)
+		symbol(("example" if battle_mode else "camera") if entry.icon == "battle" else ("roof_open" if not world.roof_closed else "roof") if entry.icon == "roof" else ("pause" if factory.running else "play"),entry.rect.get_center(),0.85)
 		text_at(entry.key,entry.rect.position+Vector2(7,15),11,MUTED)
 	symbol("shield",Vector2(1200,169),1.5)
 	text_at(str(battlefield.hull),Vector2(1280,182),32,INK)

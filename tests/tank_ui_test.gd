@@ -91,9 +91,9 @@ func run():
 	check(game.factory.count_kind("press") == 1,"example layout built inside tank")
 	await click(Vector2(1290,45))
 	check(game.factory.running,"instrument panel starts factory")
-	for i in range(300): game.factory.step(0.25)
+	for i in range(200): game._process(0.1)
 	await screenshot("res://preview-tank.png")
-	check(game.factory.shots > 20 and game.world.goods_pool.size() > 0,"real 3D materials supply firing cannon")
+	check(game.factory.shots > 0 and game.battlefield.visual_shots > 0,"real 3D materials supply firing cannon")
 	await key(KEY_SPACE)
 	var frames = game.world.item_frames(game.factory)
 	await create_timer(0.2).timeout
@@ -101,6 +101,8 @@ func run():
 	check(game.start_button.text.is_empty(),"UI has no explanatory button text")
 	# Run the same simulation and animation clock together, with real ammunition use.
 	game.set_process(false)
+	game.world.playback_only = false
+	game.factory.auto_fire = true
 	game.factory.clear_layout(false)
 	game.factory.rate = 60
 	game.factory.running = true

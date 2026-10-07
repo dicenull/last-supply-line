@@ -22,6 +22,8 @@ func run():
 	game.factory.example()
 	var layout = game.factory.layout()
 	game.toggle_battle()
+	check(not game.started and not game.factory.running,"B previews exterior without starting simulation")
+	game.toggle_running()
 	check(game.battle_mode and not game.factory.auto_fire,"battle mode disables test firing")
 	check(game.factory.layout() == layout,"entering battle preserves factory layout")
 	check(game.battlefield.roof_closed and game.battlefield.mats.turret_armor.albedo_color.a == 1.0,"battle presents opaque tank exterior")
@@ -40,11 +42,25 @@ func run():
 	var combat_time = game.battlefield.elapsed
 	var hp = game.battlefield.hull
 	game.toggle_battle()
-	check(not game.factory.running and game.factory.auto_fire,"return to factory pauses encounter and restores test mode")
+	check(game.factory.running and not game.factory.auto_fire,"interior view leaves simulation running")
+	game.paint(Vector2i(10,7),false)
+	check(game.factory.cells.has(Vector2i(10,7)) and game.factory.running,"live placement preserves running state")
+	game.last_paint = Vector2i(-1,-1)
+	game.paint(Vector2i(10,7),true)
+	check(not game.factory.cells.has(Vector2i(10,7)) and game.factory.running,"live removal preserves running state")
+	var before_progress = game.battlefield.elapsed
+	game._process(0.1)
+	check(game.battlefield.elapsed > before_progress,"battle advances while viewing interior")
+	combat_time = game.battlefield.elapsed
+	hp = game.battlefield.hull
 	check(game.factory.layout() == layout,"return preserves layout")
 	check(game.battlefield.elapsed == combat_time and game.battlefield.hull == hp,"return preserves encounter state")
 	game.toggle_battle()
 	game.toggle_running()
+	game.toggle_battle()
+	check(not game.factory.running,"B preserves paused state")
+	game.paint(Vector2i(11,7),false)
+	check(game.factory.cells.has(Vector2i(11,7)) and not game.factory.running,"editing while paused preserves paused state")
 	advance(3)
 	check(game.battlefield.elapsed == combat_time,"pause freezes combat and production")
 	game.toggle_running()
@@ -52,6 +68,8 @@ func run():
 	check(game.battlefield.result == 1 and game.battlefield.kills == 6,"sample factory travels route and defeats all six opponents")
 	check(not game.factory.running,"victory stops encounter")
 	game.reset_battle()
+	check(not game.started and not game.factory.running,"retry returns to preparation")
+	game.toggle_running()
 	check(game.battlefield.result == 0 and game.battlefield.hull == 100 and game.factory.shots == 0,"retry resets encounter and stock without changing layout")
 	game.factory.clear_layout(false)
 	game.factory.running = true
@@ -59,6 +77,8 @@ func run():
 	advance(2)
 	check(game.factory.shots > 0 and game.battlefield.distance == 0,"fuel-starved tank can still fire stocked ammunition")
 	game.reset_battle()
+	check(not game.started and not game.factory.running,"retry returns to preparation")
+	game.toggle_running()
 	game.factory.clear_layout(false)
 	game.factory.running = true
 	game.factory.fuel = 12.0
@@ -77,6 +97,8 @@ func run():
 	advance(1)
 	check(game.battlefield.player.position.x > before_click.x and game.battlefield.player.position.z == 0,"battlefield clicks do not steer or change automatic advance")
 	game.reset_battle()
+	check(not game.started and not game.factory.running,"retry returns to preparation")
+	game.toggle_running()
 	game.factory.clear_layout(false)
 	game.factory.running = true
 	advance(100)

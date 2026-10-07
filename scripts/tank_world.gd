@@ -28,6 +28,7 @@ var fired_directions: Array[int] = []
 var projectiles: Array = []
 var recoil = 0.0
 var old_shots = 0
+var playback_only = false
 var shot_time = 0.0
 
 func material(name: String, color: String, metal: float = 0.0, glow: float = 0.0) -> StandardMaterial3D:
@@ -289,6 +290,7 @@ func fire_visual():
 	target_angle = fposmod(visual_shots*PI/2,TAU)
 
 func update_gun(factory, delta: float):
+	if playback_only: return
 	if factory.shots < old_shots:
 		pending_shots = 0
 		visual_shots = 0
