@@ -64,3 +64,9 @@ Run `Godot --path . --script res://tests/run_ui_test.gd` for 7 real-click checks
 
 Run checkpoint_test.gd headless for 23 checks, and menu_test.gd with rendering for 10 real-input checks. Both use separate fixture save names and clean them up.
 For exit verification run exit_save_test.gd once, then run it again with -- --verify; the second process validates and removes the saved fixture. This checks process exit and durable checkpoint creation.
+
+## 出撃履歴
+
+Godot --path . --script res://tests/history_test.gd
+
+12項目。独立した試験用保存先を利用し、実撤退から履歴追加とメニュー描画まで確認します。
