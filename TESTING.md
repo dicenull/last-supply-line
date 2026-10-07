@@ -59,3 +59,8 @@ Godot 4.7.2で追加後の26項目が成功。`preview-turret.png` は試験用�
 
 Run `Godot --headless --path . --script res://tests/run_test.gd` for 40 checks covering seeded choices, finite resources, upgrades, cargo/hull carry-over, a five-sector run with a second production line, final boss and retreat.
 Run `Godot --path . --script res://tests/run_ui_test.gd` for 7 real-click checks of rewards, route selection, sector start and retreat; this captures preview-reward.png and preview-route.png.
+
+## Checkpoint and menu
+
+Run checkpoint_test.gd headless for 23 checks, and menu_test.gd with rendering for 10 real-input checks. Both use separate fixture save names and clean them up.
+For exit verification run exit_save_test.gd once, then run it again with -- --verify; the second process validates and removes the saved fixture. This checks process exit and durable checkpoint creation.
