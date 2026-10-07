@@ -124,6 +124,7 @@ func _ready():
 		var translucent = material(spec[0],spec[1])
 		translucent.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		translucent.albedo_color.a = spec[2]
+		translucent.set_meta("interior_alpha",spec[2])
 
 	var env = WorldEnvironment.new()
 	var environment = Environment.new()
@@ -182,6 +183,10 @@ func screen_cell(local: Vector2) -> Vector2i:
 func toggle_roof():
 	roof_closed = not roof_closed
 	roof.visible = roof_closed
+	for key in ["turret_armor","turret_edge","turret_dark"]:
+		var mat: StandardMaterial3D = mats[key]
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED if roof_closed else BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color.a = 1.0 if roof_closed else float(mat.get_meta("interior_alpha"))
 	marker.visible = false
 
 func terrain():

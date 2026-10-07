@@ -63,9 +63,15 @@ func run():
 	check(game.factory.cells.has(Vector2i(1,2)),"undo restores 3D layout")
 	await click(Vector2(1120,45))
 	check(game.world.roof_closed and game.cell_at(screen(Vector2i(1,2))) == Vector2i(-1,-1),"closed roof blocks placement")
+	for mat_name in ["turret_armor","turret_edge","turret_dark"]:
+		var mat = game.world.mats[mat_name]
+		check(mat.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED and mat.albedo_color.a == 1.0,"closed roof makes turret opaque: "+mat_name)
 	await screenshot("res://preview-exterior.png")
 	await key(KEY_TAB)
 	check(not game.world.roof_closed,"Tab opens cutaway roof")
+	for mat_name in ["turret_armor","turret_edge","turret_dark"]:
+		var mat = game.world.mats[mat_name]
+		check(mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA and is_equal_approx(mat.albedo_color.a,float(mat.get_meta("interior_alpha"))),"Tab restores turret translucency: "+mat_name)
 	game.world.yaw += 0.4
 	game.world.pitch = 1.15
 	game.world.update_camera()
