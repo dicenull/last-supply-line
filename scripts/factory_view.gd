@@ -37,6 +37,7 @@ var retreat_button: Button
 var battle_retry: Button
 const PixelIcons = preload("res://scripts/pixel_icons.gd")
 var pixel_icons = PixelIcons.new()
+var logistics
 var viewport: SubViewport
 const NAMES = {"belt":"搬送", "furnace":"精錬炉", "press":"砲弾機", "splitter":"分配器", "depot":"弾薬庫", "erase":"撤去", "source":"廃材口", "gun":"試射口"}
 const ITEMS = {"scrap":"廃材", "steel":"鋼材", "shell":"砲弾"}
@@ -106,6 +107,12 @@ func _ready():
 	for i in range(3):
 		var target = [30,60,90][i]
 		icon_button("rate",Rect2(1147+i*84,691,76,38),func(): factory.rate = target,str(target))
+	var logistics_layer = CanvasLayer.new()
+	logistics_layer.layer = 2
+	add_child(logistics_layer)
+	logistics = preload("res://scripts/logistics_overlay.gd").new()
+	logistics.game = self
+	logistics_layer.add_child(logistics)
 	var menu_layer = CanvasLayer.new()
 	menu_layer.layer = 10
 	add_child(menu_layer)
@@ -271,6 +278,7 @@ func _process(delta):
 			world.turret.rotation.y = battlefield.turret.rotation.y
 			world.barrel.position.x = battlefield.barrel.position.x
 			world.muzzle.visible = battlefield.muzzle.visible
+	logistics.sync(delta)
 	battle_retry.visible = battle_mode and expedition.phase in ["won","lost","retreated"]
 	retreat_button.visible = expedition.phase in ["prepare","travel"]
 	for i in range(choice_buttons.size()):
@@ -485,6 +493,9 @@ func instrument_panel():
 		if i < factory.ammo: item_at("shell",at,0.7)
 	if factory.cells.has(hover):
 		var c: Dictionary = factory.cells[hover]
+		var diagnostic = factory.diagnostic(hover)
+		symbol(diagnostic.code,Vector2(1371,610),0.65)
+		if diagnostic.item != "": item_at(diagnostic.item,Vector2(1329,610),0.6)
 		symbol(c.kind,Vector2(1175,554),0.7)
 		if Factory.RECIPES.has(c.kind):
 			var recipe = Factory.RECIPES[c.kind]
@@ -520,13 +531,13 @@ func draw_battle():
 	symbol("battle",Vector2(1200,302),1.3)
 	text_at("%d / %d" % [battlefield.kills,battlefield.total],Vector2(1260,314),26,INK)
 	item_at("shell",Vector2(1200,415),1.5)
-	text_at(str(factory.ammo),Vector2(1280,426),32,INK)
+	text_at(str(factory.ammo),Vector2(1280,426),32,Color("dc8965") if factory.ammo == 0 else INK)
 	for i in range(factory.ammo_capacity):
 		var pos = Vector2(1175+(i%8)*28,476+int(i/8)*18)
 		panel(Rect2(pos-Vector2(12,7),Vector2(24,14)),BG)
 		if i < factory.ammo: item_at("shell",pos,0.6)
 	symbol("fuel",Vector2(1190,572),0.9)
-	text_at("%.1f" % factory.fuel,Vector2(1270,584),26,INK)
+	text_at("%.1f" % factory.fuel,Vector2(1270,584),26,Color("dc8965") if factory.fuel < 0.01 else INK)
 	symbol("move",Vector2(1185,640),0.7)
 	text_at("%.0f / %.0f" % [minf(battlefield.route_length,battlefield.distance),battlefield.route_length],Vector2(1220,647),20,INK)
 	panel(Rect2(1160,674,224,9),BG)
@@ -608,7 +619,7 @@ func draw_expedition():
 	for i in range(2):
 		var raw = "scrap" if i == 0 else "coal"
 		item_at(raw,Vector2(1170+i*125,750),0.55)
-		text_at("%d/%d" % [factory.reserves[raw],factory.reserve_capacity],Vector2(1187+i*125,756),13,MUTED)
+		text_at("%d/%d" % [factory.reserves[raw],factory.reserve_capacity],Vector2(1187+i*125,756),13,Color("dc8965") if factory.reserves[raw] == 0 else GOLD if factory.reserves[raw] == factory.reserve_capacity else MUTED)
 	if expedition.phase not in ["reward","route"]: return
 	metal_panel(Rect2(24,776,1392,154))
 	var count = 3 if expedition.phase == "reward" else 2

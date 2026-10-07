@@ -7,7 +7,7 @@ const P = {
 	"rust":"905238", "rust_hi":"cb8651", "red":"a94735", "fire":"f39d3c", "yellow":"ffe88a",
 	"steel":"7f9e9f", "steel_hi":"c3dcce", "steel_dark":"466469", "inlet":"70d4cc", "wood":"80613e", "wood_hi":"b38d55"
 }
-const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo"]
+const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo","disconnected","incompatible","empty","full","blocked","waiting","processing","ready","idle"]
 var cache: Dictionary = {}
 var canvas: Image
 
@@ -229,6 +229,49 @@ func texture(kind: String) -> ImageTexture:
 			poly([[21,2],[30,8],[21,12]],"gold_hi")
 			line(Vector2i(24,25),Vector2i(8,25),"steel",3)
 			poly([[10,20],[2,26],[10,30]],"gold")
+		"disconnected":
+			line(Vector2i(2,7),Vector2i(9,7),"steel",3)
+			plate(7,3,7,10,"steel_dark")
+			rect(14,5,3,2,"gold_hi")
+			rect(14,10,3,2,"gold_hi")
+			plate(18,19,7,10,"steel_dark")
+			line(Vector2i(24,25),Vector2i(30,25),"steel",3)
+			line(Vector2i(10,21),Vector2i(15,16),"red",3)
+			line(Vector2i(10,16),Vector2i(15,21),"red",3)
+		"incompatible":
+			plate(3,3,11,11,"rust")
+			disk(24,24,6,"steel_dark")
+			disk(24,24,4,"steel_hi")
+			line(Vector2i(8,23),Vector2i(24,7),"ink",4)
+			line(Vector2i(8,22),Vector2i(23,7),"red",2)
+		"empty", "full":
+			plate(3,17,26,12,"wood")
+			rect(6,18,20,6,"ink")
+			if kind == "full":
+				for x in [6,13,20]:
+					plate(x,9,6,15,"gold")
+					rect(x+1,10,2,11,"gold_hi")
+				rect(3,4,26,2,"gold_hi")
+			else:
+				line(Vector2i(10,8),Vector2i(21,8),"red",3)
+				rect(6,25,20,1,"wood_hi")
+		"blocked":
+			plate(4,3,24,26,"bronze")
+			for y in [7,15,23]:
+				rect(7,y,18,4,"gold_hi")
+				for x in [7,15,23]: rect(x,y,2,4,"ink")
+		"waiting":
+			rect(7,3,18,3,"gold_hi")
+			rect(7,26,18,3,"gold")
+			poly([[9,6],[23,6],[18,16],[23,26],[9,26],[14,16]],"steel_dark")
+			poly([[12,7],[20,7],[16,13]],"white")
+			poly([[16,19],[21,25],[11,25]],"gold_hi")
+			rect(15,14,2,7,"gold")
+		"ready":
+			disk(16,16,13,"deep")
+			line(Vector2i(7,15),Vector2i(13,21),"inlet",3)
+			line(Vector2i(13,21),Vector2i(24,8),"inlet",3)
+		"idle": disk(16,16,4,"shade")
 		"lock":
 			disk(16,11,8,"ink")
 			disk(16,11,6,"steel_hi")
@@ -247,7 +290,7 @@ func texture(kind: String) -> ImageTexture:
 			line(Vector2i(10,10),Vector2i(22,10),"gold_hi",2)
 			line(Vector2i(22,10),Vector2i(22,22),"gold_hi",2)
 			for point in [[8,8],[20,8],[20,20]]: plate(point[0],point[1],5,5,"gold")
-		"clock":
+		"clock", "processing":
 			disk(16,17,13,"bronze")
 			disk(16,16,12,"gold_hi")
 			disk(16,16,10,"white")
