@@ -44,6 +44,10 @@ func run():
 	game = load("res://main.tscn").instantiate()
 	root.add_child(game)
 	await create_timer(0.7).timeout
+	check(game.factory.count_kind("furnace") == 1 and game.factory.count_kind("press") == 1 and game.factory.count_kind("refinery") == 1,"startup includes ammunition and fuel example lines")
+	check(not game.factory.running and game.factory.ammo == 0 and game.factory.fuel == 0 and game.factory.undo_stack.is_empty(),"startup is paused with empty stock and no artificial undo history")
+	game.factory.clear_layout(false)
+	await process_frame
 	check(game.world.turret.position.x > 0 and game.world.turret.position.x < 4 and game.world.turret.position.z == 0, "turret is centered over the forward half of the deck")
 	check(game.world.turret.position.y > game.world.DECK_Y+1.0, "turret sits above the factory equipment")
 	check(game.world.mats.turret_armor.albedo_color.a < 0.5, "turret armor is translucent")

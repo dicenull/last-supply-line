@@ -37,6 +37,8 @@ var notice_bad = false
 var last_message = ""
 
 func _ready():
+	factory.example()
+	factory.undo_stack.clear()
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	font = SystemFont.new()
 	font.font_names = PackedStringArray(["Avenir Next Condensed","Helvetica Neue","Hiragino Sans","sans-serif"])
