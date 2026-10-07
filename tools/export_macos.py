@@ -47,7 +47,7 @@ def main():
                 'bytes': archive.stat().st_size, 'architectures': architectures.split(),
                 'runtime': 'official release template', 'requires_godot_runtime': False,
                 'startup_checks': 2, 'signed': False, 'notarized': False}
-    (build / 'MFV03-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    (build / 'mfv03-macos-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print('Release:', archive)
     print('SHA-256:', manifest['sha256'])
 
