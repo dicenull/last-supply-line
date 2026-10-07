@@ -14,10 +14,10 @@ func advance(f, seconds: float):
 func add_second_line(f):
 	for x in [1,3]: f.cells[Vector2i(x,5)] = f.make_cell("belt",0)
 	f.cells[Vector2i(2,5)] = f.make_cell("furnace",0)
-	f.cells[Vector2i(4,5)] = f.make_cell("press",1)
-	for x in range(4,13): f.cells[Vector2i(x,6)] = f.make_cell("belt",0)
-	f.cells[Vector2i(12,6)].dir = 3
-	for y in [5,4]: f.cells[Vector2i(12,y)] = f.make_cell("belt",3)
+	f.cells[Vector2i(4,5)] = f.make_cell("press",0)
+	for x in range(5,9): f.cells[Vector2i(x,5)] = f.make_cell("belt",0)
+	f.cells[Vector2i(8,5)].dir = 3
+	f.cells[Vector2i(8,4)] = f.make_cell("belt",0)
 func _initialize():
 	var empty = Factory.new()
 	advance(empty,30)
@@ -41,7 +41,7 @@ func _initialize():
 	check(parallel.ammo <= 12,"receiver respects capacity")
 	var disconnected = Factory.new()
 	disconnected.example()
-	disconnected.cells.erase(Vector2i(12,2))
+	disconnected.cells.erase(Vector2i(9,3))
 	advance(disconnected,60)
 	check(disconnected.manufactured > 0 and disconnected.shots == 0,"a disconnected output cannot magically supply gun")
 	var rotate = Factory.new()
@@ -80,9 +80,9 @@ func _initialize():
 	check(winners.count("steel") == 3 and winners.count("scrap") == 3,"merge arbitration gives both inputs equal turns")
 	var stored = Factory.new()
 	stored.cells.clear()
-	stored.cells[Vector2i(12,3)] = stored.make_cell("depot",0)
-	stored.cells[Vector2i(13,3)] = stored.make_cell("gun",0)
-	for i in range(8): stored.cells[Vector2i(12,3)].items.append("shell")
+	stored.cells[Factory.AMMO_PORT+Vector2i.LEFT] = stored.make_cell("depot",0)
+	stored.cells[Factory.AMMO_PORT] = stored.make_cell("gun",0)
+	for i in range(8): stored.cells[Factory.AMMO_PORT+Vector2i.LEFT].items.append("shell")
 	advance(stored,15)
 	check(stored.shots == 8 and stored.ammo == 0,"stored shells sustain firing with no upstream supply, then exhaust")
 	var steady = Factory.new()
@@ -93,7 +93,10 @@ func _initialize():
 	check(steady.recent_rate() == 60 and steady.availability() == 100,"30-second throughput window has no extra boundary shot")
 	var edit = Factory.new()
 	edit.edit(Vector2i(5,2),"belt",0)
-	check(not edit.cells.has(Vector2i(5,2)),"fixed structures cannot be built on")
+	check(edit.cells.has(Vector2i(5,2)),"former pillar tiles accept equipment")
+	check(edit.count_kind("gun") == 1 and edit.cells[Factory.AMMO_PORT].kind == "gun","one ammunition receiver is fixed beneath turret")
+	edit.edit(Factory.AMMO_PORT,"erase",0)
+	check(edit.cells[Factory.AMMO_PORT].kind == "gun","ammunition receiver cannot be erased")
 	edit.edit(Vector2i(0,2),"erase",0)
 	check(edit.cells[Vector2i(0,2)].kind == "source","fixed supply ports cannot be erased")
 	edit.running = true
@@ -110,7 +113,7 @@ func _initialize():
 	check(restored.restore(JSON.parse_string(JSON.stringify(snapshot))),"layout survives JSON save/load round trip")
 	check(restored.layout().size() == snapshot.size() and restored.shots == 0,"restoring layout resets trial")
 	var before = restored.layout()
-	check(not restored.restore([[5,2,"belt",0]]) and restored.layout() == before,"invalid save rejected atomically")
+	check(not restored.restore([[Factory.AMMO_PORT.x,Factory.AMMO_PORT.y,"belt",0]]) and restored.layout() == before,"invalid save rejected atomically")
 	parallel.running = false
 	var t = parallel.elapsed
 	parallel.step(10)

@@ -4,8 +4,9 @@ const W = 14
 const H = 8
 const TICK = 0.25
 const DIRS = [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]
-const BLOCKS = [Vector2i(5,2), Vector2i(5,3), Vector2i(8,4), Vector2i(8,5)]
-const PORTS = {Vector2i(0,2): "source", Vector2i(0,5): "source", Vector2i(13,3): "gun"}
+const BLOCKS: Array[Vector2i] = []
+const AMMO_PORT = Vector2i(9,4)
+const PORTS = {Vector2i(0,2): "source", Vector2i(0,5): "source", AMMO_PORT: "gun"}
 const LIMITS = {"belt": 80, "furnace": 4, "press": 4, "splitter": 6, "depot": 3}
 const RECIPES = {"furnace": ["scrap", "steel", 6], "press": ["steel", "shell", 8]}
 var cells: Dictionary = {}
@@ -246,9 +247,8 @@ func example():
 	# Deliberately single-lane: a starting example, not a completed optimal factory.
 	for x in [1,3]: cells[Vector2i(x,2)] = make_cell("belt",0)
 	cells[Vector2i(2,2)] = make_cell("furnace",0)
-	cells[Vector2i(4,2)] = make_cell("press",3)
-	for x in range(4,13): cells[Vector2i(x,1)] = make_cell("belt",0)
-	cells[Vector2i(12,1)].dir = 1
-	cells[Vector2i(12,2)] = make_cell("belt",1)
-	cells[Vector2i(12,3)] = make_cell("belt",0)
+	cells[Vector2i(4,2)] = make_cell("press",0)
+	for x in range(5,AMMO_PORT.x+1): cells[Vector2i(x,2)] = make_cell("belt",0)
+	cells[Vector2i(AMMO_PORT.x,2)].dir = 1
+	cells[Vector2i(AMMO_PORT.x,3)] = make_cell("belt",1)
 	message = "見本は1系統だけ。60発/分には足りません。分配や並列化を試してください。"

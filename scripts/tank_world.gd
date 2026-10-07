@@ -232,10 +232,6 @@ func tank():
 	box(self,Vector3(8.54,3.2,0),Vector3(0.03,0.12,1.0),"dark")
 	# A translucent, enlarged turret above the forward half of the factory deck.
 	build_turret()
-	for p in F.BLOCKS:
-		var pos = cell_position(p)
-		cylinder(self,pos+Vector3(0,0.34,0),0.35,0.7,"dark",8)
-		cylinder(self,pos+Vector3(0,0.7,0),0.4,0.1,"brass",8)
 	roof = Node3D.new()
 	add_child(roof)
 	box(roof,Vector3(0,3.9,0),Vector3(14.1,0.24,8.15),"armor")
