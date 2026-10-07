@@ -1,0 +1,59 @@
+extends SceneTree
+var game
+var checks = 0
+var failures = 0
+func check(ok: bool, label: String):
+	checks += 1
+	if not ok:
+		failures += 1
+		push_error(label)
+	else: print("PASS battle: ",label)
+func _initialize(): call_deferred("run")
+func advance(seconds: float):
+	for i in range(int(seconds/0.025)):
+		game.factory.step(0.025)
+		game.battlefield.tick_battle(game.factory,0.025)
+func run():
+	root.size = Vector2i(1440,940)
+	game = load("res://main.tscn").instantiate()
+	root.add_child(game)
+	await process_frame
+	game.set_process(false)
+	game.factory.example()
+	var layout = game.factory.layout()
+	game.toggle_battle()
+	check(game.battle_mode and not game.factory.auto_fire,"battle mode disables test firing")
+	check(game.factory.layout() == layout,"entering battle preserves factory layout")
+	check(game.battlefield.roof_closed and game.battlefield.mats.turret_armor.albedo_color.a == 1.0,"battle presents opaque tank exterior")
+	check(game.cell_at(Vector2(550,400)) == Vector2i(-1,-1),"battlefield clicks cannot edit factory")
+	advance(12)
+	check(game.factory.shots > 0 and game.battlefield.visual_shots == game.factory.shots,"each battle shot consumes one manufactured round")
+	game.queue_redraw()
+	await create_timer(0.25).timeout
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png("res://preview-battle.png")
+	var combat_time = game.battlefield.elapsed
+	var hp = game.battlefield.hull
+	game.toggle_battle()
+	check(not game.factory.running and game.factory.auto_fire,"return to factory pauses encounter and restores test mode")
+	check(game.factory.layout() == layout,"return preserves layout")
+	check(game.battlefield.elapsed == combat_time and game.battlefield.hull == hp,"return preserves encounter state")
+	game.toggle_battle()
+	game.toggle_running()
+	advance(3)
+	check(game.battlefield.elapsed == combat_time,"pause freezes combat and production")
+	game.toggle_running()
+	advance(110)
+	check(game.battlefield.result == 1 and game.battlefield.kills == 6,"sample factory defeats all six opponents")
+	check(not game.factory.running,"victory stops encounter")
+	game.reset_battle()
+	check(game.battlefield.result == 0 and game.battlefield.hull == 100 and game.factory.shots == 0,"retry resets encounter and stock without changing layout")
+	game.factory.clear_layout(false)
+	game.factory.running = true
+	advance(100)
+	check(game.factory.shots == 0 and game.battlefield.kills == 0,"empty factory never fires or defeats opponents")
+	check(game.battlefield.result == -1 and game.battlefield.hull == 0,"unsupplied tank reaches defeat")
+	game.toggle_running()
+	check(not game.factory.running,"finished encounter cannot resume with Space")
+	print("BATTLE RESULT: ",checks," checks, ",failures," failures")
+	quit(1 if failures else 0)

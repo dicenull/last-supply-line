@@ -10,6 +10,12 @@ const BLUE = Color("a7b6aa")
 const WORLD_RECT = Rect2(0,88,1120,678)
 const TankWorld = preload("res://scripts/tank_world.gd")
 var world
+const BattleWorld = preload("res://scripts/battle_world.gd")
+var battlefield
+var battle_container: SubViewportContainer
+var factory_container: SubViewportContainer
+var battle_mode = false
+var battle_retry: Button
 const PixelIcons = preload("res://scripts/pixel_icons.gd")
 var pixel_icons = PixelIcons.new()
 var viewport: SubViewport
@@ -35,6 +41,7 @@ func _ready():
 	font = SystemFont.new()
 	font.font_names = PackedStringArray(["Avenir Next Condensed","Helvetica Neue","Hiragino Sans","sans-serif"])
 	var container = SubViewportContainer.new()
+	factory_container = container
 	container.position = WORLD_RECT.position
 	container.size = WORLD_RECT.size
 	container.stretch = true
@@ -48,8 +55,11 @@ func _ready():
 	container.add_child(viewport)
 	world = TankWorld.new()
 	viewport.add_child(world)
-	start_button = icon_button("play",Rect2(1230,25,166,42),func(): factory.running = not factory.running,"Space")
+	start_button = icon_button("play",Rect2(1230,25,166,42),toggle_running,"Space")
 	icon_button("roof",Rect2(1070,25,130,42),func(): world.toggle_roof(),"Tab")
+	icon_button("battle",Rect2(935,25,110,42),toggle_battle,"B")
+	battle_retry = add_button("",Rect2(730,807,80,78),reset_battle)
+	battle_retry.visible = false
 	var kinds = ["belt","furnace","press","splitter","depot","erase"]
 	for i in kinds.size():
 		var kind: String = kinds[i]
@@ -66,6 +76,46 @@ func _ready():
 		var target = [30,60,90][i]
 		icon_button("rate",Rect2(1147+i*84,691,76,38),func(): factory.rate = target,str(target))
 
+func toggle_running():
+	if battle_mode and battlefield.result != 0: return
+	factory.running = not factory.running
+
+func toggle_battle():
+	battle_mode = not battle_mode
+	if battle_mode and battlefield == null:
+		battle_container = SubViewportContainer.new()
+		battle_container.position = WORLD_RECT.position
+		battle_container.size = WORLD_RECT.size
+		battle_container.stretch = true
+		battle_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(battle_container)
+		var battle_viewport = SubViewport.new()
+		battle_viewport.size = Vector2i(WORLD_RECT.size)
+		battle_viewport.own_world_3d = true
+		battle_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		battle_viewport.msaa_3d = Viewport.MSAA_2X
+		battle_container.add_child(battle_viewport)
+		battlefield = BattleWorld.new()
+		battle_viewport.add_child(battlefield)
+	factory_container.visible = not battle_mode
+	battle_container.visible = battle_mode
+	factory.auto_fire = not battle_mode
+	factory.running = battle_mode and battlefield.result == 0
+	world.old_shots = factory.shots
+	world.pending_shots = 0
+	hover = Vector2i(-1,-1)
+	for entry in icon_buttons:
+		entry.button.visible = not battle_mode or entry.icon in ["battle","play"]
+	queue_redraw()
+
+func reset_battle():
+	if battlefield == null: return
+	battle_container.queue_free()
+	battlefield = null
+	battle_mode = false
+	factory.reset_trial()
+	toggle_battle()
+
 func reset_camera():
 	world.yaw = 0.65
 	world.pitch = 0.92
@@ -77,7 +127,7 @@ func icon_button(icon: String, rect: Rect2, action: Callable, keycap: String = "
 	b.add_theme_stylebox_override("normal",style(Color.TRANSPARENT,MUTED.darkened(0.4)))
 	b.add_theme_stylebox_override("hover",style(Color(1,1,1,0.06),GOLD))
 	b.add_theme_stylebox_override("pressed",style(Color(1,0.8,0.4,0.12),GOLD))
-	icon_buttons.append({"icon":icon,"rect":rect,"key":keycap})
+	icon_buttons.append({"icon":icon,"rect":rect,"key":keycap,"button":b})
 	return b
 
 func style(color: Color, border: Color = Color.TRANSPARENT) -> StyleBoxFlat:
@@ -139,10 +189,15 @@ func _process(delta):
 	start_button.text = ""
 	for kind in tool_buttons:
 		tool_buttons[kind].add_theme_color_override("font_color",GOLD if selected == kind else MUTED)
-	world.sync(factory,hover,selected,direction,delta)
+	if battle_mode:
+		battlefield.tick_battle(factory,minf(delta,0.1))
+	else:
+		world.sync(factory,hover,selected,direction,delta)
+	battle_retry.visible = battle_mode and battlefield.result != 0
 	queue_redraw()
 
 func cell_at(pos: Vector2) -> Vector2i:
+	if battle_mode: return Vector2i(-1,-1)
 	var canvas_pos = get_canvas_transform().affine_inverse()*pos
 	if not WORLD_RECT.has_point(canvas_pos) or world == null: return Vector2i(-1,-1)
 	return world.screen_cell(canvas_pos-WORLD_RECT.position)
@@ -157,6 +212,14 @@ func _input(event):
 		hover = cell_at(event.position)
 
 func _unhandled_input(event):
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_B:
+		toggle_battle()
+		return
+	if battle_mode:
+		if event is InputEventKey and event.pressed and not event.echo:
+			if event.keycode == KEY_SPACE: toggle_running()
+			if event.keycode == KEY_R and battlefield.result != 0: reset_battle()
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_SPACE: factory.running = not factory.running
@@ -251,6 +314,9 @@ func _draw():
 		var item: String = ["scrap","steel","shell"][i]
 		item_at(item,Vector2(407+i*190,47),1.1)
 		text_at(str(counts[item]),Vector2(440+i*190,57),26,INK)
+	if battle_mode:
+		draw_battle()
+		return
 	metal_panel(Rect2(1130,99,286,658))
 	instrument_panel()
 	metal_panel(Rect2(24,776,1392,154))
@@ -332,3 +398,36 @@ func instrument_panel():
 		var kind: String = ["furnace","press","depot"][i]
 		symbol(kind,Vector2(1172+i*85,634),0.52)
 		text_at("%d/%d" % [factory.count_kind(kind),Factory.LIMITS[kind]],Vector2(1158+i*85,668),16,MUTED)
+
+func draw_battle():
+	metal_panel(Rect2(1130,99,286,658))
+	metal_panel(Rect2(24,776,1392,154))
+	for entry in icon_buttons:
+		if not entry.button.visible: continue
+		panel(entry.rect,PANEL,GOLD)
+		symbol("example" if entry.icon == "battle" else ("pause" if factory.running else "play"),entry.rect.get_center(),0.85)
+		text_at(entry.key,entry.rect.position+Vector2(7,15),11,MUTED)
+	symbol("shield",Vector2(1200,169),1.5)
+	text_at(str(battlefield.hull),Vector2(1280,182),32,INK)
+	panel(Rect2(1160,220,224,16),BG)
+	panel(Rect2(1160,220,224*battlefield.hull/100.0,16),GOLD)
+	symbol("battle",Vector2(1200,302),1.3)
+	text_at("%d / %d" % [battlefield.kills,battlefield.total],Vector2(1260,314),26,INK)
+	item_at("shell",Vector2(1200,415),1.5)
+	text_at(str(factory.ammo),Vector2(1280,426),32,INK)
+	for i in range(12):
+		var pos = Vector2(1175+(i%6)*38,476+int(i/6)*38)
+		panel(Rect2(pos-Vector2(16,13),Vector2(32,26)),BG)
+		if i < factory.ammo: item_at("shell",pos,0.85)
+	symbol("clock",Vector2(1200,598),0.9)
+	text_at("%.0f" % battlefield.elapsed,Vector2(1280,610),26,INK)
+	if battlefield.result != 0:
+		symbol("victory" if battlefield.result == 1 else "defeat",Vector2(650,846),1.7)
+		symbol("reset",Vector2(770,842),1.0)
+		text_at("R",Vector2(765,883),16,GOLD)
+	else:
+		for i in range(battlefield.total):
+			var pos = Vector2(180+i*205,846)
+			symbol("gun",pos,1.2)
+			for pip in range(3):
+				panel(Rect2(pos+Vector2(-29+pip*21,40),Vector2(16,8)),GOLD if pip < battlefield.enemies[i].hp else BG)
