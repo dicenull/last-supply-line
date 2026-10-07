@@ -42,6 +42,7 @@ func screenshot(path: String):
 func run():
 	root.size = Vector2i(1440,940)
 	game = load("res://main.tscn").instantiate()
+	preload("res://tests/profile_fixture.gd").assign(game,"tank_ui_test")
 	game.show_start_menu = false
 	root.add_child(game)
 	await create_timer(0.7).timeout
@@ -149,3 +150,6 @@ func run():
 	await screenshot("res://preview-turret.png")
 	print("3D RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
+
+func _finalize():
+	preload("res://tests/profile_fixture.gd").clean("tank_ui_test")

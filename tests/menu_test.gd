@@ -36,6 +36,7 @@ func run():
 		if FileAccess.file_exists(PATH+suffix): DirAccess.remove_absolute(PATH+suffix)
 	root.size = Vector2i(1440,940)
 	game = load("res://main.tscn").instantiate()
+	preload("res://tests/profile_fixture.gd").assign(game,"menu_test")
 	game.checkpoint_path = PATH
 	root.add_child(game)
 	await create_timer(0.3).timeout
@@ -66,3 +67,6 @@ func run():
 		if FileAccess.file_exists(PATH+suffix): DirAccess.remove_absolute(PATH+suffix)
 	print("MENU RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
+
+func _finalize():
+	preload("res://tests/profile_fixture.gd").clean("menu_test")

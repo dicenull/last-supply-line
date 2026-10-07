@@ -35,6 +35,7 @@ func run():
 	check(f.injected == 1 and f.reserves.scrap == 0,"finite sources cannot create uncollected resources")
 	check(f.collect("coal",1000) == 100 and f.collect("coal",1) == 0,"collection respects cargo capacity")
 	var game = load("res://main.tscn").instantiate()
+	preload("res://tests/profile_fixture.gd").assign(game,"run_test")
 	game.show_start_menu = false
 	root.add_child(game)
 	await process_frame
@@ -75,3 +76,6 @@ func run():
 	check(not game.expedition.finish_sector(true,100),"retreat cannot grant a clear reward")
 	print("RUN RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
+
+func _finalize():
+	preload("res://tests/profile_fixture.gd").clean("run_test")

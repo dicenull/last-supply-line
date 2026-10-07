@@ -70,3 +70,9 @@ For exit verification run exit_save_test.gd once, then run it again with -- --ve
 Godot --path . --script res://tests/history_test.gd
 
 12項目。独立した試験用保存先を利用し、実撤退から履歴追加とメニュー描画まで確認します。
+
+## 配置図アンロック
+
+Godot --path . --script res://tests/blueprint_test.gd
+
+29項目。画面描画を含むためheadlessは付けません。既存のbattle_test.gdも画面撮影を含みます。配置図の生産・備蓄・開放・永続化・UI選択・適用制約を確認します。tests/profile_fixture.gdでゲーム試験の履歴・アンロックをプレイヤーの保存先から隔離し、終了時に除去します。

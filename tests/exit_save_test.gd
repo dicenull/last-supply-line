@@ -13,6 +13,7 @@ func run():
 		quit(0 if ok else 1)
 		return
 	var game = load("res://main.tscn").instantiate()
+	preload("res://tests/profile_fixture.gd").assign(game,"exit_save_test")
 	game.show_start_menu = false
 	game.checkpoint_path = PATH
 	root.add_child(game)
@@ -21,3 +22,6 @@ func run():
 	game.toggle_running()
 	for i in range(20): game._process(0.1)
 	game._notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
+
+func _finalize():
+	preload("res://tests/profile_fixture.gd").clean("exit_save_test")

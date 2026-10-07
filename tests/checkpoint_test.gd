@@ -13,6 +13,7 @@ func check(ok: bool, title: String):
 func _initialize(): call_deferred("run")
 func make_game():
 	var game = load("res://main.tscn").instantiate()
+	preload("res://tests/profile_fixture.gd").assign(game,"checkpoint_test")
 	game.show_start_menu = false
 	game.checkpoint_path = PATH
 	root.add_child(game)
@@ -106,3 +107,6 @@ func run():
 		if FileAccess.file_exists(PATH+suffix): DirAccess.remove_absolute(PATH+suffix)
 	print("CHECKPOINT RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
+
+func _finalize():
+	preload("res://tests/profile_fixture.gd").clean("checkpoint_test")

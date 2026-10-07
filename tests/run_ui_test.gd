@@ -29,6 +29,7 @@ func capture(path: String):
 func run():
 	root.size = Vector2i(1440,940)
 	game = load("res://main.tscn").instantiate()
+	preload("res://tests/profile_fixture.gd").assign(game,"run_ui_test")
 	game.show_start_menu = false
 	root.add_child(game)
 	await process_frame
@@ -53,3 +54,6 @@ func run():
 	check(game.expedition.phase == "retreated" and not game.factory.running,"flag button retreats from active run")
 	print("RUN UI RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
+
+func _finalize():
+	preload("res://tests/profile_fixture.gd").clean("run_ui_test")

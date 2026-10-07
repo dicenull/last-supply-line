@@ -16,6 +16,7 @@ func advance(seconds: float):
 func run():
 	root.size = Vector2i(1440,940)
 	game = load("res://main.tscn").instantiate()
+	preload("res://tests/profile_fixture.gd").assign(game,"battle_test")
 	game.show_start_menu = false
 	root.add_child(game)
 	await process_frame
@@ -109,3 +110,6 @@ func run():
 	check(not game.factory.running,"finished encounter cannot resume with Space")
 	print("BATTLE RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
+
+func _finalize():
+	preload("res://tests/profile_fixture.gd").clean("battle_test")
