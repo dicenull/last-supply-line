@@ -13,6 +13,12 @@ const RECIPES = {"furnace": ["scrap", "steel", 6], "press": ["steel", "shell", 8
 var cells: Dictionary = {}
 var running = false
 var auto_fire = true
+var finite_resources = false
+var reserves = {"scrap":48,"coal":32}
+var collected = {"scrap":0,"coal":0}
+var reserve_capacity = 100
+var work_multiplier = 1.0
+var ammo_capacity = 12
 var clock = 0.0
 var elapsed = 0.0
 var ticks = 0
@@ -136,7 +142,7 @@ func rotate(p: Vector2i):
 func can_receive(c: Dictionary, item: String) -> bool:
 	if c.kind in ["source","coal_source"]: return false
 	if c.kind == "engine": return item == "fuel" and fuel <= 11.0
-	if c.kind == "gun": return item == "shell" and ammo < 12
+	if c.kind == "gun": return item == "shell" and ammo < ammo_capacity
 	if c.kind == "depot": return item == "shell" and c.items.size() < 8
 	if not c.items.is_empty(): return false
 	if RECIPES.has(c.kind): return item == RECIPES[c.kind][0]
@@ -190,12 +196,15 @@ func simulate_tick():
 			fuel += 1.0
 		else:
 			target.items.append(winner.item)
-			if RECIPES.has(target.kind): target.work = RECIPES[target.kind][2]
+			if RECIPES.has(target.kind): target.work = maxi(1,int(ceil(RECIPES[target.kind][2]*work_multiplier)))
 		moves.append({"from":winner.from,"to":dest,"item":winner.item})
 	for p in cells:
 		var c: Dictionary = cells[p]
 		if c.kind in ["source","coal_source"] and ticks % 4 == 0 and c.items.is_empty():
-			c.items.append("coal" if c.kind == "coal_source" else "scrap")
+			var raw = "coal" if c.kind == "coal_source" else "scrap"
+			if finite_resources and reserves[raw] <= 0: continue
+			if finite_resources: reserves[raw] -= 1
+			c.items.append(raw)
 			injected += 1
 		if RECIPES.has(c.kind) and c.work > 0:
 			c.work -= 1
@@ -277,3 +286,10 @@ func consume_fuel(amount: float) -> float:
 	fuel -= consumed
 	fuel_used += consumed
 	return consumed
+
+func collect(raw: String, amount: int) -> int:
+	if not reserves.has(raw) or amount <= 0: return 0
+	var accepted = mini(amount,reserve_capacity-reserves[raw])
+	reserves[raw] += accepted
+	collected[raw] += accepted
+	return accepted
