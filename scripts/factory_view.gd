@@ -64,7 +64,8 @@ func _ready():
 	for i in kinds.size():
 		var kind: String = kinds[i]
 		tool_buttons[kind] = icon_button(kind,Rect2(40+i*100,793,88,62),func(): selected = kind,str(i+1))
-	icon_button("rotate",Rect2(665,793,88,62),func(): direction = (direction+1)%4,"R")
+	icon_button("rotate",Rect2(665,878,88,38),func(): direction = (direction+1)%4,"R")
+	tool_buttons["refinery"] = icon_button("refinery",Rect2(665,793,88,62),func(): selected = "refinery","7")
 	icon_button("reset",Rect2(777,793,88,62),func(): factory.reset_trial())
 	icon_button("example",Rect2(40,878,108,38),func(): factory.example())
 	icon_button("save",Rect2(164,878,108,38),save_layout)
@@ -245,6 +246,7 @@ func _unhandled_input(event):
 			KEY_4: selected = "splitter"
 			KEY_5: selected = "depot"
 			KEY_6: selected = "erase"
+			KEY_7: selected = "refinery"
 	if event is InputEventMouseMotion:
 		if event.button_mask & MOUSE_BUTTON_MASK_MIDDLE:
 			world.yaw -= event.relative.x*0.007
@@ -281,7 +283,7 @@ func item_at(item: String, pos: Vector2, scale_value: float = 1.0):
 	draw_texture_rect(pixel_icons.texture(item),Rect2((pos-Vector2.ONE*side/2).round(),Vector2.ONE*side),false)
 
 func material_counts() -> Dictionary:
-	var counts = {"scrap":0,"steel":0,"shell":factory.ammo}
+	var counts = {"scrap":0,"steel":0,"shell":factory.ammo,"coal":0,"fuel":floori(factory.fuel)}
 	for c in factory.cells.values():
 		for item in c.items: counts[item] += 1
 	return counts
@@ -310,10 +312,10 @@ func _draw():
 	text_at("M.F.V.  03",Vector2(55,57),29,GOLD)
 	text_at("1918",Vector2(258,56),18,MUTED)
 	var counts = material_counts()
-	for i in range(3):
-		var item: String = ["scrap","steel","shell"][i]
-		item_at(item,Vector2(407+i*190,47),1.1)
-		text_at(str(counts[item]),Vector2(440+i*190,57),26,INK)
+	for i in range(5):
+		var item: String = ["scrap","steel","shell","coal","fuel"][i]
+		item_at(item,Vector2(360+i*113,47),1.1)
+		text_at(str(counts[item]),Vector2(387+i*113,57),26,INK)
 	if battle_mode:
 		draw_battle()
 		return
@@ -337,9 +339,11 @@ func _draw():
 	symbol("press",points[3],0.85)
 	item_at("shell",points[4],1.05)
 	for i in range(4): arrow(points[i]+Vector2(30,0),points[i+1]-Vector2(30,0),MUTED)
-	symbol(selected,Vector2(679,896),0.45,GOLD)
-	arrow(Vector2(714,896),Vector2(714,896)+Vector2(Factory.DIRS[direction])*19,GOLD)
-	text_at("Q",Vector2(746,900),11,MUTED)
+	item_at("coal",Vector2(939,896),1.05)
+	symbol("refinery",Vector2(1141,896),0.85)
+	item_at("fuel",Vector2(1343,896),1.05)
+	arrow(Vector2(975,896),Vector2(1100,896),MUTED)
+	arrow(Vector2(1180,896),Vector2(1305,896),MUTED)
 	if notice_time > 0:
 		var color = Color("cc7a56") if notice_bad else MINT
 		draw_circle(Vector2(1380,900),10,color,false,2)
@@ -419,8 +423,13 @@ func draw_battle():
 		var pos = Vector2(1175+(i%6)*38,476+int(i/6)*38)
 		panel(Rect2(pos-Vector2(16,13),Vector2(32,26)),BG)
 		if i < factory.ammo: item_at("shell",pos,0.85)
-	symbol("clock",Vector2(1200,598),0.9)
-	text_at("%.0f" % battlefield.elapsed,Vector2(1280,610),26,INK)
+	symbol("fuel",Vector2(1190,572),0.9)
+	text_at("%.1f" % factory.fuel,Vector2(1270,584),26,INK)
+	symbol("move",Vector2(1185,640),0.7)
+	text_at("%.0f / 100" % minf(100,battlefield.distance),Vector2(1220,647),20,INK)
+	panel(Rect2(1160,674,224,9),BG)
+	panel(Rect2(1160,674,224*minf(1,battlefield.distance/100),9),GOLD)
+	text_at("%.1f m/s" % battlefield.speed,Vector2(1230,721),19,MUTED)
 	if battlefield.result != 0:
 		symbol("victory" if battlefield.result == 1 else "defeat",Vector2(650,846),1.7)
 		symbol("reset",Vector2(770,842),1.0)

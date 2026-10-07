@@ -26,7 +26,12 @@ func run():
 	check(game.factory.layout() == layout,"entering battle preserves factory layout")
 	check(game.battlefield.roof_closed and game.battlefield.mats.turret_armor.albedo_color.a == 1.0,"battle presents opaque tank exterior")
 	check(game.cell_at(Vector2(550,400)) == Vector2i(-1,-1),"battlefield clicks cannot edit factory")
-	advance(12)
+	advance(1)
+	check(game.battlefield.distance == 0,"tank cannot move before first manufactured fuel arrives")
+	advance(11)
+	check(game.battlefield.distance > 0 and game.factory.fuel_used > 0,"manufactured fuel powers real movement")
+	check(is_equal_approx(game.battlefield.distance*game.battlefield.FUEL_PER_METER,game.factory.fuel_used),"straight-line travel consumes fuel in proportion to distance")
+	check(game.battlefield.enemies[0].active and not game.battlefield.enemies[4].active,"enemies arrive in stages instead of a stationary ring")
 	check(game.factory.shots > 0 and game.battlefield.visual_shots == game.factory.shots,"each battle shot consumes one manufactured round")
 	game.queue_redraw()
 	await create_timer(0.25).timeout
@@ -44,10 +49,34 @@ func run():
 	check(game.battlefield.elapsed == combat_time,"pause freezes combat and production")
 	game.toggle_running()
 	advance(110)
-	check(game.battlefield.result == 1 and game.battlefield.kills == 6,"sample factory defeats all six opponents")
+	check(game.battlefield.result == 1 and game.battlefield.kills == 6,"sample factory travels route and defeats all six opponents")
 	check(not game.factory.running,"victory stops encounter")
 	game.reset_battle()
 	check(game.battlefield.result == 0 and game.battlefield.hull == 100 and game.factory.shots == 0,"retry resets encounter and stock without changing layout")
+	game.factory.clear_layout(false)
+	game.factory.running = true
+	game.factory.ammo = 2
+	advance(2)
+	check(game.factory.shots > 0 and game.battlefield.distance == 0,"fuel-starved tank can still fire stocked ammunition")
+	game.reset_battle()
+	game.factory.clear_layout(false)
+	game.factory.running = true
+	game.factory.fuel = 12.0
+	game.battlefield.enemies[0].cooldown = 1.5
+	advance(0.05)
+	var locked = game.battlefield.enemies[0].aim
+	check(game.battlefield.enemies[0].locked and game.battlefield.enemies[0].mark.visible,"enemy marks a fixed impact location before firing")
+	advance(4.5)
+	check(game.battlefield.hull == 100 and game.battlefield.player.position.distance_to(locked) > 6,"moving beyond warning zone avoids the enemy shell")
+	var before_click = game.battlefield.player.position
+	var click_event = InputEventMouseButton.new()
+	click_event.position = Vector2(900,650)
+	click_event.button_index = MOUSE_BUTTON_LEFT
+	click_event.pressed = true
+	game._unhandled_input(click_event)
+	advance(1)
+	check(game.battlefield.player.position.x > before_click.x and game.battlefield.player.position.z == 0,"battlefield clicks do not steer or change automatic advance")
+	game.reset_battle()
 	game.factory.clear_layout(false)
 	game.factory.running = true
 	advance(100)
