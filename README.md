@@ -133,3 +133,16 @@ python3 tools/export_pack.py --godot /Users/dice/Downloads/Godot.app/Contents/Ma
 ~~~
 
 macOSの書き出しプリセットも付属します。単体アプリの書き出し・実行確認は対応する書き出しテンプレートの導入後に行います。現時点では署名や公証を行っていません。
+
+
+## macOS単体アプリの書き出し
+
+Godot 4.7.2の公式Export Templatesを導入し、次を実行します。
+
+~~~sh
+python3 tools/export_macos.py --godot /Users/dice/Downloads/Godot.app/Contents/MacOS/Godot
+~~~
+
+build/MFV03.zipに、Apple Silicon・Intel両方の実行ファイルを含むアプリを生成します。展開したAMMO LINE LAB.appはGodotエディターを別途必要としません。内部名は既存の保存先との互換性のため維持しています。
+
+ビルドは一時フォルダへ展開し、ソースを参照しない画面なし／画面あり起動を検証します。MFV03-manifest.jsonにGodot版、コミット、変更有無、SHA-256を記録。署名・公証なしのローカル試作版です。Intel側は実行ファイルの同梱のみ確認し、実機動作はApple Siliconで検証しています。
