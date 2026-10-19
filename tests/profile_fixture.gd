@@ -8,8 +8,11 @@ static func clean(suite: String):
 		if FileAccess.file_exists(path): DirAccess.remove_absolute(path)
 		var audio_path = "user://"+suite+"_audio_fixture.json"+suffix
 		if FileAccess.file_exists(audio_path): DirAccess.remove_absolute(audio_path)
+		var layout_path = "user://"+suite+"_layout_fixture.json"+suffix
+		if FileAccess.file_exists(layout_path): DirAccess.remove_absolute(layout_path)
 static func assign(game, suite: String):
 	clean(suite)
 	game.history_path = path_for(suite)
 	game.audio_enabled = false
 	game.audio_settings_path = "user://"+suite+"_audio_fixture.json"
+	game.layout_path = "user://"+suite+"_layout_fixture.json"

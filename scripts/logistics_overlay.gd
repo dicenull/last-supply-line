@@ -43,14 +43,3 @@ func _draw():
 		if not game.WORLD_RECT.grow(-18).has_point(at): continue
 		draw_circle(at,16,Color(0.10,0.14,0.12,0.92))
 		draw_texture_rect(game.pixel_icons.texture(entry.code),Rect2(at-Vector2(14,14),Vector2(28,28)),false)
-	var row = 0
-	for item in notices:
-		var notice = notices[item]
-		var at = Vector2(24,105+row*46)
-		draw_rect(Rect2(at,Vector2(245,40)),Color(0.12,0.16,0.13,0.94))
-		draw_texture_rect(game.pixel_icons.texture(item),Rect2(at+Vector2(5,4),Vector2(32,32)),false)
-		draw_string(game.font,at+Vector2(45,29),"+"+str(notice.accepted),HORIZONTAL_ALIGNMENT_LEFT,-1,23,Color("c1c19a"))
-		if notice.lost > 0:
-			draw_texture_rect(game.pixel_icons.texture("full"),Rect2(at+Vector2(128,4),Vector2(32,32)),false)
-			draw_string(game.font,at+Vector2(167,29),"−"+str(notice.lost),HORIZONTAL_ALIGNMENT_LEFT,-1,23,Color("dc8965"))
-		row += 1

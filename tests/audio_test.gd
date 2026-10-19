@@ -42,11 +42,11 @@ func run():
 	for kind in sound.KINDS:
 		var stream = sound.streams[kind]
 		check(stream.get_length() > 0.1 and stream.get_length() <= 1.01,"bounded nonempty sound asset: "+kind)
-	await click_at(Vector2(410,570))
+	await click_at(game.menu.mute_button.get_rect().get_center())
 	check(sound.volume == 0 and silent(),"speaker button mutes immediately")
-	await click_at(Vector2(410,570))
+	await click_at(game.menu.mute_button.get_rect().get_center())
 	check(is_equal_approx(sound.volume,0.35),"speaker button restores prior volume")
-	await click_at(Vector2(522,572))
+	await click_at(game.menu.volume_slider.get_rect().get_center())
 	check(sound.volume >= 0.4 and sound.volume <= 0.6,"slider click changes volume")
 	var saved_volume = sound.read_volume(sound.settings_path)
 	check(saved_volume == sound.volume,"UI setting persists to disk")
