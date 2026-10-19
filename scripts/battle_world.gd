@@ -115,14 +115,26 @@ func _ready():
 		var heavy = role == 2
 		if boss: unit.scale = Vector3.ONE*1.7
 		elif role == 1: unit.scale = Vector3(0.85,0.8,0.85)
-		box(unit,Vector3(0,0.8,0),Vector3(4.0 if heavy else 3.0,1.1,2.1),"enemy")
-		for side in [-1,1]: box(unit,Vector3(0,0.5,side*1.15),Vector3(3.8,0.8,0.55),"dark")
+		var length = 2.0 if heavy else 1.5
+		var outline = PackedVector2Array([Vector2(-length,-0.7),Vector2(-length+0.35,-1.05),Vector2(length-0.35,-1.05),Vector2(length,-0.65),Vector2(length,0.65),Vector2(length-0.35,1.05),Vector2(-length+0.35,1.05),Vector2(-length,0.7)])
+		prism(unit,outline,0.3,1.35,"enemy")
+		box(unit,Vector3(0.25,1.4,0),Vector3(2.2,0.18,1.65),"enemy")
+		for side in [-1,1]:
+			box(unit,Vector3(0,0.5,side*1.15),Vector3(3.8,0.8,0.55),"dark")
+			var profile = PackedVector2Array([Vector2(-2,0.4),Vector2(-1.6,0.95),Vector2(1.6,0.95),Vector2(2,0.4),Vector2(1.65,0.1),Vector2(-1.65,0.1)])
+			track_links(unit,profile,side*1.15,0.62,0.28)
+			for wheel_index in range(5):
+				var wheel = cylinder(unit,Vector3(-1.4+wheel_index*0.7,0.48,side*1.46),0.31,0.08,"steel",12)
+				wheel.rotation.x = PI/2
+		for vent in range(4): box(unit,Vector3(-length+0.2+vent*0.18,1.37,0),Vector3(0.08,0.05,1.1),"dark")
 		var health: Array = []
 		for pip in range(hp): health.append(box(unit,Vector3(-0.7+pip*0.7,2.5,0),Vector3(0.5,0.07,0.25),"brass"))
 		var pivot = Node3D.new()
 		unit.add_child(pivot)
-		cylinder(pivot,Vector3(0,1.65,0),0.9 if heavy else 0.65,0.8,"enemy",6)
-		beam(pivot,Vector3(0,1.7,0),Vector3(3.1 if heavy else 2.2,1.7,0),0.13,"dark")
+		cylinder(pivot,Vector3(0,1.65,0),0.9 if heavy else 0.65,0.8,"enemy",12,0.78 if heavy else 0.55)
+		cylinder(pivot,Vector3(-0.15,2.1,0),0.34,0.12,"dark",12)
+		beam(pivot,Vector3(0,1.7,0),Vector3(3.1 if heavy else 2.2,1.7,0),0.13,"dark",12)
+		beam(pivot,Vector3(0.45,1.7,0),Vector3(1.0,1.7,0),0.23,"enemy",12)
 		var mark = MeshInstance3D.new()
 		var ring = TorusMesh.new()
 		ring.inner_radius = 5.8

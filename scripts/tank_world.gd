@@ -48,6 +48,51 @@ func box(parent: Node3D, pos: Vector3, size_value: Vector3, mat: String) -> Mesh
 	mesh.size = size_value
 	return mesh_node(parent,mesh,pos,mat)
 
+func armor_block(parent: Node3D, pos: Vector3, size_value: Vector3, bevel: float, mat: String) -> MeshInstance3D:
+	# Four octagonal rings bevel every edge while retaining the shared cutaway material.
+	var half = size_value/2
+	var cut = minf(bevel,minf(half.x,minf(half.y,half.z))*0.8)
+	var rings: Array = []
+	for level in range(4):
+		var inset = cut if level in [0,3] else 0.0
+		var x = half.x-inset
+		var z = half.z-inset
+		var c = cut*0.5 if level in [0,3] else cut
+		var y = [-half.y,-half.y+cut,half.y-cut,half.y][level]
+		var outline = [Vector2(-x,-z+c),Vector2(-x+c,-z),Vector2(x-c,-z),Vector2(x,-z+c),Vector2(x,z-c),Vector2(x-c,z),Vector2(-x+c,z),Vector2(-x,z-c)]
+		var ring = PackedVector3Array()
+		for p in outline: ring.append(Vector3(p.x,y,p.y))
+		rings.append(ring)
+	var surface = SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	surface.set_smooth_group(-1)
+	for level in range(3):
+		for i in range(8):
+			var next = (i+1)%8
+			for v in [rings[level][i],rings[level][next],rings[level+1][next],rings[level][i],rings[level+1][next],rings[level+1][i]]: surface.add_vertex(v)
+	for level in [0,3]:
+		for i in range(1,7):
+			for index in ([0,i,i+1] if level == 0 else [0,i+1,i]): surface.add_vertex(rings[level][index])
+	surface.generate_normals()
+	return mesh_node(parent,surface.commit(),pos,mat)
+
+func rivets(parent: Node3D, transforms: Array[Transform3D], mat: String, radius: float = 0.065):
+	var mesh = CylinderMesh.new()
+	mesh.top_radius = radius*0.75
+	mesh.bottom_radius = radius
+	mesh.height = radius*0.8
+	mesh.radial_segments = 8
+	var instances = MultiMesh.new()
+	instances.transform_format = MultiMesh.TRANSFORM_3D
+	instances.mesh = mesh
+	instances.instance_count = transforms.size()
+	for i in transforms.size(): instances.set_instance_transform(i,transforms[i])
+	var node = MultiMeshInstance3D.new()
+	node.multimesh = instances
+	node.material_override = mats[mat]
+	if mat.begins_with("turret_"): node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(node)
+
 func mesh_node(parent: Node3D, mesh: Mesh, pos: Vector3, mat: String) -> MeshInstance3D:
 	var node = MeshInstance3D.new()
 	node.mesh = mesh
@@ -62,11 +107,11 @@ func cylinder(parent: Node3D, pos: Vector3, radius: float, height: float, mat: S
 	mesh.top_radius = radius if top < 0 else top
 	mesh.bottom_radius = radius
 	mesh.height = height
-	mesh.radial_segments = mini(sides,8)
+	mesh.radial_segments = clampi(sides,3,32)
 	return mesh_node(parent,mesh,pos,mat)
 
-func beam(parent: Node3D, a: Vector3, b: Vector3, radius: float, mat: String):
-	var node = cylinder(parent,(a+b)/2,radius,a.distance_to(b),mat,8)
+func beam(parent: Node3D, a: Vector3, b: Vector3, radius: float, mat: String, sides: int = 8):
+	var node = cylinder(parent,(a+b)/2,radius,a.distance_to(b),mat,sides)
 	var direction = (b-a).normalized()
 	node.quaternion = Quaternion(Vector3.UP,direction)
 	return node
@@ -224,52 +269,234 @@ func tank():
 		box(self,Vector3(0,DECK_Y+0.32,z),Vector3(14.6,0.08,0.3),"edge")
 
 	# A rear engine compartment, exhaust stacks and front driver's armored cabin.
-	box(self,Vector3(-7.85,3.0,0),Vector3(1.55,1.0,6.0),"armor")
+	armor_block(self,Vector3(-7.85,3.0,0),Vector3(1.55,1.0,6.0),0.18,"armor")
 	for z in [-1.8,1.8]:
-		cylinder(self,Vector3(-7.85,3.8,z),0.17,1.4,"dark",8)
-
-
-	# Low rectangular driver's deck; the old wedge-shaped upper cabin is removed.
-	box(self,Vector3(7.6,3.13,0),Vector3(1.85,0.82,3.7),"armor")
-	box(self,Vector3(8.54,3.2,0),Vector3(0.03,0.12,1.0),"dark")
+		cylinder(self,Vector3(-7.85,3.8,z),0.18,1.4,"dark",20)
+		cylinder(self,Vector3(-7.85,3.62,z),0.29,0.4,"rust",20)
+		for y in [3.46,3.8,4.43]: cylinder(self,Vector3(-7.85,y,z),0.23,0.1,"steel",20)
+		cylinder(self,Vector3(-7.85,4.49,z),0.13,0.03,"coal",20)
+	for z in [-0.7,0.7]:
+		armor_block(self,Vector3(-7.85,3.53,z),Vector3(1.05,0.15,0.9),0.05,"edge")
+		for x in [-8.15,-7.9,-7.65]: box(self,Vector3(x,3.62,z),Vector3(0.09,0.04,0.65),"dark")
+	# Beveled driver's housing, individual vision ports and a bolted front plate.
+	armor_block(self,Vector3(7.6,3.13,0),Vector3(1.85,0.82,3.7),0.16,"armor")
+	for z in [-0.85,0.85]:
+		armor_block(self,Vector3(8.53,3.22,z),Vector3(0.12,0.34,0.95),0.04,"edge")
+		box(self,Vector3(8.6,3.22,z),Vector3(0.035,0.11,0.66),"dark")
+	armor_block(self,Vector3(8.61,1.85,0),Vector3(0.18,1.12,4.5),0.06,"armor")
+	var front_bolts: Array[Transform3D] = []
+	for z in [-1.9,-0.95,0.0,0.95,1.9]:
+		for y in [1.45,2.24]: front_bolts.append(Transform3D(Basis(Vector3.FORWARD,PI/2),Vector3(8.72,y,z)))
+	rivets(self,front_bolts,"edge",0.09)
+	for z in [-2.7,2.7]:
+		armor_block(self,Vector3(8.45,1.3,z),Vector3(0.5,0.34,0.4),0.07,"edge")
+		beam(self,Vector3(8.65,1.3,z-0.2),Vector3(8.65,1.3,z+0.2),0.12,"dark",16)
 	# A translucent, enlarged turret above the forward half of the factory deck.
 	build_turret()
 	roof = Node3D.new()
 	add_child(roof)
-	box(roof,Vector3(0,3.9,0),Vector3(14.1,0.24,8.15),"armor")
-	box(roof,Vector3(-3,4.08,0),Vector3(1.7,0.13,1.4),"edge")
+	armor_block(roof,Vector3(0,3.9,0),Vector3(14.1,0.24,8.15),0.08,"dark")
+	var roof_bolts: Array[Transform3D] = []
+	for x in [-5.6,-2.8,0.0,2.8,5.6]:
+		armor_block(roof,Vector3(x,4.035,0),Vector3(2.72,0.13,7.98),0.035,"armor")
+		for z in [-3.7,3.7]:
+			for dx in [-1.1,0.0,1.1]: roof_bolts.append(Transform3D(Basis.IDENTITY,Vector3(x+dx,4.12,z)))
+	rivets(roof,roof_bolts,"edge",0.075)
+	armor_block(roof,Vector3(-3,4.18,0),Vector3(1.85,0.18,1.55),0.07,"edge")
+	armor_block(roof,Vector3(-3,4.29,0),Vector3(1.56,0.09,1.28),0.03,"armor")
+	for z in [-0.52,0.52]: beam(roof,Vector3(-3.86,4.3,z-0.13),Vector3(-3.86,4.3,z+0.13),0.09,"steel",12)
+	beam(roof,Vector3(-2.65,4.38,-0.28),Vector3(-2.65,4.38,0.28),0.06,"dark",12)
+	for z in [-2.3,2.3]:
+		armor_block(roof,Vector3(-3.75,4.16,z),Vector3(2.6,0.16,1.65),0.05,"edge")
+		box(roof,Vector3(-3.75,4.25,z),Vector3(2.35,0.035,1.4),"dark")
+		for i in range(7):
+			var louver = box(roof,Vector3(-4.8+i*0.35,4.32,z),Vector3(0.22,0.07,1.32),"armor")
+			louver.rotation.z = -0.3
+		for x in [-5.8,-1.5]:
+			armor_block(roof,Vector3(x,4.28,z),Vector3(1.05,0.34,1.55),0.09,"armor")
+			box(roof,Vector3(x,4.47,z),Vector3(0.1,0.06,1.4),"edge")
 	roof.visible = false
 
+func track_shoe_mesh() -> ArrayMesh:
+	# Chamfered shoe plus a raised transverse grouser, shared by every player link.
+	var outline = PackedVector2Array([Vector2(-0.5,-0.5),Vector2(0.5,-0.5),Vector2(0.5,0.15),Vector2(0.35,0.5),Vector2(-0.35,0.5),Vector2(-0.5,0.15)])
+	var surface = SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var ids = Geometry2D.triangulate_polygon(outline)
+	for z in [-0.5,0.5]:
+		for i in range(0,ids.size(),3):
+			for j in ([0,1,2] if z < 0 else [0,2,1]):
+				var p = outline[ids[i+j]]
+				surface.add_vertex(Vector3(p.x,p.y,z))
+	for i in outline.size():
+		var a = outline[i]
+		var b = outline[(i+1)%outline.size()]
+		var corners = [Vector3(a.x,a.y,-0.5),Vector3(a.x,a.y,0.5),Vector3(b.x,b.y,0.5),Vector3(b.x,b.y,-0.5)]
+		for j in [0,1,2,0,2,3]: surface.add_vertex(corners[j])
+	surface.generate_normals()
+	var mesh = surface.commit()
+	var rib = BoxMesh.new()
+	rib.size = Vector3(0.3,0.6,1.04)
+	var rib_surface = SurfaceTool.new()
+	rib_surface.append_from(rib,0,Transform3D(Basis.IDENTITY,Vector3(0,0.7,0)))
+	rib_surface.commit(mesh)
+	return mesh
+
+func track_links(parent: Node3D, profile: PackedVector2Array, z: float, width: float, spacing: float, detailed: bool = false):
+	# One instanced mesh per track keeps the extra tread geometry inexpensive.
+	var transforms: Array[Transform3D] = []
+	for i in profile.size():
+		var a = profile[i]
+		var b = profile[(i+1)%profile.size()]
+		var count = maxi(1,ceili(a.distance_to(b)/spacing))
+		var step = a.distance_to(b)/count
+		var direction = (b-a).normalized()
+		var normal = Vector2(-direction.y,direction.x)
+		var thickness = 0.16 if detailed else spacing*0.22
+		var basis = Basis(Vector3.FORWARD,-atan2(direction.y,direction.x)).scaled_local(Vector3(step*0.9 if detailed else step*0.84,thickness,width))
+		for j in range(count):
+			var at = a.lerp(b,(j+0.5)/count)+normal*(0.11 if detailed else spacing*0.08)
+			transforms.append(Transform3D(basis,Vector3(at.x,at.y,z)))
+	var mesh = BoxMesh.new()
+	mesh.size = Vector3.ONE
+	var instances = MultiMesh.new()
+	instances.transform_format = MultiMesh.TRANSFORM_3D
+	instances.mesh = track_shoe_mesh() if detailed else mesh
+	instances.instance_count = transforms.size()
+	for i in transforms.size(): instances.set_instance_transform(i,transforms[i])
+	var links = MultiMeshInstance3D.new()
+	links.multimesh = instances
+	links.material_override = mats.track
+	parent.add_child(links)
+
 func track(side: int):
-	var profile = PackedVector2Array([Vector2(-9,1),Vector2(-7.3,3.4),Vector2(6.9,3.4),Vector2(9,1.45),Vector2(7,0.25),Vector2(-7.7,0.25)])
-	var plate = prism(self,profile,side*5.7-0.13,side*5.7+0.13,"armor")
+	var corners = PackedVector2Array([Vector2(-9,1),Vector2(-7.3,3.4),Vector2(6.9,3.4),Vector2(9,1.45),Vector2(7,0.25),Vector2(-7.7,0.25)])
+	var profile = PackedVector2Array()
+	# Round each bend without losing the long, rhomboid WW1 silhouette.
+	for i in corners.size():
+		var corner = corners[i]
+		var start = corner+(corners[(i+corners.size()-1)%corners.size()]-corner).normalized()*0.65
+		var end = corner+(corners[(i+1)%corners.size()]-corner).normalized()*0.65
+		for step in range(6):
+			var t = step/5.0
+			profile.append(start.lerp(corner,t).lerp(corner.lerp(end,t),t))
+	# Recessed inner housing leaves real depth behind the armor and running gear.
+	var plate = prism(self,profile,side*5.54-0.1,side*5.54+0.1,"dark")
 	plate.rotation.x = PI/2
 	plate.scale.z = -1
-	# Six broad faces replace the dozens of individual tread links.
+	track_housing(side,profile)
+	# Continuous backing under the individually spaced tread links.
 	for i in profile.size():
 		var a = profile[i]
 		var b = profile[(i+1)%profile.size()]
 		var midpoint = (a+b)/2
 		var tread = box(self,Vector3(midpoint.x,midpoint.y,side*5.05),Vector3(a.distance_to(b),0.18,1.2),"track")
 		tread.rotation.z = atan2(b.y-a.y,b.x-a.x)
+	track_links(self,profile,side*5.05,1.28,0.52,true)
 	for i in range(5):
-		var wheel = cylinder(self,Vector3(-5.8+i*2.9,1.32,side*5.83),0.68,0.16,"dark",6)
+		var wheel = cylinder(self,Vector3(-5.8+i*2.9,1.32,side*5.83),0.72,0.18,"dark",24)
 		wheel.rotation.x = PI/2
-	box(self,Vector3(-4.0,1.7,side*5.86),Vector3(0.4,1.8,0.05),"mark")
+		var rim = cylinder(self,Vector3(-5.8+i*2.9,1.32,side*5.94),0.55,0.08,"track",24)
+		rim.rotation.x = PI/2
+		var hub = cylinder(self,Vector3(-5.8+i*2.9,1.32,side*6.02),0.25,0.14,"edge",16)
+		hub.rotation.x = PI/2
+		for bolt_index in range(6):
+			var angle = bolt_index*TAU/6
+			var bolt = cylinder(self,Vector3(-5.8+i*2.9+cos(angle)*0.4,1.32+sin(angle)*0.4,side*6.0),0.055,0.07,"steel",8)
+			bolt.rotation.x = PI/2
+	for x in [-7.65,7.65]:
+		var sprocket = cylinder(self,Vector3(x,1.35,side*5.86),0.63,0.2,"dark",24)
+		sprocket.rotation.x = PI/2
+		var axle = cylinder(self,Vector3(x,1.35,side*6.0),0.3,0.12,"edge",16)
+		axle.rotation.x = PI/2
+		for tooth in range(12):
+			var angle = tooth*TAU/12
+			var lug = box(self,Vector3(x+cos(angle)*0.62,1.35+sin(angle)*0.62,side*5.87),Vector3(0.18,0.18,0.22),"track")
+			lug.rotation.z = angle
+	box(self,Vector3(-4.0,2.52,side*5.89),Vector3(0.3,0.62,0.04),"mark")
+
+func track_housing(side: int, profile: PackedVector2Array):
+	# Raised perimeter, separate service panels and suspension cast their own shadows.
+	var center = Vector2(0,1.8)
+	for i in profile.size():
+		var a = center+(profile[i]-center)*Vector2(0.98,0.87)
+		var b = center+(profile[(i+1)%profile.size()]-center)*Vector2(0.98,0.87)
+		var midpoint = (a+b)/2
+		var rim = box(self,Vector3(midpoint.x,midpoint.y,side*5.77),Vector3(a.distance_to(b)+0.025,0.12,0.19),"armor")
+		rim.rotation.z = atan2(b.y-a.y,b.x-a.x)
+	box(self,Vector3(0,2.02,side*5.78),Vector3(13.9,0.16,0.22),"armor")
+	for i in range(5):
+		var x = -5.8+i*2.9
+		box(self,Vector3(x,2.57,side*5.74),Vector3(2.62,0.83,0.2),"armor")
+		box(self,Vector3(x,2.94,side*5.87),Vector3(2.64,0.07,0.09),"edge")
+		# Overlapping leaf springs sit between the longitudinal rail and axle arm.
+		for leaf in range(4):
+			box(self,Vector3(x,1.86-leaf*0.065,side*5.87),Vector3(1.65-leaf*0.22,0.045,0.2),"track")
+		beam(self,Vector3(x-0.54,1.94,side*5.91),Vector3(x,1.32,side*5.91),0.12,"armor",8)
+		box(self,Vector3(x-0.55,1.96,side*5.93),Vector3(0.28,0.3,0.18),"edge")
+		for dx in [-1.12,1.12]:
+			for y in [2.3,2.82]:
+				var rivet = cylinder(self,Vector3(x+dx,y,side*5.87),0.065,0.07,"edge",8)
+				rivet.rotation.x = PI/2
+	for i in range(4):
+		var x = -4.35+i*2.9
+		var brace = box(self,Vector3(x,1.28,side*5.75),Vector3(0.17,1.35,0.16),"armor")
+		brace.rotation.z = -0.22
 
 func build_turret():
-	cylinder(self,TURRET_CENTER-Vector3(0,0.08,0),3.55,0.24,"turret_dark",8)
+	cylinder(self,TURRET_CENTER-Vector3(0,0.04,0),3.55,0.32,"turret_dark",32)
 	turret = Node3D.new()
 	turret.position = TURRET_CENTER
 	add_child(turret)
-	cylinder(turret,Vector3(0,0.9,0),3.4,1.8,"turret_armor",8,3.4)
-	box(turret,Vector3(-0.4,1.88,0),Vector3(1.45,0.16,1.45),"turret_edge")
+	cylinder(turret,Vector3(0,0.9,0),3.4,1.8,"turret_armor",24,3.15)
+	cylinder(turret,Vector3(0,0.12,0),3.42,0.16,"turret_edge",24,3.38)
+	cylinder(turret,Vector3(0,1.82,0),3.2,0.16,"turret_edge",24,3.1)
+	cylinder(turret,Vector3(0,1.91,0),3.08,0.08,"turret_armor",24)
+	var turret_bolts: Array[Transform3D] = []
+	for i in range(24):
+		var angle = (i+0.5)*TAU/24
+		var radial = Vector3(cos(angle),0,sin(angle))
+		for y in [0.3,1.55]:
+			var radius = 3.4-y/1.8*0.25
+			turret_bolts.append(Transform3D(Basis(Quaternion(Vector3.UP,radial)),radial*radius+Vector3(0,y,0)))
+		if i%3 == 0:
+			beam(turret,radial*3.36+Vector3(0,0.22,0),radial*3.17+Vector3(0,1.65,0),0.035,"turret_dark",8)
+			turret_bolts.append(Transform3D(Basis.IDENTITY,radial*2.86+Vector3(0,1.97,0)))
+	rivets(turret,turret_bolts,"turret_edge",0.075)
+	# Cupola, observation slits, hatch hinges and a separate service hatch.
+	cylinder(turret,Vector3(-0.85,2.17,0),0.86,0.44,"turret_armor",24)
+	cylinder(turret,Vector3(-0.85,2.43,0),0.91,0.12,"turret_edge",24,0.84)
+	cylinder(turret,Vector3(-0.85,2.51,0),0.74,0.06,"turret_armor",24)
+	for i in range(8):
+		var angle = i*TAU/8
+		var slit = box(turret,Vector3(-0.85+cos(angle)*0.85,2.22,sin(angle)*0.85),Vector3(0.045,0.12,0.37),"turret_dark")
+		slit.rotation.y = -angle
+	for z in [-0.48,0.48]: beam(turret,Vector3(-1.55,2.53,z-0.12),Vector3(-1.55,2.53,z+0.12),0.08,"turret_edge",12)
+	beam(turret,Vector3(-0.6,2.62,-0.23),Vector3(-0.6,2.62,0.23),0.055,"turret_dark",12)
+	armor_block(turret,Vector3(0.7,2.01,-1.25),Vector3(1.2,0.14,0.95),0.05,"turret_edge")
+	armor_block(turret,Vector3(0.7,2.1,-1.25),Vector3(1.02,0.07,0.77),0.025,"turret_armor")
+	beam(turret,Vector3(0.7,2.19,-1.46),Vector3(0.7,2.19,-1.04),0.05,"turret_dark",12)
+	for z in [-1.9,1.9]:
+		beam(turret,Vector3(-1.65,2.02,z),Vector3(-1.65,2.24,z),0.055,"turret_edge",12)
+		beam(turret,Vector3(-0.55,2.02,z),Vector3(-0.55,2.24,z),0.055,"turret_edge",12)
+		beam(turret,Vector3(-1.65,2.24,z),Vector3(-0.55,2.24,z),0.055,"turret_edge",12)
+	armor_block(turret,Vector3(3.12,1.05,0),Vector3(0.6,1.15,1.35),0.16,"turret_armor")
 	barrel = Node3D.new()
 	barrel.position = Vector3(BARREL_REST,1.0,0)
 	turret.add_child(barrel)
-	beam(barrel,Vector3.ZERO,Vector3(4.0,0,0),0.25,"turret_dark")
-	var sleeve = cylinder(barrel,Vector3(0.35,0,0),0.44,1.2,"turret_edge",6)
+	beam(barrel,Vector3.ZERO,Vector3(4.0,0,0),0.25,"turret_dark",24)
+	var sleeve = cylinder(barrel,Vector3(0.5,0,0),0.45,1.5,"turret_armor",24,0.34)
 	sleeve.rotation.z = -PI/2
+	for x in [1.2,2.3]:
+		var band = cylinder(barrel,Vector3(x,0,0),0.29,0.14,"turret_edge",24)
+		band.rotation.z = -PI/2
+	beam(barrel,Vector3(0.4,0.47,0),Vector3(2.35,0.47,0),0.14,"turret_armor",16)
+	beam(barrel,Vector3(2.35,0.47,0),Vector3(2.65,0.47,0),0.07,"turret_edge",16)
+	for x in [1.25,2.25]: armor_block(barrel,Vector3(x,0.28,0),Vector3(0.14,0.45,0.38),0.035,"turret_edge")
+	var muzzle_rim = cylinder(barrel,Vector3(3.95,0,0),0.3,0.18,"turret_edge",24)
+	muzzle_rim.rotation.z = -PI/2
+	var bore = cylinder(barrel,Vector3(4.045,0,0),0.215,0.012,"turret_dark",24)
+	bore.rotation.z = -PI/2
 	muzzle = cylinder(barrel,Vector3(4.25,0,0),0.42,0.7,"fire",4,0.05)
 	muzzle.rotation.z = -PI/2
 	muzzle.visible = false
