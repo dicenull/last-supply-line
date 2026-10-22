@@ -62,7 +62,7 @@ func prepare():
 func new_game():
 	if game != null:
 		if game.expedition.phase == "won": wins += 1
-		print("OVERNIGHT RUN ",JSON.stringify({"run":runs,"seed":game.expedition.run_seed,"mode":game.expedition.difficulty,"phase":game.expedition.phase,"cleared":game.expedition.cleared,"equipment":game.expedition.equipment}))
+		print("OVERNIGHT RUN ",JSON.stringify({"run":runs,"seed":game.expedition.run_seed,"mode":game.expedition.difficulty,"phase":game.expedition.phase,"cleared":game.expedition.cleared,"equipment":game.expedition.equipment,"elapsed":game.battlefield.elapsed,"hull":game.battlefield.hull,"fuel":game.factory.fuel,"reserves":game.factory.reserves,"position":str(game.battlefield.player.position)}))
 		game.queue_free()
 		await process_frame
 		await process_frame
@@ -84,7 +84,9 @@ func new_game():
 func step():
 	var phase = game.expedition.phase
 	if phase == "travel":
-		Fixture.drive(game,0.1,(runs+game.expedition.sector)%game.battlefield.goals.size())
+		var destination = (runs+game.expedition.sector)%game.battlefield.goals.size()
+		if layout_version == 2: EquipmentPilot.drive(game,0.1,destination)
+		else: Fixture.drive(game,0.1,destination)
 		steps += 1
 		if layout_version == 2 and steps%20 == 0: record_bulk(EquipmentPilot.maintain(game))
 		var f = game.factory

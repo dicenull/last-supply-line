@@ -3,7 +3,25 @@ extends RefCounted
 const Inventory = preload("res://scripts/equipment_inventory.gd")
 const Gear = Inventory.Catalog
 const Blueprints = preload("res://scripts/blueprints.gd")
+const Fixture = preload("res://tests/profile_fixture.gd")
 const POSITIONS = {"armor":Vector2i(0,3),"economizer":Vector2i(2,3),"skirts":Vector2i(0,5),"drum_loader":Vector2i(2,5)}
+
+static func drive(game, delta: float, destination: int = 0):
+	if game.battlefield != null and game.expedition.phase == "travel" and game.factory.running and not game.menu.visible:
+		var battle = game.battlefield
+		Fixture.pilot(battle,destination)
+		# A roadside pickup can leave a rear corner near scenery. Test pilots
+		# must create turning room using real movement, just as a player would.
+		var steering: float = battle.movement_direction.z
+		if battle.movement_direction.x == 0 and absf(steering) > 0.1:
+			var turn = -signf(steering)*0.2
+			var pivot = battle.drive_plan(0,turn)
+			if absf(angle_difference(battle.player.rotation.y,pivot.yaw)) < 0.01:
+				for direction in [1,-1]:
+					if battle.drive_plan(direction,0).effort > 0.5:
+						battle.movement_direction = Vector3(direction,0,0)
+						break
+	game._process(delta)
 
 static func prepare(game, variant: int = 0) -> int:
 	if game.world.roof_closed: game.world.toggle_roof()
