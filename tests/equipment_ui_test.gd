@@ -47,6 +47,7 @@ func drag(row, at: Vector2i):
 	await mouse(screen(at),false)
 	game._process(0)
 func run():
+	DirAccess.make_dir_recursive_absolute("res://build/equipment-audit")
 	game = load("res://main.tscn").instantiate()
 	Fixture.assign(game,"equipment_ui_test",2)
 	game.show_start_menu = false
