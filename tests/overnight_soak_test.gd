@@ -4,6 +4,8 @@ extends SceneTree
 const Fixture = preload("res://tests/profile_fixture.gd")
 const Run = preload("res://scripts/run_state.gd")
 const Blueprints = preload("res://scripts/blueprints.gd")
+const EquipmentPilot = preload("res://tests/equipment_pilot.gd")
+var layout_version = 2
 var suite = "overnight_soak_test"
 var save_path = "user://overnight_soak_test.mfv"
 var game
@@ -13,6 +15,8 @@ var start_ms = 0
 var runs = 0
 var wins = 0
 var restores = 0
+var purchases = 0
+var weapons_fired: Dictionary = {}
 var steps = 0
 var peak_nodes = 0
 var peak_objects = 0
@@ -31,6 +35,11 @@ func fail(label: String):
 	push_error("OVERNIGHT: "+label)
 func prepare():
 	var f = game.factory
+	if layout_version == 2:
+		EquipmentPilot.prepare(game,runs)
+		game.toggle_running()
+		stuck_time = 0
+		return
 	if game.expedition.sector == 1:
 		if not f.restore(Blueprints.layout("parallel")): fail("could not buy parallel starting line")
 	if not f.auxiliary_ids.is_empty():
@@ -52,9 +61,10 @@ func new_game():
 		retired_resources.append(int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)))
 		if retired_resources.size() > 10 and retired_resources.back() > retired_resources.slice(0,5).max()+64:
 			fail("resources accumulate after complete run disposal")
+		if retired_resources.size() > 32: retired_resources.remove_at(5)
 	runs += 1
 	game = load("res://main.tscn").instantiate()
-	Fixture.assign(game,suite)
+	Fixture.assign(game,suite,layout_version)
 	game.show_start_menu = false
 	game.expedition = Run.new(41+runs*17)
 	root.add_child(game)
@@ -65,10 +75,13 @@ func new_game():
 func step():
 	var phase = game.expedition.phase
 	if phase == "travel":
-		Fixture.drive(game,0.1)
+		Fixture.drive(game,0.1,(runs+game.expedition.sector)%game.battlefield.goals.size())
 		steps += 1
+		if layout_version == 2 and steps%20 == 0: EquipmentPilot.maintain(game)
 		var f = game.factory
 		var b = game.battlefield
+		for gun in b.auxiliary_guns:
+			if gun.cooldown > 0: weapons_fired[gun.id] = true
 		if f.reserves.scrap < 0 or f.reserves.coal < 0 or f.fuel < 0 or f.ammo < 0: fail("negative real inventory")
 		if f.feedback_events.size() > 64 or b.projectiles.size() > 128 or b.bolts.size() > 128 or b.trails.size() > 90: fail("unbounded gameplay/event pool")
 		for world in [game.world,b]:
@@ -83,7 +96,15 @@ func step():
 			if "gear:"+id in game.expedition.reward_options:
 				pick = game.expedition.reward_options.find("gear:"+id)
 				break
-		preload("res://tests/profile_fixture.gd").claim_reward(game,pick)
+		game.choose_run_option(pick)
+	elif phase == "shop":
+		if layout_version == 2:
+			EquipmentPilot.maintain(game)
+			for index in range(game.expedition.current.shop_offers.size()):
+				if game.can_buy_shop(index):
+					if game.buy_shop_item(index): purchases += 1
+					break
+		game.leave_shop()
 	elif phase == "route":
 		var pick = (runs+game.expedition.sector)%game.expedition.route_options.size()
 		preload("res://tests/profile_fixture.gd").claim_reward(game,pick)
@@ -109,7 +130,9 @@ func inspect(elapsed: float):
 	peak_nodes = maxi(peak_nodes,get_node_count())
 	peak_objects = maxi(peak_objects,int(Performance.get_monitor(Performance.OBJECT_COUNT)))
 	peak_resources = maxi(peak_resources,int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)))
-	var report = {"elapsed_seconds":elapsed,"target_seconds":duration,"runs":runs,"wins":wins,"restores":restores,"steps":steps,"phase":game.expedition.phase,"sector":game.expedition.sector,"seed":game.expedition.run_seed,"peak_nodes":peak_nodes,"peak_objects":peak_objects,"peak_resources":peak_resources,"nodes":get_node_count(),"retired_resources":retired_resources,"failed":failed,"display":DisplayServer.get_name(),"pid":OS.get_process_id(),"fps":Engine.get_frames_per_second(),"window":str(root.size)}
+	var report = {"elapsed_seconds":elapsed,"target_seconds":duration,"layout_version":layout_version,"runs":runs,"wins":wins,"restores":restores,"steps":steps,"phase":game.expedition.phase,"sector":game.expedition.sector,"seed":game.expedition.run_seed,"peak_nodes":peak_nodes,"peak_objects":peak_objects,"peak_resources":peak_resources,"nodes":get_node_count(),"retired_resources":retired_resources,"failed":failed,"display":DisplayServer.get_name(),"pid":OS.get_process_id(),"fps":Engine.get_frames_per_second(),"window":str(root.size)}
+	report.weapons_fired = weapons_fired.keys()
+	report.purchases = purchases
 	print("OVERNIGHT HEARTBEAT ",JSON.stringify(report))
 	var file = FileAccess.open(result_file,FileAccess.WRITE)
 	if file != null:
@@ -122,6 +145,7 @@ func run():
 		if arg.begins_with("--speed="): steps_per_tick = clampi(int(arg.trim_prefix("--speed=")),1,100)
 		if arg.begins_with("--report="): result_file = arg.trim_prefix("--report=")
 		if arg.begins_with("--suite="): suite = arg.trim_prefix("--suite=")
+		if arg.begins_with("--layout="): layout_version = clampi(int(arg.trim_prefix("--layout=")),1,2)
 	save_path = "user://"+suite+".mfv"
 	Engine.max_fps = 30
 	start_ms = Time.get_ticks_msec()
