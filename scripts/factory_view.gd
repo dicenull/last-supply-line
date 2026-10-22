@@ -1155,6 +1155,7 @@ func buy_shop_item(index: int) -> bool:
 	elif id == "shell": factory.ammo = mini(factory.ammo_capacity,factory.ammo+RunState.Services.SHELL_AMOUNT)
 	factory.reserves.scrap -= RunState.Services.price(id)
 	expedition.current.shop_purchased[index] = true
+	sound.play_effect("reward")
 	sync_equipment()
 	shop_panel.refresh()
 	return true
@@ -1168,6 +1169,7 @@ func leave_shop():
 func receive_item(item: Dictionary):
 	expedition.add_item(item)
 	loot_feed.push_item(item)
+	sound.queue_pickup()
 	factory.message = Inventory.Catalog.RARITIES[item.rarity].name+"："+RunState.EQUIPMENT[item.kind].name+"を回収（Iで一覧・解体）"
 
 func toggle_inventory():

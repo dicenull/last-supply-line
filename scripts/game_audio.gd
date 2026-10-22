@@ -20,6 +20,7 @@ var last_shots = 0
 var last_kills = 0
 var last_hull = 100
 var last_impacts = 0
+var pending_pickup = false
 func _ready():
 	enabled = enabled and DisplayServer.get_name() != "headless"
 	load_settings()
@@ -88,8 +89,12 @@ func update_gain():
 	for voice in voices:
 		voice.volume_db = linear_to_db(maxf(0.00001,volume*GAINS.get(voice.get_meta("kind","shot"),0.5)))
 func stop_all():
+	pending_pickup = false
 	if motor != null: motor.stop()
 	for voice in voices: voice.stop()
+func queue_pickup():
+	# A rich site can award six items in one simulation step. Use one cue.
+	if enabled and volume > 0: pending_pickup = true
 func play_effect(kind: String, pitch: float = 1.0):
 	if not enabled or volume <= 0 or not streams.has(kind): return
 	var selected_voice = null
@@ -114,6 +119,8 @@ func play_effect(kind: String, pitch: float = 1.0):
 	selected_voice.play()
 	played[kind] = played.get(kind,0)+1
 func sync():
+	var equipment_pickup = pending_pickup
+	pending_pickup = false
 	var f = game.factory
 	var b = game.battlefield
 	var factory_id = f.get_instance_id()
@@ -123,6 +130,7 @@ func sync():
 	var hull = b.hull if b != null else 100
 	if changed: stop_all()
 	if enabled and volume > 0 and f.running:
+		if equipment_pickup: play_effect("pickup")
 		if b != null and b.speed > 0.05:
 			motor.pitch_scale = 0.8+minf(b.speed/3.3,1)*0.3
 			if not motor.playing: motor.play()
@@ -137,7 +145,7 @@ func sync():
 					if event.accepted > 0:
 						play_effect("pickup")
 						break
-	elif enabled and volume > 0 and not game.menu.visible and game.expedition.phase in ["prepare","reward","route","won"]:
+	elif enabled and volume > 0 and not game.menu.visible and game.expedition.phase in ["prepare","reward","route","shop","won"]:
 		motor.stop()
 	else: stop_all()
 	last_factory = factory_id
