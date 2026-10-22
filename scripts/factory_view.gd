@@ -1,18 +1,20 @@
 extends Node2D
 const Factory = preload("res://scripts/factory.gd")
-const BG = Color("171c18")
-const PANEL = Color("2d342b")
-const INK = Color("f2eddf")
-const MUTED = Color("bdc0aa")
-const GOLD = Color("e6bd73")
-const MINT = Color("bfcca4")
-const BLUE = Color("afc2ba")
-const SURFACE = Color("20261f")
-const EDGE = Color("68705a")
-const DANGER = Color("f29c84")
+const UIStyle = preload("res://scripts/ui_style.gd")
+const BG = UIStyle.BG
+const PANEL = UIStyle.PANEL
+const INK = UIStyle.INK
+const MUTED = UIStyle.MUTED
+const GOLD = UIStyle.GOLD
+const MINT = UIStyle.MINT
+const BLUE = UIStyle.BLUE
+const SURFACE = UIStyle.SURFACE
+const EDGE = UIStyle.EDGE
+const DANGER = UIStyle.DANGER
 const HEADER_RECT = Rect2(16,12,1408,60)
 const WORLD_RECT = Rect2(16,84,1408,752)
 const FOOTER_RECT = Rect2(16,848,1408,80)
+const WorldViewport = preload("res://scenes/world_viewport.tscn")
 const TankWorld = preload("res://scripts/tank_world.gd")
 var world
 const BattleWorld = preload("res://scripts/battle_world.gd")
@@ -33,6 +35,7 @@ var checkpoint_path = "user://run_save.mfv"
 var layout_path = "user://ammo_layout.json"
 var show_start_menu = true
 var menu
+var menu_presenter
 var menu_title = true
 var menu_status = ""
 var menu_was_running = false
@@ -89,19 +92,11 @@ func _ready():
 		system_font.font_names = PackedStringArray(["Helvetica Neue","Hiragino Sans","sans-serif"])
 		system_font.font_weight = 600
 		font = system_font
-	var container = SubViewportContainer.new()
-	factory_container = container
-	container.position = WORLD_RECT.position
-	container.size = WORLD_RECT.size
-	container.stretch = true
-	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(container)
-	viewport = SubViewport.new()
-	viewport.size = Vector2i(WORLD_RECT.size)
-	viewport.own_world_3d = true
-	viewport.msaa_3d = Viewport.MSAA_2X
-	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	container.add_child(viewport)
+	var ui = UIStyle.new()
+	ui.font = font
+	ui.pixel_icons = pixel_icons
+	factory_container = create_world_viewport()
+	viewport = factory_container.get_node("Viewport")
 	world = TankWorld.new()
 	viewport.add_child(world)
 	start_button = icon_button("play",Rect2(944,862,288,52),toggle_running,"Space")
@@ -130,14 +125,17 @@ func _ready():
 	choice_layer.layer = 6
 	add_child(choice_layer)
 	choice_popup = preload("res://scripts/run_choice_popup.gd").new()
-	choice_popup.game = self
+	choice_popup.configure(ui,choice_models,can_claim_reward)
+	choice_popup.option_selected.connect(choose_run_option)
+	choice_popup.crafting_finished.connect(finish_crafting)
 	choice_layer.add_child(choice_popup)
 	choice_buttons = choice_popup.buttons
 	var menu_layer = CanvasLayer.new()
 	menu_layer.layer = 10
 	add_child(menu_layer)
 	menu = RunMenu.new()
-	menu.game = self
+	menu_presenter = preload("res://scripts/run_menu_presenter.gd").new(self)
+	menu_presenter.bind(menu,ui)
 	menu_layer.add_child(menu)
 	if show_start_menu: open_menu(true)
 
@@ -162,20 +160,22 @@ func toggle_battle():
 	battle_mode = not battle_mode
 	refresh_view()
 
+func create_world_viewport() -> SubViewportContainer:
+	var container = WorldViewport.instantiate()
+	container.position = WORLD_RECT.position
+	container.size = WORLD_RECT.size
+	add_child(container)
+	return container
+
+func release_battle():
+	if is_instance_valid(battle_container): battle_container.queue_free()
+	battle_container = null
+	battlefield = null
+
 func ensure_battle():
 	if battlefield == null:
-		battle_container = SubViewportContainer.new()
-		battle_container.position = WORLD_RECT.position
-		battle_container.size = WORLD_RECT.size
-		battle_container.stretch = true
-		battle_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(battle_container)
-		var battle_viewport = SubViewport.new()
-		battle_viewport.size = Vector2i(WORLD_RECT.size)
-		battle_viewport.own_world_3d = true
-		battle_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-		battle_viewport.msaa_3d = Viewport.MSAA_2X
-		battle_container.add_child(battle_viewport)
+		battle_container = create_world_viewport()
+		var battle_viewport = battle_container.get_node("Viewport")
 		battlefield = BattleWorld.new()
 		battlefield.sector_config = expedition.current.duplicate(true)
 		battlefield.hull = expedition.hull
@@ -229,21 +229,22 @@ func refresh_view():
 	if choice_popup != null: choice_popup.refresh()
 	queue_redraw()
 
-func reset_battle():
+func reset_battle(seed_value: int = -1):
 	if quitting: return
 	sound.stop_all()
 	if world.feedback != null: world.feedback.clear()
 	if battlefield == null: return
 	new_blueprints.clear()
 	choice_popup.craft_page = 0
-	battle_container.queue_free()
-	battlefield = null
+	release_battle()
 	battle_mode = false
 	started = false
 	clear_movement()
 	factory.layout_locked = false
 	world.playback_only = false
-	expedition = RunState.new(int(Time.get_unix_time_from_system()*1000000),expedition.difficulty)
+	# An explicit seed makes restart/replay callers reproducible; UI calls use a fresh seed.
+	var next_seed = int(Time.get_unix_time_from_system()*1000000) if seed_value == -1 else seed_value
+	expedition = RunState.new(next_seed,expedition.difficulty)
 	factory.work_multiplier = 1.0
 	factory.ammo_capacity = 12
 	factory.reserve_capacity = 100
@@ -292,8 +293,7 @@ func set_difficulty(mode: String) -> bool:
 	var settings = RunState.Content.DIFFICULTIES[mode]
 	factory.reserves = {"scrap":settings.scrap,"coal":settings.coal}
 	if battlefield != null:
-		battle_container.queue_free()
-		battlefield = null
+		release_battle()
 		ensure_battle()
 	return true
 
@@ -328,13 +328,7 @@ func icon_button(icon: String, rect: Rect2, action: Callable, keycap: String = "
 	return b
 
 func style(color: Color, border: Color = Color.TRANSPARENT) -> StyleBoxFlat:
-	var s = StyleBoxFlat.new()
-	s.bg_color = color
-	s.set_corner_radius_all(3)
-	if border.a > 0:
-		s.set_border_width_all(2)
-		s.border_color = border
-	return s
+	return UIStyle.style(color,border)
 
 func add_button(title: String, rect: Rect2, action: Callable, color: Color = MUTED) -> Button:
 	var b = Button.new()
@@ -779,6 +773,9 @@ func retreat_run():
 	battle_mode = true
 	refresh_view()
 
+func choice_models() -> Dictionary:
+	return {"expedition":expedition,"factory":factory}
+
 func choice_rect(index: int) -> Rect2:
 	return choice_popup.option_rect(index)
 
@@ -832,8 +829,7 @@ func choose_run_option(index: int):
 	elif expedition.phase == "route":
 		if expedition.choose_route(index):
 			new_blueprints.clear()
-			battle_container.queue_free()
-			battlefield = null
+			release_battle()
 			started = false
 			factory.layout_locked = false
 			world.playback_only = false

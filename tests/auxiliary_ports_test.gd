@@ -87,6 +87,8 @@ func run():
 	root.size = Vector2i(1440,940)
 	game = load("res://main.tscn").instantiate()
 	Fixture.assign(game,"auxiliary_ports_test")
+	# The drag fixture requires a won opening sector, not a wall-clock-seeded battle.
+	game.expedition = preload("res://scripts/run_state.gd").new(42)
 	game.show_start_menu = false
 	root.add_child(game)
 	await process_frame

@@ -29,6 +29,8 @@ func run():
 	check(f.undo_stack.size() == 50,"repeated construction retains only fifty undo layouts")
 	var game = load("res://main.tscn").instantiate()
 	Fixture.assign(game,"soak_test")
+	# Compare lifetimes with the same roster; different enemies have different node counts.
+	game.expedition = preload("res://scripts/run_state.gd").new(42)
 	game.show_start_menu = false
 	root.add_child(game)
 	game.set_process(false)
@@ -37,6 +39,9 @@ func run():
 	var codec = Save.new()
 	var checkpoint = codec.snapshot(game)
 	check(codec.validate(checkpoint),"soak checkpoint contains valid active production")
+	# Restored cycles advance another six seconds and create trails/impact meshes.
+	# Measure the reference at the same simulation time, with the same live effects.
+	for i in range(60): Fixture.drive(game,0.1)
 	game.world.sync(game.factory,Vector2i(-1,-1),"belt",0,0)
 	await process_frame
 	await process_frame
@@ -49,7 +54,7 @@ func run():
 	for cycle in range(60):
 		if cycle%2 == 0:
 			game.retreat_run()
-			game.reset_battle()
+			game.reset_battle(42)
 			game.toggle_running()
 		else:
 			good = codec.apply(game,checkpoint) and good

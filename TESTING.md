@@ -100,3 +100,18 @@ tools/export_macos.pyは公式macOSリリーステンプレートで書き出し
 2026-10-08：ソース全16スイート410項目と、実終了・別プロセスの保存読込が成功。build/auditに各実行ログを保存。macOS書き出しではApple Siliconに必要なimport_etc2_astc設定の不足を修正した。
 
 単体アプリ実操作（2fc352d / ZIP SHA-256 99da4e5b0c444501b9c47b08b31bcff8ebe1f5afeb5ab59f490f12f58fac189d）：プロジェクト外へ展開し、開始・自動戦闘・走行中編集・B/Tab/Space・初戦クリア・報酬選択・次ルート選択・保存終了を実クリックで操作。再起動後に続きからを選び、製造数46、ライン上の物資、燃料、配置を保った第2戦準備へ停止状態で復帰することを画面確認した。テストスクリプトを単体アプリへ注入していない。
+
+## 設計リファクタの回帰検証（2026-10-22）
+
+作業中の未コミットソースを含めて一時フォルダに複製し、Godot 4.7.2でクリーンインポートした。通常38スイート1,367項目、campaign_varietyの`--dangerous` 28項目、空ディレクトリからの新規PCK起動9項目、合計1,404項目が成功。描画が必要な試験はDummy音声ドライバーで順次実行。最終採用ログにSCRIPT ERROR / ERROR / 解放警告なし。音声再生中の実終了保存と別プロセスの`exit_save_test.gd -- --verify`も成功。
+
+新規`ui_architecture_test.gd`は13項目。主画面なしでのメニュー／選択ポップアップの初期化、ボタンの操作通知、音量の往復、履歴データの分離、無効ボタンを迂回した場合の編集権限、保存復帰時のモデル参照更新、親を破棄した後のPresenter解放を検証する。
+
+```sh
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/ui_architecture_test.gd
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/soak_test.gd
+```
+
+変更前から失敗した2試験は初期条件を修正した。`auxiliary_ports_test`は時刻由来の乱数を固定シード42に変更。`soak_test`は同じ編成で再出撃し、保存復帰後に6秒進行する測定と同じ時刻で基準ノード数を採取する。履帯跡や着弾演出を含む条件差が原因で、従来のノード上限`baseline + 64`や後半の増加判定は緩めていない。修正した初期条件は変更前の製品コードでも成功した（旧版の再出撃APIにはシード引数がないため、その呼び出しだけ従来形を使用）。最終結果は基準3,122／最大3,122ノード、解放後1ノード、前半／後半のリソース数25／25、オブジェクト数8,027／8,027。
+
+証跡は`build/refactor-audit/summary.json`。修正前の失敗ログは`baseline/`と`final/soak.log`に保持し、修正後は`baseline-fixture-check/`と`soak-final/`に分離した。集計には修正後の結果を採用し、ソースSHA-256と採用ログの対応を記録。メニューと960×628の報酬画面を目視確認した。今回、実時間6〜8時間のovernight試験とWebブラウザ試験は再実行していない。生成したPCKは検証専用で、公開先の更新は行っていない。
