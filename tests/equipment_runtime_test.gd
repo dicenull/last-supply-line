@@ -94,6 +94,14 @@ func run():
 	game.factory.running = false
 	snapshot = game.checkpoint.snapshot(game)
 	check(game.checkpoint.apply(game,snapshot) and game.factory.auxiliary_ids == ["mortar_gun_focus_l10"] and not game.stow_item(uid),"deployed advanced weapon restores its model identity and remains locked")
+	b = game.battlefield
+	b.sector_config.boss = true
+	b.sector_config.sector = 5
+	var last = b.enemies.size()-1
+	var expected = Gear.roll(b.sector_config.seed,last,b.enemies[last].role,true,10)
+	b.kill_enemy(b.enemies[last],game.factory,b.enemies[last].node.position)
+	var loot = game.expedition.gear_items.back()
+	check(loot.kind == expected.kind and loot.rarity == expected.rarity and loot.rarity != "normal","actual last enemy uses boss quality and sector-five model pool")
 	game.queue_free()
 	await process_frame
 	Fixture.clean("equipment_runtime_test")

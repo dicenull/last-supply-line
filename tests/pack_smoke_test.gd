@@ -24,6 +24,9 @@ func run():
 	check(game.menu.visible and game.menu.blueprint_buttons.size() == 3,"pack opens title with blueprint previews")
 	check(game.sound.streams.size() == 10,"all ten dynamically loaded sound assets are present")
 	game.close_menu()
+	check(game.RunState.EQUIPMENT.size() == 300 and game.Inventory.Catalog.Data.GUNS.size() == 120,"distribution contains all 300 equipment designs and 120 weapons")
+	var uid = game.expedition.add_item({"kind":"mortar_gun_focus_l10","rarity":"legendary"})
+	check(game.place_item(uid,Vector2i(0,0)) and game.world.auxiliary_guns[0].id == "mortar_gun_focus_l10","packed advanced equipment mounts its actual model")
 	game.toggle_running()
 	for i in range(180):
 		game.battlefield.movement_direction = Vector3.RIGHT
