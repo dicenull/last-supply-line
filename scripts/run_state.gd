@@ -159,6 +159,7 @@ func finish_sector(won: bool, remaining_hull: int, inventory: Dictionary = {}, m
 func reward_pool(inventory: Dictionary = {}, mount_space: bool = true) -> Array:
 	var pool: Array = []
 	for id in (EQUIPMENT if item_mode else Content.BASE_EQUIPMENT):
+		if item_mode and (Gear.level(id) > mini(10,(sector+1)*2) or Gear.level(id) < maxi(1,mini(10,(sector+1)*2)-3)): continue
 		if item_mode or (id not in equipment and (mount_space or id not in Content.GUNS)): pool.append("gear:"+id)
 	return pool
 
@@ -212,6 +213,9 @@ func advance_after_reward():
 			phase = "shop"
 			var pool = reward_pool()
 			current.shop_offers = ["gear:economizer","gear:armor"] if item_mode else ["coal","shell"]
+			if item_mode:
+				current.shop_offers = ["gear:"+Gear.choose_model(rng,"economizer",sector*2),"gear:"+Gear.choose_model(rng,"armor",sector*2)]
+				pool = Gear.models(sector*2).filter(func(id): return Gear.family(id) not in ["economizer","armor"]).map(func(id): return "gear:"+id)
 			pool = pool.filter(func(id): return id not in current.shop_offers)
 			if not pool.is_empty(): current.shop_offers.append(pool[rng.randi_range(0,pool.size()-1)])
 			current.shop_purchased = []

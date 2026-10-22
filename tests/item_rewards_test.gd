@@ -97,7 +97,7 @@ func run():
 			unique[id] = true
 			seen[id] = true
 		seeded = seeded and unique.size() == 3
-	check(seeded and distinct.size() > 50 and seen.size() == Run.EQUIPMENT.size(),"full equipment pool draws three distinct reproducible choices and varies across seeds")
+	check(seeded and distinct.size() > 50 and seen.size() == Run.Content.BASE_EQUIPMENT.size(),"full equipment pool draws three distinct reproducible choices and varies across seeds")
 	var run_state = Run.new(42)
 	run_state.equipment = ["armor","left_gun"]
 	var capped = Factory.LIMITS.duplicate()
@@ -114,11 +114,11 @@ func run():
 	if run_state.phase == "shop": run_state.finish_shopping()
 	check(run_state.phase == "won" and run_state.rewards_taken == 5 and not run_state.choose_reward(0),"final reward is granted once before victory")
 	var exhausted = Run.new(1)
-	exhausted.equipment = Run.EQUIPMENT.keys()
+	exhausted.equipment = Run.Content.BASE_EQUIPMENT.keys()
 	exhausted.offer_rewards()
 	check(exhausted.phase == "prepare" and exhausted.reward_options.is_empty(),"legacy all-owned state advances without an empty modal")
 	exhausted = Run.new(1)
-	exhausted.equipment = Run.EQUIPMENT.keys().slice(0,Run.EQUIPMENT.size()-1)
+	exhausted.equipment = Run.Content.BASE_EQUIPMENT.keys().slice(0,Run.Content.BASE_EQUIPMENT.size()-1)
 	exhausted.offer_rewards()
 	check(exhausted.reward_options.size() == 1,"legacy near-exhausted equipment pool remains selectable")
 	root.size = Vector2i(1440,940)
@@ -135,7 +135,7 @@ func run():
 	check(game.expedition.phase == "reward" and game.choice_popup.visible and not game.choice_popup.continue_button.visible,"actual stage clear opens the random item draft directly")
 	check(game.expedition.recipes.is_empty() and game.expedition.equipment.is_empty(),"battle kills grant no free gear before the clear choice")
 	var clear_save = game.checkpoint.snapshot(game)
-	check(game.checkpoint.validate(clear_save) and clear_save.version == 10,"new save stores construction materials and pending equipment draft")
+	check(game.checkpoint.validate(clear_save) and clear_save.version == 11,"new save stores construction materials and pending equipment draft")
 	var choices = game.expedition.reward_options.duplicate()
 	game.open_menu()
 	game.close_menu()

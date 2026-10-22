@@ -57,7 +57,12 @@ func valid_route(route) -> bool:
 		var offers = route.get("shop_offers")
 		var purchased = route.get("shop_purchased")
 		if not offers is Array or offers.size() not in [2,3] or not purchased is Array or purchased.size() != offers.size(): return false
-		if [offers[0],offers[1]] not in [["coal","shell"],["gear:economizer","gear:armor"]]: return false
+		if [offers[0],offers[1]] != ["coal","shell"]:
+			if offers.size() != 3: return false
+			var seen_offers: Array = []
+			for offer in offers:
+				if not offer is String or not offer.begins_with("gear:") or offer.trim_prefix("gear:") not in RunState.EQUIPMENT or offer in seen_offers: return false
+				seen_offers.append(offer)
 		if offers.size() == 3 and (not offers[2] is String or not offers[2].begins_with("gear:") or offers[2].trim_prefix("gear:") not in RunState.EQUIPMENT): return false
 		for taken in purchased:
 			if not taken is bool: return false

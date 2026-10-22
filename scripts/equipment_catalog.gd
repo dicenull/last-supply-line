@@ -17,7 +17,23 @@ const DROP_TABLES = {
 }
 const ROLE_TABLES = ["frontline","frontline","artillery","frontline","artillery","artillery","frontline","frontline","artillery","support","frontline","support","support","artillery","artillery","frontline"]
 
-static func roll(seed_value: int, source: int, role: int = 0, boss: bool = false) -> Dictionary:
+static func models(max_level: int, family_id: String = "") -> Array:
+	var result: Array = []
+	for id in Data.ITEMS:
+		if level(id) <= clampi(max_level,1,10) and (family_id.is_empty() or family(id) == family_id): result.append(id)
+	return result
+
+static func choose_model(rng: RandomNumberGenerator, family_id: String, max_level: int) -> String:
+	var candidates = models(max_level,family_id)
+	var total = 0
+	for id in candidates: total += maxi(1,6-(max_level-level(id)))
+	var pick = rng.randi_range(1,total)
+	for id in candidates:
+		pick -= maxi(1,6-(max_level-level(id)))
+		if pick <= 0: return id
+	return candidates.back()
+
+static func roll(seed_value: int, source: int, role: int = 0, boss: bool = false, max_level: int = 0) -> Dictionary:
 	var rng = RandomNumberGenerator.new()
 	rng.seed = seed_value+104729*(source+1)+8677
 	var table = DROP_TABLES[ROLE_TABLES[posmod(role,ROLE_TABLES.size())]]
@@ -36,6 +52,8 @@ static func roll(seed_value: int, source: int, role: int = 0, boss: bool = false
 		if pick <= 0:
 			rarity = RARITIES.keys()[i]
 			break
+	# Default preserves old seeded rolls. Modern callers supply the sector cap.
+	if max_level > 0: kind = choose_model(rng,kind,clampi(max_level,1,10))
 	return {"kind":kind,"rarity":rarity}
 
 static func salvage(item: Dictionary) -> Dictionary:

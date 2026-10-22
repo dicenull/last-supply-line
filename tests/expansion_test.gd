@@ -22,7 +22,7 @@ func factory_with(kind: String):
 	f.cells[Vector2i(4,3)] = f.make_cell("belt",0)
 	return f
 func blocks():
-	check(Content.EQUIPMENT.size() == 17 and Content.ENEMIES.size() == 16 and Factory.LIMITS.size() == 17 and Run.REWARDS.size() == 15,"expanded catalogs include new weapons, enemy roles and defense block")
+	check(Content.EQUIPMENT.size() == 300 and Content.BASE_EQUIPMENT.size() == 17 and Content.ENEMIES.size() == 16 and Factory.LIMITS.size() == 17 and Run.REWARDS.size() == 15,"expanded catalogs include new weapons, enemy roles and defense block")
 	for kind in Factory.FILTERS:
 		var f = factory_with(kind)
 		var c = f.cells[Vector2i(4,4)]

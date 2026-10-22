@@ -539,7 +539,7 @@ func tick_battle(factory, delta: float):
 			if item_mode:
 				var count = 6 if sector_config.get("encounter","") == "rich" else 3
 				var role = {"scrapyard":0,"coalfield":9,"arsenal":2}.get(sector_config.kind,0)
-				for i in range(count): item_dropped.emit(Gear.roll(sector_config.seed,1000+resource_sites.find(site)*10+i,role))
+				for i in range(count): item_dropped.emit(Gear.roll(sector_config.seed,1000+resource_sites.find(site)*10+i,role,false,int(sector_config.sector)*2))
 				feedback_effect("pickup",site.node.position,1.2)
 			else: recover(factory,{"scrap":site.scrap,"coal":site.coal,"shell":site.shells})
 			site.node.set_taken(true)
@@ -692,9 +692,9 @@ func kill_enemy(enemy: Dictionary, factory, at: Vector3, style: String = "heavy"
 	enemy_destroyed.emit(int(enemy.role))
 	if item_mode:
 		var index = enemies.find(enemy)
-		item_dropped.emit(Gear.roll(sector_config.seed,index,int(enemy.role),sector_config.get("boss",false) and index == 5))
+		item_dropped.emit(Gear.roll(sector_config.seed,index,int(enemy.role),sector_config.get("boss",false) and index == enemies.size()-1,int(sector_config.sector)*2))
 		var recovery_rate = equipment_effect("salvage_rate",1.0/maxi(2,roundi(3/equipment_power("salvage_arm"))) if "salvage_arm" in installed_equipment else 0.0)
-		if floori(kills*recovery_rate+0.0000001) > floori((kills-1)*recovery_rate+0.0000001): item_dropped.emit(Gear.roll(sector_config.seed,2000+index,9))
+		if floori(kills*recovery_rate+0.0000001) > floori((kills-1)*recovery_rate+0.0000001): item_dropped.emit(Gear.roll(sector_config.seed,2000+index,9,false,int(sector_config.sector)*2))
 	elif not sector_config.is_empty():
 		var profile = RunState.Content.ENEMIES[enemy.role]
 		recover(factory,{"scrap":int(profile.get("loot",2))+int(combat_modifiers.get("salvage",0))+(2 if "salvage_arm" in installed_equipment else 0),"coal":int(profile.get("coal",0))})

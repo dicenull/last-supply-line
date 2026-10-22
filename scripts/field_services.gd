@@ -12,6 +12,7 @@ static func icon(site: Dictionary) -> String:
 	return ICONS.get(site.get("encounter","standard"),preload("res://scripts/pixel_icons.gd").DESTINATIONS[site.kind])
 
 static func price(id: String) -> int:
+	if id.begins_with("gear:"): return int(preload("res://scripts/equipment_data.gd").ITEMS.get(id.trim_prefix("gear:"),{}).get("shop_price",GEAR_PRICE))
 	return COAL_PRICE if id == "coal" else SHELL_PRICE if id == "shell" else GEAR_PRICE
 
 static func repair_cost(factory, hull: int) -> int:

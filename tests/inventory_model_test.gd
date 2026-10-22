@@ -17,11 +17,11 @@ func run():
 	var rarities = {}
 	var kinds = {}
 	for role in range(16):
-		for i in range(256):
-			var item = Gear.roll(42,i,role)
+		for i in range(3000):
+			var item = Gear.roll(42,i,role,false,10)
 			rarities[item.rarity] = true
 			kinds[item.kind] = true
-	check(rarities.size() == 4 and kinds.size() == Gear.DEFINITIONS.size(),"all four rarities and 17 definitions are reachable through enemy tables")
+	check(rarities.size() == 4 and kinds.size() == Gear.DEFINITIONS.size(),"all four rarities and 300 definitions are reachable through enemy tables")
 	for table in Gear.DROP_TABLES.values():
 		var weight = 0
 		for row in table: weight += row[1]
@@ -89,6 +89,6 @@ func run():
 			distinct_shops = distinct_shops and model.phase == "shop" and offers.size() == 3 and offers[2] not in offers.slice(0,2)
 			extra_offers[offers[2]] = true
 	check(shops > 300 and distinct_shops,"modern shops offer three distinct equipment families")
-	check(extra_offers.size() == Gear.DEFINITIONS.size()-2,"every non-fixed equipment family remains available as the third shop offer")
+	check(extra_offers.size() == Gear.models(2).filter(func(id): return Gear.family(id) not in ["economizer","armor"]).size(),"every level-appropriate non-fixed equipment model remains available as the third shop offer")
 	print("INVENTORY MODEL RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
