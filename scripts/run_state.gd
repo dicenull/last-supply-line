@@ -55,7 +55,7 @@ func _init(value: int = 1, mode: String = "normal"):
 func make_route(kind: String, opening: bool = false, encounter: String = "standard") -> Dictionary:
 	var scrap = 36 if kind == "scrapyard" else 18
 	var coal = 30 if kind == "coalfield" else 16
-	var length = 110.0+(sector-1)*14.0
+	var length = 140.0+(sector-1)*14.0
 	# Reserve coal for winding-road travel and stationary turns.
 	coal += ceili((length-56.0)/36.0)*6
 	if kind == "arsenal": scrap = 26
@@ -77,7 +77,7 @@ func make_route(kind: String, opening: bool = false, encounter: String = "standa
 		coal += 12
 	return {"kind":kind,"difficulty":difficulty,"enemies":roster,"wave_size":3 if difficulty == "easy" else 5 if difficulty == "hard" else 4,"wave_delay":18.0*settings.period,"warning_scale":settings.warning,"seed":route_seed,"terrain":terrain,"formation":formation,"sector":sector,"length":length,
 		"scrap":scrap,"coal":coal,"shells":12 if kind == "arsenal" else 0,"enemy_hp":1,"combat_version":3,"obstacles_version":1,
-		"encounters_version":1,"encounter":encounter,"field_version":1,"destination_count":int(modifiers.get("routes",2)),"destination_index":-1,
+		"encounters_version":1,"encounter":encounter,"field_version":1,"landscape_version":1,"destination_count":int(modifiers.get("routes",2)),"destination_index":-1,
 		"damage":int(round((10+(sector-1)*2)*settings.damage)),"attack_period":maxf(4,8-(sector-1)*0.5)*settings.period,
 		"boss":sector == SECTORS,"opening":opening}
 

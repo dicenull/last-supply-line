@@ -45,6 +45,7 @@ func valid_route(route) -> bool:
 		if route.get("wave_size",0) not in [2,3,4,5] or not numeric(route.get("wave_delay"),10,40) or not numeric(route.get("warning_scale"),0.5,2): return false
 	if not route.get("obstacles_version",0) is int or route.get("obstacles_version",0) not in [0,1]: return false
 	if not route.get("field_version",0) is int or route.get("field_version",0) not in [0,1]: return false
+	if not route.get("landscape_version",0) is int or route.get("landscape_version",0) not in [0,1]: return false
 	if route.get("field_version",0) == 1:
 		if not route.get("destination_count") is int or route.destination_count not in [2,3]: return false
 		if not route.get("destination_index") is int or not numeric(route.destination_index,-1,route.destination_count-1): return false

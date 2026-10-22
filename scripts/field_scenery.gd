@@ -3,9 +3,27 @@ extends Node3D
 func build(world, course):
 	name = "FieldScenery"
 	var area: Rect2 = course.bounds.grow(35)
-	world.box(self,Vector3(area.get_center().x,-0.3,area.get_center().y),Vector3(area.size.x,0.4,area.size.y),"mud")
+	var detailed = course.landscape != ""
+	if detailed:
+		var palette = preload("res://scripts/field_landscape.gd").PALETTES[course.landscape]
+		for key in ["ground","patch","detail"]: world.material("land_"+key,palette[key])
+		world.material("route_ground",palette.road)
+	world.box(self,Vector3(area.get_center().x,-0.3,area.get_center().y),Vector3(area.size.x,0.4,area.size.y),"land_ground" if detailed else "mud")
 	var ground = world.sector_config.get("terrain","road")
-	world.material("route_ground","39342d" if ground == "mud" else "54544a" if ground == "rubble" else "4b4b40")
+	if not detailed: world.material("route_ground","39342d" if ground == "mud" else "54544a" if ground == "rubble" else "4b4b40")
+	for patch in course.patches:
+		# A single upward surface avoids almost-coplanar top/bottom faces.
+		var outline = preload("res://scripts/field_landscape.gd").outline(patch)
+		var triangles = Geometry2D.triangulate_polygon(outline)
+		var mesh = SurfaceTool.new()
+		mesh.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for i in range(0,triangles.size(),3):
+			for j in [0,1,2]:
+				var point = outline[triangles[i+j]]
+				mesh.set_normal(Vector3.UP)
+				mesh.add_vertex(Vector3(point.x,-0.08,point.y))
+		var surface = world.mesh_node(self,mesh.commit(),Vector3.ZERO,"land_patch")
+		surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	for segment in course.segments:
 		var a: Vector3 = segment[0]
 		var b: Vector3 = segment[1]
@@ -16,6 +34,11 @@ func build(world, course):
 		for i in range(steps):
 			var mark = world.box(self,a.lerp(b,(i+0.5)/steps)+Vector3(0,-0.035,0),Vector3(2.8,0.025,0.22),"edge")
 			mark.rotation.y = road.rotation.y
+	if detailed:
+		var landmarks = preload("res://scripts/field_landmarks.gd").new()
+		add_child(landmarks)
+		landmarks.build(world,course)
+		return
 	var rng = RandomNumberGenerator.new()
 	rng.seed = int(world.sector_config.seed)+19
 	for i in range(100):

@@ -29,6 +29,15 @@ func project(at: Vector3) -> Vector2:
 func _draw():
 	if not visible or course == null: return
 	draw_style_box(panel_style,PANEL)
+	if course.landscape != "":
+		var palette = preload("res://scripts/field_landscape.gd").PALETTES[course.landscape]
+		for patch in course.patches:
+			var points = PackedVector2Array()
+			for point in preload("res://scripts/field_landscape.gd").outline(patch):
+				points.append(project(Vector3(point.x,0,point.y)))
+			draw_colored_polygon(points,Color(palette.patch).darkened(0.25))
+		for landmark in course.landmarks:
+			draw_rect(Rect2(project(landmark.position)-Vector2.ONE*2,Vector2.ONE*4),Color(palette.detail))
 	for segment in course.segments:
 		draw_line(project(segment[0]),project(segment[1]),Color("455043"),7,true)
 		draw_line(project(segment[0]),project(segment[1]),Color("a39a73"),3,true)

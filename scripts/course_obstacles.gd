@@ -22,6 +22,8 @@ func build(world, route: Dictionary):
 	world.material("mine_accent","934b42")
 	if route.get("field_version",0) == 1:
 		build_field(world)
+		for plan in world.field_course.landmarks:
+			barriers.append(Rect2(Vector2(plan.position.x,plan.position.z)-Vector2.ONE*plan.radius,Vector2.ONE*plan.radius*2))
 		return
 	for row in rows:
 		for i in range(9):

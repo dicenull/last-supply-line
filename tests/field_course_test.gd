@@ -97,7 +97,7 @@ func run():
 	field.movement_direction = Vector3.RIGHT
 	field.move_player(fuel_factory,0.1)
 	var road_travel = field.player.position.x
-	field.player.position = Vector3(-8,0,-22)
+	field.player.position = Vector3(-8,0,field.field_course.bounds.end.y-2)
 	field.move_player(fuel_factory,0.1)
 	check(is_equal_approx(field.player.position.x+8,road_travel*0.65),"leaving the road slows actual forward travel")
 	field.player.position = Vector3(field.field_course.bounds.position.x,0,0)

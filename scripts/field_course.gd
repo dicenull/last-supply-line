@@ -8,6 +8,11 @@ var branches: Array = []
 var destinations: Array = []
 var bounds: Rect2
 var segments: Array = []
+var connectors: Array = []
+var landmarks: Array = []
+var patches: Array = []
+var landscape = ""
+var pattern = 0
 
 func _init(route: Dictionary):
 	var rng = RandomNumberGenerator.new()
@@ -30,8 +35,40 @@ func _init(route: Dictionary):
 			site.encounter = ["rich","hostile","shop"][posmod(int(route.seed)+i,3)]
 		destinations.append(site)
 	bounds = Rect2(-12,-12.0-(count-1)*48.0-26,length+52,64.0+(count-1)*48.0)
-	for path in [trunk]+branches:
+	if route.get("landscape_version",0) == 1: vary_roads(route)
+	for path in [trunk]+branches+connectors:
 		for i in range(path.size()-1): segments.append([path[i],path[i+1]])
+	if landscape != "": preload("res://scripts/field_landscape.gd").populate(self,route)
+
+func vary_roads(route: Dictionary):
+	# A separate stream keeps old roads and encounter assignments reproducible.
+	var rng = RandomNumberGenerator.new()
+	rng.seed = int(route.seed)+4589
+	var length = float(route.length)
+	pattern = rng.randi_range(0,3)
+	landscape = ["quarry","wetland","ruins","rail_yard"][rng.randi_range(0,3)]
+	var fork = Vector3(length*rng.randf_range(0.51,0.57),0,rng.randf_range(-35,-25))
+	match pattern:
+		0: trunk = [Vector3.ZERO,Vector3(length*0.17,0,6),Vector3(length*0.34,0,-24),fork]
+		1: trunk = [Vector3.ZERO,Vector3(length*0.16,0,-22),Vector3(length*0.34,0,-38),fork]
+		2: trunk = [Vector3.ZERO,Vector3(length*0.20,0,0),Vector3(length*0.20,0,-25),Vector3(length*0.39,0,-25),fork]
+		3: trunk = [Vector3.ZERO,Vector3(length*0.14,0,8),Vector3(length*0.28,0,-22),Vector3(length*0.42,0,-14),fork]
+	for i in range(1,trunk.size()-1): trunk[i].z += rng.randf_range(-3,3)
+	for i in range(branches.size()):
+		var end: Vector3 = destinations[i].position+Vector3(rng.randf_range(0,9),0,rng.randf_range(-5,5))
+		destinations[i].position = end
+		var bend = Vector3(length*rng.randf_range(0.73,0.80),0,lerpf(fork.z,end.z,0.65)+rng.randf_range(-10,10))
+		branches[i] = [fork,bend,end,end+Vector3(8,0,0)]
+	var split: Vector3 = trunk[1]
+	var side = -1.0 if pattern == 1 else 1.0
+	var detour_z = maxf(split.z,fork.z)+46 if side > 0 else minf(split.z,fork.z)-46
+	connectors.append([split,Vector3(split.x+length*0.10,0,detour_z),Vector3(fork.x-length*0.07,0,detour_z),fork])
+	if pattern in [1,2]: connectors.append([branches[0][1],branches[1][1]])
+	for path in [trunk]+branches+connectors:
+		for point in path:
+			bounds = bounds.expand(Vector2(point.x,point.z)+Vector2(0,-24))
+			bounds = bounds.expand(Vector2(point.x,point.z)+Vector2(0,24))
+	bounds = Rect2(bounds.position-Vector2(0,16),bounds.size+Vector2(0,32))
 
 func road_distance(at: Vector3) -> float:
 	var result = INF
@@ -42,7 +79,8 @@ func road_distance(at: Vector3) -> float:
 		result = minf(result,point.distance_to(Geometry2D.get_closest_point_to_segment(point,a,b)))
 	return result
 
-func navigation_points(index: int = 0) -> Array:
+func navigation_points(index: int = 0, detour: bool = false) -> Array:
+	if detour and not connectors.is_empty(): return [trunk[1]]+connectors[0].slice(1)+branches[clampi(index,0,branches.size()-1)].slice(1)
 	return trunk.slice(1)+branches[clampi(index,0,branches.size()-1)].slice(1)
 
 func center_at(x: float) -> Vector3:
@@ -65,6 +103,8 @@ func hazard_sites() -> Array:
 			if at.distance_to(site.position+Vector3(8,0,0)) < 29: near_goal = true
 		if near_goal: continue
 		var occupied = false
+		for landmark in landmarks:
+			if at.distance_to(landmark.position) < landmark.radius+12: occupied = true
 		for other in result:
 			if at.distance_to(Vector3(other.x,0,other.z)) < 12: occupied = true
 		for fraction in [0.14,0.30,0.46]:
