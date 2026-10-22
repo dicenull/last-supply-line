@@ -24,6 +24,8 @@ func run():
 	b.sector_config = Run.new(42).current
 	# Isolate control/fuel math on open terrain; obstacle contact has its own suite.
 	b.sector_config.erase("obstacles_version")
+	b.sector_config.erase("field_version") # Isolate steering from generated field geometry.
+	b.sector_config.erase("encounters_version")
 	root.add_child(b)
 	f = Factory.new()
 	reset_pose()

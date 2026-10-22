@@ -45,7 +45,7 @@ func run():
 					var stranded_time = 0.0
 					for tick in range(2400):
 						var prior = game.battlefield.hull
-						preload("res://tests/profile_fixture.gd").drive(game,0.1)
+						Fixture.drive(game,0.1,Fixture.preferred_destination(game.battlefield,"coalfield"))
 						# Clear service heals the hull, so sample damage during travel.
 						damage += maxi(0,prior-game.battlefield.hull)
 						all_resources_valid = all_resources_valid and game.factory.reserves.scrap >= 0 and game.factory.reserves.coal >= 0
@@ -64,12 +64,8 @@ func run():
 						if id in game.expedition.reward_options:
 							pick = game.expedition.reward_options.find(id)
 							break
-					game.choose_run_option(pick)
+					preload("res://tests/profile_fixture.gd").claim_reward(game,pick)
 					if game.expedition.phase == "won": break
-					var route_index = 0
-					for i in range(game.expedition.route_options.size()):
-						if game.expedition.route_options[i].kind == "coalfield": route_index = i
-					game.choose_run_option(route_index)
 					await process_frame
 				if game.expedition.phase == "travel":
 					print("BALANCE STOP position=",game.battlefield.player.position," yaw=",game.battlefield.player.rotation.y," fuel=",game.factory.fuel," wrecks=",game.factory.wrecks)

@@ -68,6 +68,9 @@ var tool_buttons: Dictionary = {}
 var shot_glow = 0.0
 var previous_shots = 0
 var icon_buttons: Array = []
+var field_map: Control
+var field_actions: Control
+var shop_panel: Control
 var notice_time = 0.0
 var notice_bad = false
 var last_message = ""
@@ -116,6 +119,19 @@ func _ready():
 	logistics = preload("res://scripts/logistics_overlay.gd").new()
 	logistics.game = self
 	logistics_layer.add_child(logistics)
+	field_map = preload("res://scripts/field_map.gd").new()
+	field_map.icons = pixel_icons
+	field_map.state_provider = func(): return {"battle":battlefield,"visible":battle_mode and not menu.visible}
+	logistics_layer.add_child(field_map)
+	var actions_layer = CanvasLayer.new()
+	actions_layer.layer = 4
+	add_child(actions_layer)
+	field_actions = preload("res://scripts/field_actions.gd").new()
+	field_actions.icons = pixel_icons
+	field_actions.font = font
+	field_actions.state_provider = repair_state
+	field_actions.repair_requested.connect(repair_vehicle)
+	actions_layer.add_child(field_actions)
 	sound = preload("res://scripts/game_audio.gd").new()
 	sound.game = self
 	sound.enabled = audio_enabled
@@ -130,6 +146,13 @@ func _ready():
 	choice_popup.crafting_finished.connect(finish_crafting)
 	choice_layer.add_child(choice_popup)
 	choice_buttons = choice_popup.buttons
+	shop_panel = preload("res://scripts/shop_panel.gd").new()
+	shop_panel.icons = pixel_icons
+	shop_panel.font = font
+	shop_panel.state_provider = shop_state
+	shop_panel.purchase_requested.connect(buy_shop_item)
+	shop_panel.finished.connect(leave_shop)
+	choice_layer.add_child(shop_panel)
 	var menu_layer = CanvasLayer.new()
 	menu_layer.layer = 10
 	add_child(menu_layer)
@@ -147,7 +170,8 @@ func toggle_running():
 	if not started:
 		expedition.start_sector()
 		started = true
-		factory.layout_locked = true
+		factory.layout_locked = false
+		factory.combat_editing = true
 		world.playback_only = true
 		battle_mode = true
 	factory.running = not factory.running
@@ -225,8 +249,9 @@ func refresh_view():
 	world.placement_preview.visible = false
 	for entry in icon_buttons:
 		entry.button.visible = entry.icon == "menu" or ((expedition.phase in ["prepare","travel"]) and ((not battle_mode and can_manage_layout()) or entry.icon in ["battle","play"]))
-	start_button.tooltip_text = "出撃：このステージのラインを固定" if can_manage_layout() else "一時停止 / 再開（ラインは固定）"
+	start_button.tooltip_text = "出撃" if not started else "一時停止 / 再開"
 	if choice_popup != null: choice_popup.refresh()
+	if shop_panel != null: shop_panel.refresh()
 	queue_redraw()
 
 func reset_battle(seed_value: int = -1):
@@ -241,6 +266,7 @@ func reset_battle(seed_value: int = -1):
 	started = false
 	clear_movement()
 	factory.layout_locked = false
+	factory.combat_editing = false
 	world.playback_only = false
 	# An explicit seed makes restart/replay callers reproducible; UI calls use a fresh seed.
 	var next_seed = int(Time.get_unix_time_from_system()*1000000) if seed_value == -1 else seed_value
@@ -261,7 +287,7 @@ func reset_battle(seed_value: int = -1):
 	refresh_view()
 
 func live_control(icon: String, _rect: Rect2) -> bool:
-	return icon in ["play","battle","menu"]
+	return icon in ["play","battle","menu"] or (can_manage_layout() and not battle_mode)
 
 func tool_kinds() -> Array:
 	return ["belt","furnace","press","splitter","depot","erase","refinery"] if tool_page == 0 else ["smart_splitter","priority_splitter","router","overflow_gate","scrap_filter","shell_filter","fuel_filter"] if tool_page == 1 else ["blast_furnace","auto_press","fuel_depot","armor_block","splitter","erase","refinery"]
@@ -282,7 +308,7 @@ func cycle_tools():
 	queue_redraw()
 
 func set_difficulty(mode: String) -> bool:
-	if mode not in RunState.Content.DIFFICULTIES or not can_manage_layout() or expedition.sector != 1: return false
+	if started or mode not in RunState.Content.DIFFICULTIES or not can_manage_layout() or expedition.sector != 1: return false
 	if mode == expedition.difficulty: return true
 	expedition = RunState.new(expedition.run_seed,mode)
 	factory.remove_auxiliary()
@@ -298,7 +324,7 @@ func set_difficulty(mode: String) -> bool:
 	return true
 
 func can_manage_layout() -> bool:
-	return not started and expedition.phase == "prepare"
+	return expedition.phase in ["prepare","travel"]
 
 func clear_movement():
 	movement_keys.clear()
@@ -396,11 +422,13 @@ func _process(delta):
 			if kind == "armor_block": tool_buttons[kind].tooltip_text += "\n"+RunState.Content.BASIC_BLOCKS[kind].effect
 	if started: battlefield.tick_battle(factory,minf(delta,0.1))
 	if started and battlefield.result != 0 and expedition.phase == "travel":
+		factory.combat_editing = false
+		factory.layout_locked = battlefield.result < 0
 		# Restore occupied cells before drafting equipment so wrecks cannot
 		# masquerade as spare mounting space.
 		if battlefield.result == 1 and battlefield.hull > 0:
 			factory.repair_line()
-		expedition.finish_sector(battlefield.result == 1,battlefield.hull,factory.inventory,has_mount_space())
+		expedition.finish_sector(battlefield.result == 1,battlefield.hull,factory.inventory,has_mount_space(),battlefield.arrived_destination if battlefield.arrived_destination >= 0 else 0)
 		clear_movement()
 		if battlefield.result == 1 and expedition.phase != "lost":
 			factory.layout_locked = false
@@ -411,7 +439,8 @@ func _process(delta):
 			battlefield.feedback_effect("reward",battlefield.player.position+Vector3(0,5,0),2.0)
 			sound.play_effect("reward")
 		record_result()
-		battle_mode = true
+		if expedition.phase == "prepare": prepare_next_sector()
+		else: battle_mode = true
 		refresh_view()
 	if not battle_mode:
 		world.sync(factory,hover,selected,direction,delta,can_manage_layout() and not menu.visible and not choice_popup.visible and dragging_auxiliary == "")
@@ -432,6 +461,7 @@ func _process(delta):
 	logistics.sync(delta)
 	battle_retry.visible = battle_mode and expedition.phase in ["won","lost","retreated"]
 	choice_popup.refresh()
+	shop_panel.refresh()
 	queue_redraw()
 
 func present_feedback(delta: float):
@@ -505,7 +535,7 @@ func _unhandled_input(event):
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_B:
 		toggle_battle()
 		return
-	if expedition.phase == "travel":
+	if expedition.phase == "travel" and battle_mode:
 		if event is InputEventKey and event.pressed and not event.echo:
 			if event.keycode == KEY_SPACE: toggle_running()
 			if event.keycode == KEY_TAB and not battle_mode: world.toggle_roof()
@@ -521,15 +551,19 @@ func _unhandled_input(event):
 			KEY_SPACE: toggle_running()
 			KEY_TAB: world.toggle_roof()
 			KEY_LEFT:
+				if started: return
 				world.yaw -= 0.12
 				world.update_camera()
 			KEY_RIGHT:
+				if started: return
 				world.yaw += 0.12
 				world.update_camera()
 			KEY_UP:
+				if started: return
 				world.pitch = clampf(world.pitch+0.08,0.65,1.35)
 				world.update_camera()
 			KEY_DOWN:
+				if started: return
 				world.pitch = clampf(world.pitch-0.08,0.65,1.35)
 				world.update_camera()
 			KEY_R: direction = (direction+1)%4
@@ -538,7 +572,7 @@ func _unhandled_input(event):
 				factory.rotate(hover)
 				if started: factory.running = was_running
 			KEY_Z:
-				if not started: factory.undo()
+				factory.undo()
 			KEY_1: selected = "belt"
 			KEY_2: selected = "furnace"
 			KEY_3: selected = "press"
@@ -635,7 +669,7 @@ func draw_control(entry: Dictionary):
 	if primary: center.x = rect.position.x+104
 	if entry.key != "": center.x += 10
 	symbol(icon,center,minf(1.05 if entry.icon in tool_buttons else 0.82,(rect.size.y-4)/44.0))
-	if primary: text_at("出撃" if can_manage_layout() else "停止" if factory.running else "再開",rect.position+Vector2(160,34),20,INK)
+	if primary: text_at("出撃" if not started else "停止" if factory.running else "再開",rect.position+Vector2(160,34),20,INK)
 	if entry.key != "": keycap(entry.key,rect.position+Vector2(5,5))
 	if Factory.LIMITS.has(entry.icon):
 		var remaining = factory.available(entry.icon)
@@ -648,10 +682,10 @@ func _draw():
 	metal_panel(footer_rect())
 	for entry in icon_buttons:
 		if entry.button.visible: draw_control(entry)
-	if expedition.phase == "travel":
+	if expedition.phase == "travel" and battle_mode:
 		text_at("W 前進   S 後退   A/D 旋回",Vector2(40,895),20,INK)
-		symbol("lock",Vector2(445,888),0.65)
-		text_at("ライン固定",Vector2(470,895),20,MUTED)
+		symbol("belt",Vector2(445,888),0.65)
+		text_at("B 車内で編集",Vector2(470,895),20,MUTED)
 	if battle_retry.visible:
 		symbol("reset",battle_retry.get_rect().get_center()+Vector2(12,0),1.0)
 		keycap("R",battle_retry.position+Vector2(12,12))
@@ -739,7 +773,7 @@ func draw_inspector():
 	symbol(factory.diagnostic(hover).code,Vector2(240,42),0.6)
 
 func can_apply_blueprint() -> bool:
-	return expedition.phase == "prepare" and expedition.sector == 1 and not started
+	return can_manage_layout()
 
 func apply_blueprint(id: String) -> bool:
 	if not can_apply_blueprint() or id not in history.unlocked or id not in Blueprints.IDS: return false
@@ -767,6 +801,8 @@ func retreat_run():
 	if quitting: return
 	sound.stop_all()
 	if not expedition.retreat(): return
+	factory.layout_locked = true
+	factory.combat_editing = false
 	record_result()
 	factory.running = false
 	ensure_battle()
@@ -826,18 +862,25 @@ func choose_run_option(index: int):
 			factory.reserve_capacity = expedition.modifiers.get("cargo",100)
 			if battlefield != null: battlefield.reload_multiplier = expedition.modifiers.get("reload",1.0)
 			record_result()
+		if expedition.phase == "prepare": prepare_next_sector()
 	elif expedition.phase == "route":
 		if expedition.choose_route(index):
-			new_blueprints.clear()
-			release_battle()
-			started = false
-			factory.layout_locked = false
-			world.playback_only = false
-			clear_movement()
-			factory.running = false
-			ensure_battle()
-			battle_mode = false
+			prepare_next_sector()
 	refresh_view()
+
+func prepare_next_sector():
+	new_blueprints.clear()
+	last_paint = Vector2i(-1,-1)
+	release_battle()
+	started = false
+	factory.layout_locked = false
+	# Carried cargo also survives layout changes between battles.
+	factory.combat_editing = true
+	world.playback_only = false
+	clear_movement()
+	factory.running = false
+	ensure_battle()
+	battle_mode = false
 
 func open_menu(title: bool = false):
 	dragging_auxiliary = ""
@@ -922,3 +965,57 @@ func finish_quit():
 	# Release playback nodes while the audio thread still runs, before engine shutdown.
 	await get_tree().create_timer(0.08).timeout
 	get_tree().quit()
+
+func repair_state() -> Dictionary:
+	var hull = battlefield.hull if battlefield != null else expedition.hull
+	var cost = RunState.Services.repair_cost(factory,hull)
+	var active = can_manage_layout() and hull > 0
+	return {"visible":active and cost > 0 and menu != null and not menu.visible,"allowed":active and cost > 0 and factory.reserves.scrap >= cost,"cost":cost}
+
+func repair_vehicle() -> bool:
+	if menu.visible or not repair_state().allowed: return false
+	var cost = int(repair_state().cost)
+	factory.reserves.scrap -= cost
+	factory.repair_line()
+	expedition.hull = 100
+	if battlefield != null: battlefield.hull = 100
+	sync_equipment()
+	field_actions.refresh()
+	return true
+
+func can_buy_shop(index: int) -> bool:
+	if expedition.phase != "shop": return false
+	var offers: Array = expedition.current.shop_offers
+	if index < 0 or index >= offers.size() or expedition.current.shop_purchased[index]: return false
+	var id: String = offers[index]
+	if factory.reserves.scrap < RunState.Services.price(id): return false
+	if id == "shell": return factory.ammo < factory.ammo_capacity
+	return id == "coal" or can_claim_reward(id)
+
+func shop_state() -> Dictionary:
+	if expedition.phase != "shop": return {"visible":false}
+	var allowed = []
+	for i in range(expedition.current.shop_offers.size()): allowed.append(can_buy_shop(i))
+	return {"visible":true,"offers":expedition.current.shop_offers,"purchased":expedition.current.shop_purchased,"allowed":allowed,"scrap":factory.reserves.scrap}
+
+func buy_shop_item(index: int) -> bool:
+	if menu.visible or not can_buy_shop(index): return false
+	var id: String = expedition.current.shop_offers[index]
+	if id.begins_with("gear:"):
+		var gear = id.trim_prefix("gear:")
+		if Factory.AUXILIARY.has(gear) and not factory.install_auxiliary(gear): return false
+		if gear not in expedition.recipes: expedition.recipes.append(gear)
+		expedition.equipment.append(gear)
+	elif id == "coal": factory.collect("coal",RunState.Services.COAL_AMOUNT)
+	elif id == "shell": factory.ammo = mini(factory.ammo_capacity,factory.ammo+RunState.Services.SHELL_AMOUNT)
+	factory.reserves.scrap -= RunState.Services.price(id)
+	expedition.current.shop_purchased[index] = true
+	sync_equipment()
+	shop_panel.refresh()
+	return true
+
+func leave_shop():
+	if menu.visible or not expedition.finish_shopping(): return
+	if expedition.phase == "prepare": prepare_next_sector()
+	record_result()
+	refresh_view()

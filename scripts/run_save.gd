@@ -165,7 +165,8 @@ func apply(game, data: Dictionary) -> bool:
 	game.expedition = restored_run
 	game.started = data.started
 	game.clear_movement()
-	restored_factory.layout_locked = data.started and data.run.phase in ["travel","lost","retreated"]
+	restored_factory.layout_locked = data.run.phase in ["lost","retreated","won"]
+	restored_factory.combat_editing = data.run.phase == "travel" or (data.run.phase == "prepare" and data.run.sector > 1)
 	game.battle_mode = data.battle_mode
 	game.world.playback_only = data.started
 	game.world.rendered_layout = ""
@@ -190,6 +191,9 @@ func apply(game, data: Dictionary) -> bool:
 func apply_battle(b, state: Dictionary):
 	for key in BATTLE_FIELDS: b.set(key,state[key])
 	b.player.transform = state.player
+	if b.result == 1:
+		for i in range(b.goals.size()):
+			if b.goals[i].contains_position(b.player.position): b.arrived_destination = i
 	b.turret.rotation.y = state.turret
 	b.barrel.position.x = b.BARREL_REST-b.recoil
 	b.muzzle.visible = b.shot_time > 0

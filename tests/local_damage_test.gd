@@ -88,8 +88,8 @@ func run():
 	check(not f.cells.has(second) and f.wrecks.has(second) and b.hull == 80 and b.bolts.is_empty(),"normal enemy projectile impact invokes local destruction exactly once")
 	check(b.damage_layer.get_child_count() == 10,"each destroyed cell has visible wreckage on vehicle")
 	var saved = game.checkpoint.snapshot(game)
-	check(saved.version == 7 and game.checkpoint.validate(saved) and saved.factory.wreck_directions[cell] == 3,"destroyed factory saves original orientation in version-seven checkpoint")
-	check(game.checkpoint.apply(game,saved) and game.factory.wrecks == saved.factory.wrecks and not game.factory.cells.has(cell) and game.factory.layout_locked,"loading preserves destruction and combat lock without resurrecting machinery")
+	check(saved.version == 9 and game.checkpoint.validate(saved) and saved.factory.wreck_directions[cell] == 3,"destroyed factory saves original orientation in version-nine checkpoint")
+	check(game.checkpoint.apply(game,saved) and game.factory.wrecks == saved.factory.wrecks and not game.factory.cells.has(cell) and not game.factory.layout_locked and game.factory.combat_editing,"loading preserves destruction and live editing without resurrecting machinery")
 	game.toggle_battle()
 	game._process(0)
 	game.hover = cell
@@ -123,6 +123,8 @@ func run():
 	var kept = f.cells[Vector2i(2,2)].duplicate(true)
 	var ammo_before = f.ammo
 	var fuel_before = f.fuel
+	game.battlefield.player.position = game.battlefield.goals[0].position+Vector3(2,0,0)
+	game.battlefield.arrived_destination = 0
 	game.battlefield.result = 1
 	game._process(0)
 	check(game.expedition.phase == "reward" and not f.layout_locked and f.wrecks.is_empty() and f.wreck_directions.is_empty(),"stage clear repairs every destroyed cell and releases construction lock")
@@ -135,8 +137,8 @@ func run():
 	game._process(0)
 	check(f.layout() == repaired_layout and f.reserves == {"scrap":0,"coal":0},"clear repair is not repeated while choosing rewards")
 	check(game.checkpoint.validate(game.checkpoint.snapshot(game)),"repaired reward screen is saveable")
-	game.choose_run_option(0)
-	game.choose_run_option(0)
+	preload("res://tests/profile_fixture.gd").claim_reward(game,0)
+	preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 	check(f.cells.has(cell) and f.cells[cell].dir == 3 and f.reserves == {"scrap":0,"coal":0},"next-stage construction starts with the repaired line at no material cost")
 	check(game.checkpoint.validate(game.checkpoint.snapshot(game)),"repaired next-stage state remains saveable")
 	game.checkpoint.apply(game,saved)
@@ -158,6 +160,8 @@ func run():
 	game.toggle_running()
 	f.damage_at(local_position(cell))
 	check(game.has_mount_space(),"destroyed full-layout cell temporarily appears vacant")
+	game.battlefield.player.position = game.battlefield.goals[0].position+Vector3(2,0,0)
+	game.battlefield.arrived_destination = 0
 	game.battlefield.result = 1
 	game._process(0)
 	check(not game.has_mount_space() and game.expedition.reward_options.all(func(id): return id.trim_prefix("gear:") not in Factory.AUXILIARY),"repair occurs before reward draft so restored cells cannot be offered as free mounts")

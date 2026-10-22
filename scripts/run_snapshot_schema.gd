@@ -2,7 +2,7 @@ extends RefCounted
 ## Data-only checkpoint contract. No file IO, scene creation, or live-state mutation.
 const Factory = preload("res://scripts/factory.gd")
 const RunState = preload("res://scripts/run_state.gd")
-const VERSION = 7
+const VERSION = 9
 const FIELDS = ["cells","clock","elapsed","ticks","fuel","fuel_used","ammo","rate","fire_clock","shots","supplied","injected","manufactured","missed","history","moves","completed","undo_stack","reserves","collected","reserve_capacity","work_multiplier","ammo_capacity"]
 const RUN_FIELDS = ["run_seed","sector","phase","hull","cleared","rewards_taken","modifiers","route_options","reward_options","current"]
 const CRAFT_FIELDS = ["recipes","equipment","stage_recipes"]
@@ -39,16 +39,32 @@ func valid_route(route) -> bool:
 	if route.get("terrain","road") not in RunState.CONDITIONS or route.get("formation","patrol") not in RunState.FORMATIONS: return false
 	if not route.get("combat_version",1) is int or route.get("combat_version",1) not in [1,2,3]: return false
 	if route.get("combat_version",1) == 3 or route.has("enemies"):
-		if route.get("difficulty","") not in RunState.Content.DIFFICULTIES or not route.get("enemies") is Array or route.enemies.size() < 6 or route.enemies.size() > 30: return false
+		if route.get("difficulty","") not in RunState.Content.DIFFICULTIES or not route.get("enemies") is Array or route.enemies.size() < 6 or route.enemies.size() > 36: return false
 		for role in route.enemies:
 			if not role is int or role < 0 or role >= RunState.Content.ENEMIES.size(): return false
 		if route.get("wave_size",0) not in [2,3,4,5] or not numeric(route.get("wave_delay"),10,40) or not numeric(route.get("warning_scale"),0.5,2): return false
 	if not route.get("obstacles_version",0) is int or route.get("obstacles_version",0) not in [0,1]: return false
-	return route.kind in RunState.ROUTES and route.seed is int and numeric(route.sector,1,5) and numeric(route.length,80,200) and numeric(route.scrap,0,100) and numeric(route.coal,0,100) and numeric(route.shells,0,100) and numeric(route.enemy_hp,1,10) and numeric(route.damage,1,100) and numeric(route.attack_period,1,30) and route.boss is bool and route.opening is bool
+	if not route.get("field_version",0) is int or route.get("field_version",0) not in [0,1]: return false
+	if route.get("field_version",0) == 1:
+		if not route.get("destination_count") is int or route.destination_count not in [2,3]: return false
+		if not route.get("destination_index") is int or not numeric(route.destination_index,-1,route.destination_count-1): return false
+	if not route.get("encounters_version",0) is int or route.get("encounters_version",0) not in [0,1]: return false
+	if route.get("encounters_version",0) == 1:
+		if route.get("encounter") not in RunState.Services.ENCOUNTERS or route.get("field_version",0) != 1: return false
+	if not route.get("shop_done",false) is bool: return false
+	if route.has("shop_offers") or route.has("shop_purchased"):
+		var offers = route.get("shop_offers")
+		var purchased = route.get("shop_purchased")
+		if not offers is Array or offers.size() not in [2,3] or not purchased is Array or purchased.size() != offers.size(): return false
+		if offers[0] != "coal" or offers[1] != "shell": return false
+		if offers.size() == 3 and (not offers[2] is String or not offers[2].begins_with("gear:") or offers[2].trim_prefix("gear:") not in RunState.EQUIPMENT): return false
+		for taken in purchased:
+			if not taken is bool: return false
+	return route.kind in RunState.ROUTES and route.seed is int and numeric(route.sector,1,5) and numeric(route.length,80,200) and numeric(route.scrap,0,200) and numeric(route.coal,0,200) and numeric(route.shells,0,100) and numeric(route.enemy_hp,1,10) and numeric(route.damage,1,100) and numeric(route.attack_period,1,30) and route.boss is bool and route.opening is bool
 
 func validate(data) -> bool:
 	if not data is Dictionary or not safe_value(data) or not data.has_all(["version","factory","run","rng_state","started","battle_mode","view","battle"]): return invalid("validation_1")
-	if data.version not in [1,2,3,4,5,6,VERSION] or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
+	if data.version not in [1,2,3,4,5,6,7,8,VERSION] or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
 	var f = data.factory
 	var r = data.run
 	if not f is Dictionary or not f.has_all(FIELDS) or not r is Dictionary or not r.has_all(RUN_FIELDS): return invalid("validation_5")
@@ -62,7 +78,7 @@ func validate(data) -> bool:
 		for kind in f.inventory:
 			if not Factory.LIMITS.has(kind): return invalid("inventory_kind")
 	if r.get("difficulty","normal") not in RunState.Content.DIFFICULTIES: return invalid("difficulty")
-	if r.phase not in ["prepare","travel","craft","reward","route","won","lost","retreated"] or not valid_route(r.current): return invalid("validation_7")
+	if r.phase not in ["prepare","travel","craft","reward","route","shop","won","lost","retreated"] or not valid_route(r.current): return invalid("validation_7")
 	for key in CRAFT_FIELDS:
 		var ids = r.get(key,[])
 		if not ids is Array or ids.size() > RunState.EQUIPMENT.size(): return invalid("craft_ids")
@@ -71,6 +87,9 @@ func validate(data) -> bool:
 			if not id is String or not RunState.EQUIPMENT.has(id) or id in seen: return invalid("craft_id")
 			if key != "recipes" and id not in r.get("recipes",[]): return invalid("craft_locked")
 			seen.append(id)
+	if r.phase == "shop":
+		if r.cleared != r.sector or not r.current.has("shop_offers") or r.current.get("shop_done",false) or r.current.get("encounters_version",0) != 1 or r.current.get("destination_index",-1) < 0: return invalid("shop_state")
+		if RunState.FieldCourse.new(r.current).destinations[r.current.destination_index].get("encounter","") != "shop": return invalid("shop_destination")
 	if r.phase == "craft" and r.cleared != r.sector: return invalid("craft_clear")
 	if not r.modifiers is Dictionary or not r.modifiers.has_all(["work","fuel","magazine"]): return invalid("validation_8")
 	if not numeric(r.modifiers.work,0.4,1) or not numeric(r.modifiers.fuel,0.4,1) or not numeric(r.modifiers.magazine,12,28): return invalid("validation_9")
@@ -95,7 +114,7 @@ func validate(data) -> bool:
 	for key in ["sector","hull","cleared","rewards_taken"]:
 		if not r[key] is int: return invalid("run_integer")
 	if r.phase == "prepare" and data.started: return invalid("phase")
-	if r.phase in ["travel","craft","reward","route","won","lost"] and not data.started: return invalid("phase")
+	if r.phase in ["travel","craft","reward","route","shop","won","lost"] and not data.started: return invalid("phase")
 	for key in ["ticks","ammo","rate","shots","supplied","injected","manufactured","missed","ammo_capacity","reserve_capacity"]:
 		if not f[key] is int: return invalid("factory_integer")
 	if not f.cells is Dictionary or f.cells.size() > 112 or not f.reserves is Dictionary or not f.collected is Dictionary: return invalid("validation_16")
@@ -178,7 +197,13 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 		if not numeric(b[key],-100000,1e9): return invalid("validation_56")
 	var count = RunState.enemy_count(run.current)
 	if b.hull < 0 or b.hull > 100 or b.kills < 0 or b.kills > count or b.result not in [-1,0,1]: return invalid("validation_57")
-	if run.phase == "craft" and b.result != 1: return invalid("craft_battle")
+	if run.current.get("field_version",0) == 1 and b.result == 1:
+		var selected = int(run.current.destination_index)
+		if selected < 0 or not b.player is Transform3D: return invalid("field_destination")
+		var course = RunState.FieldCourse.new(run.current)
+		var local: Vector3 = b.player.origin-course.destinations[selected].position
+		if local.x < 0 or local.x > 16 or absf(local.z) > 8: return invalid("field_arrival")
+	if run.phase in ["craft","shop"] and b.result != 1: return invalid("craft_battle")
 	var gun_ids = []
 	for id in RunState.Content.GUNS:
 		if id in run.get("equipment",[]): gun_ids.append(id)

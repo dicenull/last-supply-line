@@ -106,8 +106,9 @@ func run():
 	game._process(0)
 	game.toggle_running()
 	game.toggle_battle()
+	game.hover = cell
 	game._process(0)
-	check(not world.placement_preview.visible and f.layout_locked,"combat inspection cannot show a construction preview")
+	check(world.placement_preview.visible and not f.layout_locked,"combat interior shows a construction preview")
 	print("PLACEMENT PREVIEW RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
 func _finalize(): Fixture.clean("placement_preview_test")

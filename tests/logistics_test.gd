@@ -143,6 +143,6 @@ func run():
 	e.pressed = false
 	Input.parse_input_event(e)
 	await process_frame
-	check(not game.factory.cells.has(target) and game.factory.running,"overlay cannot bypass combat construction lock")
+	check(game.factory.cells.has(target) and game.factory.running,"overlay allows live placement while combat keeps running")
 	print("LOGISTICS RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)

@@ -32,6 +32,8 @@ func run():
 			game.expedition.sector = stage
 			game.expedition.cleared = stage-1
 			game.expedition.current = game.expedition.make_route(kind)
+			game.expedition.current.erase("field_version") # Legacy straight-yard checkpoint coverage.
+			game.expedition.current.erase("encounters_version")
 			root.add_child(game)
 			game.set_process(false)
 			game.toggle_battle()

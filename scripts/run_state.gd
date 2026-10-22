@@ -1,5 +1,7 @@
 extends RefCounted
 ## Seeded five-sector expedition. No rendering or file IO.
+const Services = preload("res://scripts/field_services.gd")
+const FieldCourse = preload("res://scripts/field_course.gd")
 const SECTORS = 5
 const ROUTES = ["scrapyard","coalfield","arsenal"]
 const Content = preload("res://scripts/content.gd")
@@ -50,12 +52,12 @@ func _init(value: int = 1, mode: String = "normal"):
 	rng.seed = value
 	current = make_route("scrapyard",true)
 
-func make_route(kind: String, opening: bool = false) -> Dictionary:
+func make_route(kind: String, opening: bool = false, encounter: String = "standard") -> Dictionary:
 	var scrap = 36 if kind == "scrapyard" else 18
 	var coal = 30 if kind == "coalfield" else 16
 	var length = 110.0+(sector-1)*14.0
-	# Cover the added track travel and pivoting without removing route fuel choices.
-	coal += preload("res://scripts/course_obstacles.gd").layout({"obstacles_version":1,"length":length}).size()*6
+	# Reserve coal for winding-road travel and stationary turns.
+	coal += ceili((length-56.0)/36.0)*6
 	if kind == "arsenal": scrap = 26
 	var settings = Content.DIFFICULTIES[difficulty]
 	scrap = int(round(scrap*settings.salvage))
@@ -66,8 +68,16 @@ func make_route(kind: String, opening: bool = false) -> Dictionary:
 	var terrain = "road" if opening else CONDITIONS.keys()[local_rng.randi_range(0,2)]
 	var formation = "patrol" if opening else FORMATIONS.keys()[local_rng.randi_range(0,2)]
 	var roster = make_roster(kind,local_rng)
+	if encounter == "rich":
+		scrap *= 2
+		coal *= 2
+	elif encounter == "hostile":
+		for i in range(6): roster.append(roster[i%roster.size()])
+		scrap += 18
+		coal += 12
 	return {"kind":kind,"difficulty":difficulty,"enemies":roster,"wave_size":3 if difficulty == "easy" else 5 if difficulty == "hard" else 4,"wave_delay":18.0*settings.period,"warning_scale":settings.warning,"seed":route_seed,"terrain":terrain,"formation":formation,"sector":sector,"length":length,
 		"scrap":scrap,"coal":coal,"shells":12 if kind == "arsenal" else 0,"enemy_hp":1,"combat_version":3,"obstacles_version":1,
+		"encounters_version":1,"encounter":encounter,"field_version":1,"destination_count":int(modifiers.get("routes",2)),"destination_index":-1,
 		"damage":int(round((10+(sector-1)*2)*settings.damage)),"attack_period":maxf(4,8-(sector-1)*0.5)*settings.period,
 		"boss":sector == SECTORS,"opening":opening}
 
@@ -112,8 +122,11 @@ func craft(id: String, reserves: Dictionary) -> bool:
 	equipment.append(id)
 	return true
 
-func finish_sector(won: bool, remaining_hull: int, inventory: Dictionary = {}, mount_space: bool = true) -> bool:
+func finish_sector(won: bool, remaining_hull: int, inventory: Dictionary = {}, mount_space: bool = true, destination_index: int = 0) -> bool:
 	if phase != "travel": return false
+	if won and remaining_hull > 0 and current.get("field_version",0) == 1:
+		if destination_index < 0 or destination_index >= current.destination_count: return false
+		current.destination_index = destination_index
 	hull = clampi(remaining_hull,0,100)
 	if not won or hull == 0:
 		phase = "lost"
@@ -172,15 +185,38 @@ func choose_reward(index: int) -> bool:
 	return true
 
 func advance_after_reward():
+	if current.get("encounters_version",0) == 1 and not current.get("shop_done",false):
+		var site = FieldCourse.new(current).destinations[maxi(0,int(current.destination_index))]
+		if site.get("encounter","") == "shop":
+			phase = "shop"
+			var pool = reward_pool()
+			current.shop_offers = ["coal","shell"]
+			if not pool.is_empty(): current.shop_offers.append(pool[rng.randi_range(0,pool.size()-1)])
+			current.shop_purchased = []
+			for offer in current.shop_offers: current.shop_purchased.append(false)
+			return
 	if sector == SECTORS:
 		phase = "won"
 		return
 	sector += 1
+	if current.get("field_version",0) == 1:
+		var course = FieldCourse.new(current)
+		var index = int(current.get("destination_index",0))
+		var site = course.destinations[maxi(0,index)]
+		current = make_route(site.kind,false,site.get("encounter","standard"))
+		phase = "prepare"
+		return
 	var first = rng.randi_range(0,2)
 	var second = (first+rng.randi_range(1,2))%3
 	route_options = [make_route(ROUTES[first]),make_route(ROUTES[second])]
 	if modifiers.get("routes",2) == 3: route_options.append(make_route(ROUTES[3-first-second]))
 	phase = "route"
+
+func finish_shopping() -> bool:
+	if phase != "shop": return false
+	current.shop_done = true
+	advance_after_reward()
+	return true
 
 func choose_route(index: int) -> bool:
 	if phase != "route" or index < 0 or index >= route_options.size(): return false

@@ -103,10 +103,10 @@ func run():
 		game.expedition.sector = 1
 		game.expedition.route_options.clear()
 		game.expedition.reward_options = ["gear:"+id,"block:belt","block:press"]
-		game.choose_run_option(0)
+		preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 	check(game.factory.auxiliary_ids == ["left_gun","right_gun"],"item awards create both independent outputs")
 	check(game.factory.auxiliary_ammo("left_gun") == 0 and game.factory.auxiliary_ammo("right_gun") == 0,"new gun outputs start empty")
-	game.choose_run_option(0)
+	preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 	game._process(0)
 	var stock = game.factory.ammo
 	var original = game.factory.auxiliary_position("left_gun")
@@ -136,13 +136,13 @@ func run():
 	game.toggle_battle()
 	game.battlefield.auxiliary_guns[0].cooldown = 1.2
 	await drag(cell_screen(Vector2i(8,6)),cell_screen(Vector2i(7,6)))
-	check(game.factory.running and game.factory.auxiliary_position("left_gun") == Vector2i(8,6) and game.factory.auxiliary_ammo("left_gun") == 2 and game.battlefield.auxiliary_guns[0].cooldown == 1.2,"in-travel dragging is rejected while ammunition cooldown and playback are preserved")
+	check(game.factory.running and game.factory.auxiliary_position("left_gun") == Vector2i(7,6) and game.factory.auxiliary_ammo("left_gun") == 2 and game.battlefield.auxiliary_guns[0].cooldown == 1.2,"in-travel dragging moves the output while ammunition cooldown and playback are preserved")
 	game.factory.running = false
 	var codec = game.checkpoint
 	var saved = codec.snapshot(game)
 	check(codec.write_file(PATH,saved) and codec.apply(game,codec.read_file(PATH)),"dedicated output positions and ammunition round-trip through disk")
-	check(game.factory.auxiliary_position("left_gun") == Vector2i(8,6) and game.factory.auxiliary_ammo("left_gun") == 2 and game.factory.ammo == stock,"restored magazines remain separate with their original contents")
-	at = game.world.cell_position(Vector2i(8,6))
+	check(game.factory.auxiliary_position("left_gun") == Vector2i(7,6) and game.factory.auxiliary_ammo("left_gun") == 2 and game.factory.ammo == stock,"restored magazines remain separate with their original contents")
+	at = game.world.cell_position(Vector2i(7,6))
 	check(game.battlefield.auxiliary_guns[0].pivot.position.is_equal_approx(Vector3(at.x,3.2,at.z)),"saved position drives restored battle mount")
 	var legacy = saved.duplicate(true)
 	legacy.version = 1
@@ -151,17 +151,17 @@ func run():
 		if Factory.AUXILIARY.has(legacy.factory.cells[p].kind): legacy.factory.cells.erase(p)
 	check(codec.apply(game,legacy) and game.factory.auxiliary_ids.size() == 2 and game.factory.ammo == stock and game.factory.auxiliary_ammo("left_gun") == 0,"legacy shared-ammo save gains empty dedicated outputs without duplicating ammunition")
 	var invalid = saved.duplicate(true)
-	invalid.factory.cells.erase(Vector2i(8,6))
+	invalid.factory.cells.erase(Vector2i(7,6))
 	check(not codec.validate(invalid),"new saves cannot omit a crafted gun's output cell")
 	invalid = saved.duplicate(true)
-	invalid.factory.cells[Vector2i(8,6)].items = ["fuel"]
+	invalid.factory.cells[Vector2i(7,6)].items = ["fuel"]
 	check(not codec.validate(invalid),"save rejects non-shell cargo in auxiliary magazine")
 	invalid = saved.duplicate(true)
-	invalid.factory.cells[Vector2i(8,6)].items.resize(saved.factory.ammo_capacity+1)
-	invalid.factory.cells[Vector2i(8,6)].items.fill("shell")
+	invalid.factory.cells[Vector2i(7,6)].items.resize(saved.factory.ammo_capacity+1)
+	invalid.factory.cells[Vector2i(7,6)].items.fill("shell")
 	check(not codec.validate(invalid),"save rejects over-capacity auxiliary magazines")
 	invalid = saved.duplicate(true)
-	invalid.factory.cells[Vector2i(8,0)] = invalid.factory.cells[Vector2i(8,6)].duplicate(true)
+	invalid.factory.cells[Vector2i(8,0)] = invalid.factory.cells[Vector2i(7,6)].duplicate(true)
 	check(not codec.validate(invalid),"save rejects duplicate outputs for the same weapon")
 	game.reset_battle()
 	check(game.factory.auxiliary_ids.is_empty() and game.factory.count_kind("left_gun") == 0,"new run removes output cells with their equipment")
@@ -175,7 +175,7 @@ func run():
 			if not game.factory.cells.has(p): game.factory.cells[p] = game.factory.make_cell("belt",0)
 	var resources = game.factory.reserves.duplicate()
 	game.expedition.reward_options = ["gear:left_gun","block:belt","gear:armor"]
-	game.choose_run_option(0)
+	preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 	check(not game.can_claim_reward("gear:left_gun") and game.factory.reserves == resources and game.expedition.equipment.is_empty(),"full deck prevents claiming an unplaceable weapon without losing the reward")
 	game.choice_popup.refresh()
 	check(game.choice_buttons[0].disabled,"full deck disables unplaceable weapon reward")

@@ -39,6 +39,8 @@ func run():
 	game.show_start_menu = false
 	# Exercise keys at fixed poses without placing those fixtures inside a barricade.
 	game.expedition.current.erase("obstacles_version")
+	game.expedition.current.erase("field_version") # Isolate steering from generated field geometry.
+	game.expedition.current.erase("encounters_version")
 	root.add_child(game)
 	game.set_process(false)
 	await process_frame
@@ -52,7 +54,7 @@ func run():
 	await tap(KEY_SPACE)
 	var f = game.factory
 	var b = game.battlefield
-	check(game.expedition.phase == "travel" and f.layout_locked and game.battle_mode,"departure enters combat and locks the line")
+	check(game.expedition.phase == "travel" and not f.layout_locked and game.battle_mode,"departure enters combat with editable line")
 	check(not game.tool_buttons.belt.visible and game.start_button.visible,"combat hides construction tools and retains pause")
 	f.fuel = 12
 	var before = b.player.position
@@ -110,13 +112,14 @@ func run():
 	await click_cell(Vector2i(13,7))
 	await click_cell(Vector2i(1,2),MOUSE_BUTTON_RIGHT)
 	await tap(KEY_Q)
-	check(f.layout() == layout and not game.world.marker.visible,"interior inspection blocks real placement removal rotation and placement ghost")
+	check(f.layout() != layout and not f.layout_locked,"interior permits real placement removal and rotation")
 	f.edit(Vector2i(13,7),"belt",0)
 	f.rotate(Vector2i(1,2))
 	f.clear_layout()
 	f.undo()
-	check(not f.restore([]) and not f.move_auxiliary("left_gun",Vector2i(11,0)) and f.layout() == layout,"factory lock rejects all underlying layout mutation paths")
-	check(not game.move_auxiliary("left_gun",Vector2i(11,0)),"combat rejects auxiliary relocation")
+	check(f.restore(layout),"live layout restore remains available")
+	check(game.move_auxiliary("left_gun",Vector2i(11,0)),"combat permits auxiliary relocation")
+	f.restore(layout)
 	await key(KEY_D)
 	before = b.player.position
 	var prior_yaw = b.player.rotation.y
@@ -126,7 +129,7 @@ func run():
 	before = b.player.position
 	game.paint(Vector2i(13,7),false)
 	game._process(0.1)
-	check(not f.running and b.player.position == before and f.layout() == layout and f.layout_locked,"pause freezes combat without unlocking construction")
+	check(not f.running and b.player.position == before and f.layout() != layout and not f.layout_locked,"pause freezes combat while allowing construction")
 	await key(KEY_D,false)
 	await tap(KEY_SPACE)
 	game._process(0.1)
@@ -134,7 +137,8 @@ func run():
 	await key(KEY_D)
 	await tap(KEY_ESCAPE)
 	game.menu.layout_action("erase")
-	check(game.menu.visible and f.layout_locked and f.layout() == layout,"Esc menu cannot bypass the stage lock")
+	check(game.menu.visible and not f.layout_locked and f.layout() != layout,"Esc menu allows live layout management")
+	f.restore(layout)
 	await key(KEY_D,false)
 	await tap(KEY_ESCAPE)
 	game._process(0.1)
@@ -151,7 +155,7 @@ func run():
 	check(game.checkpoint.apply(game,saved),"manual position and orientation checkpoint validates and restores")
 	b = game.battlefield
 	f = game.factory
-	check(b.player.position.is_equal_approx(before) and f.layout_locked and not f.running,"restore retains stage lock and pauses at the saved position")
+	check(b.player.position.is_equal_approx(before) and not f.layout_locked and f.combat_editing and not f.running,"restore permits edits and pauses at the saved position")
 	await key(KEY_D,false)
 	await tap(KEY_SPACE)
 	game._process(0.1)
@@ -192,13 +196,13 @@ func run():
 	game._process(0.1)
 	check(game.expedition.phase == "reward" and not f.layout_locked,"stage victory releases the lock for post-clear progression")
 	game.finish_crafting()
-	game.choose_run_option(0)
-	game.choose_run_option(0)
+	preload("res://tests/profile_fixture.gd").claim_reward(game,0)
+	preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 	check(game.can_manage_layout() and not game.battle_mode and not game.world.playback_only,"next route returns to the construction phase")
 	game.paint(Vector2i(13,7),false)
 	check(f.cells.has(Vector2i(13,7)) and game.move_auxiliary("left_gun",Vector2i(11,0)),"next construction phase permits line changes and auxiliary relocation")
 	game.toggle_running()
-	check(f.layout_locked,"next departure locks the newly constructed line again")
+	check(not f.layout_locked and f.combat_editing,"next departure permits line changes")
 	game.battlefield.hull = 0
 	game._process(0.1)
 	check(game.expedition.phase == "lost" and f.layout_locked,"defeat does not reopen the same stage for editing")

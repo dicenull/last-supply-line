@@ -26,6 +26,7 @@ var inventory: Dictionary = {}
 var unlocked_blocks: Array = Content.STARTING_BLOCKS.keys()
 var running = false
 var layout_locked = false
+var combat_editing = false
 var auto_fire = true
 var finite_resources = false
 var reserves = {"scrap":48,"coal":32}
@@ -133,9 +134,15 @@ func count_kind(kind: String) -> int:
 		if c.kind == kind: n += 1
 	return n
 
+func owned_kind_count(kind: String, except_position: Vector2i = Vector2i(-1,-1)) -> int:
+	var count = count_kind(kind)
+	for p in wrecks:
+		if p != except_position and wrecks[p] == kind: count += 1
+	return count
+
 func available(kind: String) -> int:
 	if kind not in unlocked_blocks or not LIMITS.has(kind): return 0
-	var amount = LIMITS[kind]-count_kind(kind)
+	var amount = LIMITS[kind]-owned_kind_count(kind)
 	for raw in Content.BUILD_COSTS[kind]:
 		var cost: int = Content.BUILD_COSTS[kind][raw]
 		if cost > 0: amount = mini(amount,int(reserves[raw]/cost))
@@ -150,6 +157,12 @@ func construction_cost(layout_cells: Dictionary) -> Dictionary:
 
 func construction_balance(pending: Dictionary) -> Dictionary:
 	var old_cost = construction_cost(cells)
+	for p in cells:
+		var cell = cells[p]
+		if cell.kind != "armor_block" or (pending.has(p) and pending[p].kind == cell.kind): continue
+		for raw in old_cost:
+			var full = Content.BUILD_COSTS[cell.kind][raw]
+			old_cost[raw] -= full-floori(full*float(cell.armor_hp)/ARMOR_HITS)
 	var new_cost = construction_cost(pending)
 	var balance = {}
 	for raw in reserves:
@@ -171,7 +184,7 @@ func can_place(p: Vector2i, kind: String) -> bool:
 	if kind == "erase": return cells.has(p)
 	if not LIMITS.has(kind): return false
 	if not cells.has(p) or cells[p].kind != kind:
-		if kind not in unlocked_blocks or count_kind(kind) >= LIMITS[kind]: return false
+		if kind not in unlocked_blocks or owned_kind_count(kind,p) >= LIMITS[kind]: return false
 	var pending = cells.duplicate()
 	pending[p] = make_cell(kind,0)
 	for value in construction_balance(pending).values():
@@ -322,18 +335,32 @@ func restore(rows: Array, pay: bool = true) -> bool:
 		var p = auxiliary_position(id)
 		if not inside(p) or pending.has(p): return false
 		pending[p] = make_cell(id,0)
+	for p in wrecks:
+		if not pending.has(p): counts[wrecks[p]] = counts.get(wrecks[p],0)+1
+	for kind in counts:
+		if counts[kind] > LIMITS.get(kind,1): return false
 	if pay:
 		for kind in counts:
 			if LIMITS.has(kind) and kind not in unlocked_blocks and counts[kind] > count_kind(kind):
 				message = "この設備の設計図は未解放です。"
 				return false
 		if not pay_construction(pending): return false
+	if combat_editing:
+		for p in pending:
+			if AUXILIARY.has(pending[p].kind): pending[p] = cells[auxiliary_position(pending[p].kind)]
+			elif cells.has(p) and cells[p].kind == pending[p].kind and cells[p].dir == pending[p].dir: pending[p] = cells[p]
+			elif cells.has(p) and cells[p].kind == "armor_block" and pending[p].kind == "armor_block": pending[p].armor_hp = cells[p].armor_hp
+		for p in PORTS: pending[p] = cells[p]
 	cells = pending
 	for p in cells:
 		wrecks.erase(p)
 		wreck_directions.erase(p)
-	for p in PORTS: cells[p] = make_cell(PORTS[p], 0)
-	reset_trial()
+	for p in PORTS:
+		if not cells.has(p): cells[p] = make_cell(PORTS[p],0)
+	if combat_editing:
+		moves.clear()
+		completed.clear()
+	else: reset_trial()
 	if pay:
 		for p in cells:
 			if LIMITS.has(cells[p].kind): feedback_event("place",p)
@@ -344,7 +371,7 @@ func undo():
 	if undo_stack.is_empty(): return
 	if not restore(undo_stack.back()): return
 	undo_stack.pop_back()
-	message = "配置を1操作戻しました。物資・計測値はリセット。"
+	message = "配置を1操作戻しました。" if combat_editing else "配置を1操作戻しました。物資・計測値はリセット。"
 
 func edit(p: Vector2i, kind: String, direction: int):
 	if layout_locked: return
@@ -366,17 +393,18 @@ func edit(p: Vector2i, kind: String, direction: int):
 			return
 		var pending = cells.duplicate()
 		pending[p] = make_cell(kind,direction)
+		if cells.has(p) and cells[p].kind == "armor_block" and kind == "armor_block": pending[p].armor_hp = cells[p].armor_hp
 		if not pay_construction(pending): return
 		remember()
-		cells[p] = make_cell(kind, direction)
+		cells[p] = pending[p]
 		wrecks.erase(p)
 		wreck_directions.erase(p)
 		feedback_event("place",p)
 		if not connection_sides(p).connected.is_empty(): feedback_event("connect",p)
 	moves.clear()
 	completed.clear()
-	running = false
-	message = "配置変更で一時停止。変更したマスの物資は破棄。開始で続きを試せます。"
+	if not combat_editing: running = false
+	message = "配置を変更しました。変更したマスの物資は破棄。"
 
 func rotate(p: Vector2i):
 	if cells.has(p) and not PORTS.has(p): edit(p, cells[p].kind, (cells[p].dir + 1) % 4)
@@ -569,7 +597,7 @@ func availability() -> int:
 	return int(100.0 * n / history.size())
 
 func cell_status(p: Vector2i) -> String:
-	if wrecks.has(p): return "部位破壊：コースクリア時に一括修復"
+	if wrecks.has(p): return "部位破壊：修復ボタンで一括修復"
 	if not cells.has(p): return "空き区画"
 	var c: Dictionary = cells[p]
 	if c.kind == "armor_block": return "防御 %d/%d回 / 周囲8マスを防護・車体被害半減" % [c.armor_hp,ARMOR_HITS]

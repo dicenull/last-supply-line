@@ -36,7 +36,9 @@ func run():
 		game.selected = "belt"
 		game.direction = 0 if fuel_case else 1
 		game.paint(link,false)
-		check(game.factory.running and game.factory.reserves == stock and not game.factory.cells.has(link),"combat rejects reconnection and grants no raw stock")
+		check(game.factory.running and game.factory.reserves.scrap == stock.scrap-1 and game.factory.reserves.coal == stock.coal and game.factory.cells.has(link),"combat reconnection pays materials and keeps production running")
+		await advance(game,180)
+		check(game.battlefield.distance > 0 and game.factory.shots > 0,"live reconnection restores real fuel and ammunition")
 		game.retreat_run()
 		check(game.expedition.phase == "retreated" and not game.factory.running,"disconnected run remains retreatable")
 		game.reset_battle()

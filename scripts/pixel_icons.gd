@@ -1,4 +1,5 @@
 extends RefCounted
+const DESTINATIONS = {"scrapyard":"scrap","coalfield":"coal","arsenal":"shell"}
 ## Original 32x32 pixel sprites, drawn on an integer grid with a shared palette.
 ## No font glyphs, antialiasing or external assets.
 const P = {
@@ -7,7 +8,7 @@ const P = {
 	"rust":"905238", "rust_hi":"cb8651", "red":"a94735", "fire":"f39d3c", "yellow":"ffe88a",
 	"steel":"7f9e9f", "steel_hi":"c3dcce", "steel_dark":"466469", "inlet":"70d4cc", "wood":"80613e", "wood_hi":"b38d55"
 }
-const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo","disconnected","incompatible","empty","full","blocked","waiting","processing","ready","idle","sound","mute","volume_knob","menu"]
+const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo","disconnected","incompatible","empty","full","blocked","waiting","processing","ready","idle","sound","mute","volume_knob","menu","rich_site","hostile_site","shop","repair"]
 var cache: Dictionary = {}
 var canvas: Image
 
@@ -75,6 +76,34 @@ func texture(kind: String) -> ImageTexture:
 	if cache.has(kind): return cache[kind]
 	canvas = Image.create(32,32,false,Image.FORMAT_RGBA8)
 	match kind:
+		"rich_site":
+			plate(3,12,26,17,"wood")
+			rect(4,13,24,3,"wood_hi")
+			for at in [Vector2i(8,10),Vector2i(17,8),Vector2i(24,11)]:
+				disk(at.x,at.y,5,"gold")
+				disk(at.x-1,at.y-1,3,"gold_hi")
+			line(Vector2i(8,22),Vector2i(24,22),"cream",2)
+			line(Vector2i(16,18),Vector2i(16,26),"cream",2)
+		"hostile_site":
+			poly([[16,2],[30,28],[2,28]],"red")
+			poly([[16,6],[26,25],[6,25]],"rust_hi")
+			line(Vector2i(10,15),Vector2i(22,23),"ink",3)
+			line(Vector2i(21,14),Vector2i(9,24),"ink",3)
+			disk(16,11,2,"cream")
+		"shop":
+			plate(5,14,23,16,"wood")
+			rect(9,18,7,10,"ink")
+			rect(19,18,6,6,"gold_hi")
+			poly([[6,4],[26,4],[31,15],[1,15]],"cream")
+			for x in [4,12,20]: rect(x,7,4,9,"rust_hi")
+			line(Vector2i(2,16),Vector2i(29,16),"bronze",2)
+		"repair":
+			line(Vector2i(7,25),Vector2i(23,9),"ink",7)
+			line(Vector2i(7,24),Vector2i(23,8),"steel_hi",4)
+			disk(23,8,7,"steel")
+			poly([[20,0],[20,8],[25,11],[32,5],[32,0]],"ink")
+			disk(8,25,4,"steel_hi")
+			disk(8,25,1,"ink")
 		"scrap":
 			poly([[4,11],[11,5],[17,9],[24,4],[28,14],[24,26],[15,24],[7,28],[3,19]],"rust")
 			poly([[4,11],[11,5],[17,9],[13,14],[6,16]],"rust_hi")

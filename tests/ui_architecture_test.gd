@@ -72,9 +72,11 @@ func run():
 	game.toggle_running()
 	game.open_menu()
 	var layout = game.factory.layout()
-	game.menu.layout_selected.emit("erase")
-	check(game.factory.layout() == layout,"command handler rechecks permissions even when a disabled view is bypassed")
 	var saved = game.checkpoint.snapshot(game)
+	game.retreat_run()
+	game.open_menu()
+	game.menu.layout_selected.emit("erase")
+	check(game.factory.layout() == layout,"command handler rejects layout changes after retreat even when a disabled view is bypassed")
 	var old_run = game.expedition
 	check(game.checkpoint.apply(game,saved) and game.expedition != old_run and game.choice_popup.expedition == game.expedition and game.choice_popup.factory == game.factory,"choice providers follow replacement models after restoring a checkpoint")
 	var presenter = weakref(game.menu_presenter)

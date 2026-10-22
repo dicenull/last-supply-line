@@ -34,6 +34,8 @@ func run():
 	root.add_child(game)
 	await process_frame
 	game.set_process(false)
+	game.expedition.current.erase("field_version") # Legacy route-modal input coverage.
+	game.expedition.current.erase("encounters_version")
 	game.toggle_running()
 	for i in range(1600):
 		preload("res://tests/profile_fixture.gd").drive(game,0.1)

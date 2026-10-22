@@ -31,6 +31,8 @@ func run():
 		# Isolate vehicle/wreck avoidance on open ground. Staggered roadblocks
 		# and enemy barrier collisions are covered by course_obstacles_test.
 		battle.sector_config.erase("obstacles_version")
+		battle.sector_config.erase("field_version") # Isolate steering from generated field geometry.
+		battle.sector_config.erase("encounters_version")
 		battle.sector_config.enemies = range(13)+range(13)+range(4)
 		battle.sector_config.boss = true
 		battle.sector_config.wave_size = 5

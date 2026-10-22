@@ -55,9 +55,11 @@ func run():
 			unique = unique and a.reward_options.size() == 3 and a.reward_options[0] != a.reward_options[1] and a.reward_options[1] != a.reward_options[2] and a.reward_options[0] != a.reward_options[2]
 			for id in a.reward_options: seen_reward[id] = true
 			a.choose_reward(0)
+			if a.phase == "shop": a.finish_shopping()
 			b.choose_reward(0)
-			deterministic = deterministic and a.route_options == b.route_options
-			for route in a.route_options:
+			if b.phase == "shop": b.finish_shopping()
+			deterministic = deterministic and a.current == b.current
+			for route in [a.current]:
 				seen_terrain[route.terrain] = true
 				seen_formation[route.formation] = true
 			a.choose_route(0)
@@ -110,6 +112,8 @@ func run():
 	root.add_child(game)
 	await process_frame
 	game.set_process(false)
+	game.expedition.current.erase("field_version") # Legacy route-modal save compatibility.
+	game.expedition.current.erase("encounters_version")
 	game.toggle_running()
 	for i in range(1600):
 		preload("res://tests/profile_fixture.gd").drive(game,0.1)
@@ -141,7 +145,7 @@ func run():
 	await click_at(game.choice_rect(1).get_center())
 	check(game.expedition.current.terrain == "road" and game.expedition.current.formation == "raiders","wide second route card selects its displayed encounter")
 	check(codec.apply(game,data) and game.factory.reserve_capacity == 125 and game.factory.reserves.coal == before.coal+200,"checkpoint restores uncapped cargo alongside legacy metadata")
-	game.choose_run_option(0)
+	preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 	game.expedition.modifiers.reload = 0.8
 	game.battlefield.reload_multiplier = 0.8
 	game.toggle_running()

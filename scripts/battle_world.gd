@@ -1,6 +1,7 @@
 extends "res://scripts/tank_world.gd"
 ## Moving encounter: coal-derived fuel powers travel; enemy shells target marked ground.
 const RunState = preload("res://scripts/run_state.gd")
+const FieldCourse = preload("res://scripts/field_course.gd")
 const CourseGoal = preload("res://scripts/course_goal.gd")
 const SupplyPoint = preload("res://scripts/supply_point.gd")
 const CourseObstacles = preload("res://scripts/course_obstacles.gd")
@@ -17,6 +18,9 @@ const VEHICLE_CLEARANCE = 0.35
 var sector_config: Dictionary = {}
 var route_length = ROUTE_LENGTH
 var goal: Node3D
+var goals: Array = []
+var field_course
+var arrived_destination = -1
 var obstacles: Node3D
 var drive_poses: Array = []
 var fuel_multiplier = 1.0
@@ -59,6 +63,33 @@ func tank():
 		if part not in before: part.reparent(player)
 
 func terrain():
+	if field_course != null:
+		var scenery = preload("res://scripts/field_scenery.gd").new()
+		add_child(scenery)
+		scenery.build(self,field_course)
+		var icons = preload("res://scripts/pixel_icons.gd").new()
+		for i in range(field_course.destinations.size()):
+			var site: Dictionary = field_course.destinations[i]
+			var yard = CourseGoal.new()
+			add_child(yard)
+			yard.position = site.position
+			var config = sector_config.duplicate()
+			config.kind = site.kind
+			yard.build(self,config)
+			var marker = Sprite3D.new()
+			marker.name = "DestinationIcon"
+			marker.texture = icons.texture(RunState.Services.icon(site))
+			marker.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+			marker.pixel_size = 0.16
+			marker.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			marker.position = Vector3(0,11,0)
+			yard.add_child(marker)
+			goals.append(yard)
+		goal = goals[0]
+		obstacles = CourseObstacles.new()
+		add_child(obstacles)
+		obstacles.build(self,sector_config)
+		return
 	box(self,Vector3(route_length/2,-0.3,0),Vector3(route_length+100,0.4,160),"mud")
 	var ground = sector_config.get("terrain","road")
 	material("route_ground","39342d" if ground == "mud" else "54544a" if ground == "rubble" else "4b4b40")
@@ -93,14 +124,19 @@ func terrain():
 	add_child(goal)
 	goal.position.x = route_length
 	goal.build(self,sector_config)
+	goals.append(goal)
 	obstacles = CourseObstacles.new()
 	add_child(obstacles)
 	obstacles.build(self,sector_config)
 
 func remaining_distance() -> float:
-	return goal.remaining_distance(player.position)
+	var remaining = INF
+	for yard in goals: remaining = minf(remaining,yard.remaining_distance(player.position))
+	return remaining
 
 func supply_position(index: int) -> Vector3:
+	if field_course != null:
+		return field_course.center_at(route_length*[0.14,0.30,0.46][index])+Vector3(0,0,20 if index%2 == 0 else -20)
 	# Keep the loading platforms outside the full hull's slalom/pivot envelope.
 	var shoulder = 22.0 if sector_config.get("obstacles_version",0) == 1 else 8.0
 	return Vector3(SUPPLY_DISTANCES[index],0,shoulder if index%2 == 0 else -shoulder)
@@ -123,6 +159,7 @@ func update_camera():
 
 func _ready():
 	route_length = float(sector_config.get("length",ROUTE_LENGTH))
+	if sector_config.get("field_version",0) == 1: field_course = FieldCourse.new(sector_config)
 	total = RunState.enemy_count(sector_config)
 	super._ready()
 	zoom = 52.0
@@ -155,7 +192,7 @@ func _ready():
 			site.position = supply_position(i)
 			var shells = int(sector_config.get("shells",0)/3)
 			site.build(self,sector_config.get("kind","scrapyard"),i,shells)
-			resource_sites.append({"node":site,"distance":SUPPLY_DISTANCES[i],"taken":false,"shells":shells,"scrap":int(sector_config.scrap/3)+(1 if i < int(sector_config.scrap)%3 else 0),"coal":int(sector_config.coal/3)+(1 if i < int(sector_config.coal)%3 else 0)})
+			resource_sites.append({"node":site,"distance":route_length*[0.14,0.30,0.46][i] if field_course != null else SUPPLY_DISTANCES[i],"taken":false,"shells":shells,"scrap":int(sector_config.scrap/3)+(1 if i < int(sector_config.scrap)%3 else 0),"coal":int(sector_config.coal/3)+(1 if i < int(sector_config.coal)%3 else 0)})
 	for i in range(total):
 		var unit = Node3D.new()
 		add_child(unit)
@@ -438,6 +475,9 @@ func drive_step(at: Vector3, yaw_value: float, travel: float, turn: float) -> Di
 		offset = Vector3(sin(turn)*radius,0,(cos(turn)-1)*radius)
 	var unbounded = at+Basis(Vector3.UP,yaw_value)*offset
 	var destination = Vector3(clampf(unbounded.x,0,route_length+CourseGoal.DEPTH+2),at.y,clampf(unbounded.z,-BATTLE_HALF_WIDTH,BATTLE_HALF_WIDTH))
+	if field_course != null:
+		var point = Vector2(unbounded.x,unbounded.z).clamp(field_course.bounds.position,field_course.bounds.end)
+		destination = Vector3(point.x,at.y,point.y)
 	var actual = destination.distance_to(at)
 	var arc = absf(travel)*actual/offset.length() if offset.length() > 0.000001 else 0.0
 	# Mean absolute travel of the two tracks. Pivoting costs fuel even when
@@ -447,7 +487,8 @@ func drive_step(at: Vector3, yaw_value: float, travel: float, turn: float) -> Di
 func move_player(factory, delta: float) -> float:
 	var surface = RunState.condition(sector_config)
 	var engine_speed = combat_modifiers.get("speed",1.0)*(1.2 if "supercharger" in installed_equipment else 1.0)
-	var travel = clampf(movement_direction.x,-1,1)*delta*surface.speed*engine_speed
+	var road_factor = 0.65 if field_course != null and field_course.road_distance(player.position) > FieldCourse.ROAD_HALF_WIDTH else 1.0
+	var travel = road_factor*clampf(movement_direction.x,-1,1)*delta*surface.speed*engine_speed
 	var turn = -clampf(movement_direction.z,-1,1)*delta*TURN_SPEED*engine_speed*surface.speed/3.3
 	var consumption = FUEL_PER_METER*fuel_multiplier*surface.fuel*(0.8 if "economizer" in installed_equipment else 1.0)*(1.1 if "supercharger" in installed_equipment else 1.0)
 	var plan = drive_plan(travel,turn)
@@ -584,7 +625,12 @@ func tick_battle(factory, delta: float):
 	shake = maxf(0,shake-delta)
 	update_camera()
 	if hull <= 0: result = -1
-	elif goal.contains_position(player.position): result = 1
+	else:
+		for i in range(goals.size()):
+			if goals[i].contains_position(player.position):
+				arrived_destination = i
+				result = 1
+				break
 	if result != 0:
 		factory.running = false
 		target_marker.visible = false

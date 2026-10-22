@@ -94,12 +94,14 @@ func run():
 	game.close_menu()
 	game.toggle_running()
 	game.open_menu()
-	check(game.menu.blueprint_buttons[0].disabled and not game.apply_blueprint("standard"),"paused travel cannot erase cargo with a blueprint")
+	game.factory.ammo = 5
+	game.factory.fuel = 6
+	check(not game.menu.blueprint_buttons[0].disabled and game.apply_blueprint("standard") and game.factory.ammo == 5 and game.factory.fuel == 6,"paused travel applies blueprints while preserving cargo")
 	game.close_menu()
 	game.expedition.phase = "prepare"
 	game.expedition.sector = 2
 	game.started = false
-	check(not game.apply_blueprint("standard"),"later sector preparation preserves carried cargo")
+	check(game.apply_blueprint("standard") and game.factory.ammo == 5 and game.factory.fuel == 6,"later sector preparation permits blueprints and preserves carried cargo")
 	game.reset_battle()
 	check(game.apply_blueprint("parallel"),"new run retains unlocked designs")
 	game.history.unlocked = ["standard"]
@@ -115,8 +117,8 @@ func run():
 	game.history = History.new()
 	game.history.load_file(path)
 	check("parallel" in game.history.unlocked,"sector unlock survives profile reload")
-	game.choose_run_option(0)
-	game.choose_run_option(0)
+	preload("res://tests/profile_fixture.gd").claim_reward(game,0)
+	preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 	check(game.new_blueprints.is_empty(),"unlock notice clears when departing for next sector")
 	game.record_result()
 	check(game.new_blueprints.is_empty(),"existing unlock does not create another notification")

@@ -83,10 +83,10 @@ func step():
 			if "gear:"+id in game.expedition.reward_options:
 				pick = game.expedition.reward_options.find("gear:"+id)
 				break
-		game.choose_run_option(pick)
+		preload("res://tests/profile_fixture.gd").claim_reward(game,pick)
 	elif phase == "route":
 		var pick = (runs+game.expedition.sector)%game.expedition.route_options.size()
-		game.choose_run_option(pick)
+		preload("res://tests/profile_fixture.gd").claim_reward(game,pick)
 	elif phase == "prepare": prepare()
 func inspect(elapsed: float):
 	peak_nodes = maxi(peak_nodes,get_node_count())

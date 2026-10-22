@@ -9,6 +9,7 @@ var rows: Array = []
 static func layout(route: Dictionary) -> Array:
 	var result: Array = []
 	if route.get("obstacles_version",0) != 1: return result
+	if route.get("field_version",0) == 1: return preload("res://scripts/field_course.gd").new(route).hazard_sites()
 	var first_side = 1 if posmod(int(route.get("seed",0)),2) == 0 else -1
 	for x in range(34,int(route.get("length",100))-22,36):
 		var index = result.size()
@@ -19,6 +20,9 @@ func build(world, route: Dictionary):
 	rows = layout(route)
 	name = "CourseObstacles"
 	world.material("mine_accent","934b42")
+	if route.get("field_version",0) == 1:
+		build_field(world)
+		return
 	for row in rows:
 		for i in range(9):
 			var z = -row.open_side*(i+1)*3.0
@@ -126,3 +130,36 @@ func navigation_points(length: float) -> Array:
 	if not rows.is_empty(): points.append(Vector3(rows.back().x+18,0,0))
 	points.append(Vector3(length+1,0,0))
 	return points
+
+func build_field(world):
+	for row in rows:
+		var at = Vector3(row.x,0,row.z)
+		var cluster = Node3D.new()
+		add_child(cluster)
+		cluster.position = at
+		cluster.rotation.y = row.yaw
+		cluster.scale = Vector3.ONE*row.scale
+		match row.kind:
+			"fence":
+				for x in [-3.0,0.0,3.0]:
+					world.box(cluster,Vector3(x,1.4,0),Vector3(0.4,2.8,0.4),"machine_iron")
+					world.box(cluster,Vector3(x,0.25,0),Vector3(1.5,0.5,1.2),"stone")
+				for y in [0.8,2.3]: world.box(cluster,Vector3(0,y,0),Vector3(6.4,0.25,0.25),"pipe_joint")
+				world.beam(cluster,Vector3(-3,0.8,0),Vector3(3,2.3,0),0.1,"machine_hot",6)
+			"wreck":
+				world.box(cluster,Vector3(0,0.65,0),Vector3(5.5,1.3,3.2),"machine_hot")
+				var roof_plate = world.box(cluster,Vector3(0.4,1.7,0),Vector3(2.7,1.2,2.4),"machine_iron")
+				roof_plate.rotation.z = 0.2
+				for z in [-1.8,1.8]: world.box(cluster,Vector3(0,0.4,z),Vector3(6,0.8,0.5),"dark")
+				world.beam(cluster,Vector3(1,2,0),Vector3(4,1.1,0),0.23,"pipe_joint",8)
+			_:
+				for offset in [Vector3(-1.6,0,-1),Vector3(1.6,0,1)]:
+					for angle in [0.0,PI/2]:
+						var leg = world.box(cluster,offset+Vector3(0,1.25,0),Vector3(3.6,0.48,0.48),"machine_hot")
+						leg.rotation = Vector3(0,angle,PI/4)
+						var brace = world.box(cluster,offset+Vector3(0,1.25,0),Vector3(3.6,0.48,0.48),"machine_iron")
+						brace.rotation = Vector3(0,angle,-PI/4)
+		# A conservative footprint encloses the rotated cluster, including its debris.
+		var half = 4.3*row.scale
+		barriers.append(Rect2(Vector2(at.x,at.z)-Vector2.ONE*half,Vector2.ONE*half*2))
+		for offset in [Vector3(-5,0,0),Vector3(5,0,0),Vector3(0,0,5)]: add_mine(world,at+offset)

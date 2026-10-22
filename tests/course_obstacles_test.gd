@@ -18,6 +18,8 @@ func run():
 			var run_state = Run.new(seed_value)
 			run_state.sector = stage
 			var route = run_state.make_route("scrapyard",true)
+			route.erase("field_version") # Legacy staggered-road save coverage.
+			route.erase("encounters_version")
 			var b = Battle.new()
 			b.sector_config = route
 			root.add_child(b)
@@ -47,6 +49,8 @@ func run():
 	Fixture.assign(game,"course_obstacles_test")
 	game.show_start_menu = false
 	game.expedition = Run.new(42)
+	game.expedition.current.erase("field_version")
+	game.expedition.current.erase("encounters_version")
 	root.add_child(game)
 	game.set_process(false)
 	game.toggle_running()
@@ -114,6 +118,8 @@ func check_shots_through_barriers():
 	for row_index in [0,1]:
 		var b = Battle.new()
 		b.sector_config = Run.new(42).current
+		b.sector_config.erase("field_version")
+		b.sector_config.erase("encounters_version")
 		root.add_child(b)
 		var row = b.obstacles.rows[row_index]
 		var z = -row.open_side*12.0

@@ -29,9 +29,11 @@ func run():
 	check(not a.choose_reward(9),"invalid reward is rejected")
 	var chosen_item = a.reward_options[0]
 	a.choose_reward(0)
+	if a.phase == "shop": a.finish_shopping()
 	b.choose_reward(0)
+	if b.phase == "shop": b.finish_shopping()
 	check((chosen_item.begins_with("block:") or chosen_item.trim_prefix("gear:") in a.equipment) and a.rewards_taken == 1 and not a.choose_reward(0),"reward applies once")
-	check(a.route_options == b.route_options and a.route_options[0].kind != a.route_options[1].kind,"seeded route alternatives are distinct and reproducible")
+	check(a.current == b.current and a.phase == "prepare" and a.route_options.is_empty(),"seeded field arrival advances directly to reproducible preparation")
 	var arsenal = a.make_route("arsenal")
 	check(arsenal.shells == 12 and RunState.total_health(arsenal) == RunState.enemy_count(arsenal),"arsenal grants manufactured rounds with one-hit defenders")
 	var f = Factory.new()
@@ -71,14 +73,14 @@ func run():
 		check(game.factory.collected.coal > 0 and game.factory.collected.scrap > 0,"roadside recovery feeds factory")
 		game.finish_crafting()
 		if sector == 5:
-			game.choose_run_option(0)
+			preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 			check(game.expedition.phase == "won" and game.battlefield.enemies.back().max_hp == 1 and is_equal_approx(game.battlefield.enemies.back().node.scale.x,1.7),"one-hit large final boss ends full run")
 			break
 		var hull = game.battlefield.hull
-		game.choose_run_option(0 if sector%2 == 1 else 1)
-		check(game.expedition.phase == "route","reward advances to route choice")
+		preload("res://tests/profile_fixture.gd").claim_reward(game,0 if sector%2 == 1 else 1)
+		check(game.expedition.phase == "prepare" and not game.choice_popup.visible,"reward advances to the destination already reached on the field")
 		var stock = [game.factory.ammo,game.factory.fuel,game.factory.reserves.duplicate(),game.factory.layout()]
-		game.choose_run_option(0)
+		preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 		check(game.expedition.phase == "prepare" and not game.factory.running,"next sector waits for playback")
 		check([game.factory.ammo,game.factory.fuel,game.factory.reserves,game.factory.layout()] == stock and game.battlefield.hull == hull,"next sector preserves cargo layout and hull")
 		await process_frame

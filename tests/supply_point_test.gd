@@ -35,7 +35,7 @@ func run():
 		check(b.resource_sites.size() == 3,"three existing recovery stops remain: "+kind)
 		for i in range(3):
 			var site = b.resource_sites[i]
-			check(site.distance == 18+i*34 and site.node.position.x == site.distance and site.node.route_kind == kind,"route model uses actual recovery location: "+kind+" "+str(i))
+			check(is_equal_approx(site.distance,b.route_length*[0.14,0.30,0.46][i]) and is_equal_approx(site.node.position.x,site.distance) and site.node.route_kind == kind,"route model uses actual recovery location: "+kind+" "+str(i))
 			check(site.node.has_node({"scrapyard":"RecoveryHoist","coalfield":"CoalLoader","arsenal":"AmmoShelter"}[kind]),"stop has appropriate loading equipment: "+kind+" "+str(i))
 			check(site.node.cargo.visible and not site.node.taken,"uncollected stop shows cargo: "+kind+" "+str(i))
 		b.player.position.x = 4
@@ -44,7 +44,7 @@ func run():
 		game.toggle_running()
 		game.factory.reserves = {"scrap":0,"coal":0}
 		game.factory.ammo = 0
-		b.player.position.x = 18.01
+		b.player.position = b.field_course.center_at(b.resource_sites[0].distance)+Vector3(0.01,0,0)
 		game._process(0)
 		var first = b.resource_sites[0]
 		check(first.taken and first.node.visible and not first.node.cargo.visible,"recovery removes cargo and retains depot structure: "+kind)
@@ -55,7 +55,7 @@ func run():
 		var ammo = game.factory.ammo
 		b.player.position.x = 0
 		game._process(0)
-		b.player.position.x = 18.01
+		b.player.position = b.field_course.center_at(b.resource_sites[0].distance)+Vector3(0.01,0,0)
 		game._process(0)
 		check(game.factory.reserves == stock and game.factory.ammo == ammo,"revisiting empty depot never grants supplies again: "+kind)
 		var saved = game.checkpoint.snapshot(game)

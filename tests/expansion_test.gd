@@ -108,7 +108,7 @@ func run():
 		for stage in range(1,6):
 			game.toggle_running()
 			for tick in range(2400):
-				preload("res://tests/profile_fixture.gd").drive(game,0.1)
+				Fixture.drive(game,0.1,Fixture.preferred_destination(game.battlefield,"coalfield"))
 				if game.expedition.phase != "travel": break
 			print("BALANCE ",mode," stage=",stage," phase=",game.expedition.phase," hull=",game.battlefield.hull," kills=",game.battlefield.kills,"/",game.battlefield.total," seconds=",game.battlefield.elapsed," raw=",game.factory.reserves)
 			check(game.checkpoint.validate(game.checkpoint.snapshot(game)),"expanded encounter checkpoint validates: "+mode+" "+str(stage)+" "+game.checkpoint.error)
@@ -120,12 +120,8 @@ func run():
 				if id in game.expedition.reward_options:
 					pick = game.expedition.reward_options.find(id)
 					break
-			game.choose_run_option(pick)
+			preload("res://tests/profile_fixture.gd").claim_reward(game,pick)
 			if game.expedition.phase == "won": break
-			var route_index = 0
-			for i in range(game.expedition.route_options.size()):
-				if game.expedition.route_options[i].kind == "coalfield": route_index = i
-			game.choose_run_option(route_index)
 			await process_frame
 		game.queue_free()
 		await process_frame

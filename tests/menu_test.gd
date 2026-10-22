@@ -76,12 +76,12 @@ func run():
 	check(game.factory.running and game.started,"Space starts expedition after title")
 	await key(KEY_ESCAPE)
 	check(game.menu.visible and not game.factory.running,"Escape pauses active expedition")
-	var blocked = true
-	for button in game.menu.layout_buttons.values(): blocked = blocked and button.disabled
+	var editable = true
+	for button in game.menu.layout_buttons.values(): editable = editable and not button.disabled
 	var cargo_before = game.factory.ammo
 	await click_at(game.menu.layout_buttons.erase.get_rect().get_center())
 	game.menu.layout_action("erase")
-	check(blocked and game.factory.layout() == layout and game.factory.ammo == cargo_before,"paused travel blocks all layout management and preserves cargo")
+	check(editable and game.factory.layout() != layout and game.factory.ammo == cargo_before,"paused travel allows layout management and preserves cargo")
 	await click_at(game.menu.actions[2].get_rect().get_center())
 	check(FileAccess.file_exists(PATH) and game.menu_status == "victory","save button writes checkpoint and shows success icon")
 	await key(KEY_ESCAPE)

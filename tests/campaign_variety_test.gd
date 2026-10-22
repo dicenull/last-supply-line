@@ -4,6 +4,7 @@ const Blueprints = preload("res://scripts/blueprints.gd")
 const Fixture = preload("res://tests/profile_fixture.gd")
 var failures = 0
 var checks = 0
+## The upper branch is the longer journey; the lower branch is shorter.
 var dangerous_routes = "--dangerous" in OS.get_cmdline_user_args()
 var terrain_seen = {}
 var formation_seen = {}
@@ -53,7 +54,7 @@ func run():
 				game.toggle_running()
 				var stranded_time = 0.0
 				for tick in range(2400):
-					preload("res://tests/profile_fixture.gd").drive(game,0.1)
+					preload("res://tests/profile_fixture.gd").drive(game,0.1,0 if dangerous_routes else 1)
 					if tick%200 == 199: await process_frame
 					if game.expedition.phase != "travel": break
 					# Either a destroyed line or exhausted coal can strand a
@@ -72,21 +73,10 @@ func run():
 				var priority = ["gear:armor","gear:skirts","gear:economizer","gear:drum_loader","gear:blast_fuse","gear:arc_gun","gear:scatter_gun","gear:left_gun","gear:right_gun"]
 				for id in priority:
 					if id in game.expedition.reward_options:
-						game.choose_run_option(game.expedition.reward_options.find(id))
+						preload("res://tests/profile_fixture.gd").claim_reward(game,game.expedition.reward_options.find(id))
 						break
-				if game.expedition.phase == "reward": game.choose_run_option(0)
+				if game.expedition.phase == "reward": preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 				if game.expedition.phase == "won": break
-				var best = 0
-				var best_cost = -INF if dangerous_routes else INF
-				for i in range(2):
-					var route = game.expedition.route_options[i]
-					var cost = Run.total_health(route)+10*Run.condition(route).fuel
-					if not dangerous_routes and game.factory.reserves.coal < 15: cost -= route.coal
-					if not dangerous_routes and game.factory.reserves.scrap < 15: cost -= route.scrap
-					if (dangerous_routes and cost > best_cost) or (not dangerous_routes and cost < best_cost):
-						best_cost = cost
-						best = i
-				game.choose_run_option(best)
 				await process_frame
 			if game.expedition.phase == "won": wins += 1
 			print("CAMPAIGN ","dangerous " if dangerous_routes else "safe ",build," seed=",seed," result=",game.expedition.phase," cleared=",game.expedition.cleared," hull=",game.battlefield.hull," stock=",game.factory.reserves," shots=",game.factory.shots)

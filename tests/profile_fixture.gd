@@ -1,20 +1,33 @@
 extends RefCounted
 ## Explicit waypoint pilot for simulation regression tests. Real key input
 ## and no-input stopping are covered separately by phase_movement_test.gd.
-static func drive(game, delta: float):
+static func drive(game, delta: float, destination: int = 0):
 	if game.battlefield != null and game.expedition.phase == "travel" and game.factory.running and not game.menu.visible:
-		pilot(game.battlefield)
+		pilot(game.battlefield,destination)
 	game._process(delta)
 
-static func pilot(battle):
+static func claim_reward(game, index: int):
+	game.choose_run_option(index)
+	if game.expedition.phase == "shop": game.leave_shop()
+
+static func preferred_destination(battle, kind: String) -> int:
+	if battle.field_course != null:
+		for i in range(battle.field_course.destinations.size()):
+			if battle.field_course.destinations[i].kind == kind: return i
+	return 0
+
+static func pilot(battle, destination: int = 0):
 	var points = battle.obstacles.navigation_points(battle.route_length)
-	var index = 0
+	if battle.field_course != null: points = battle.field_course.navigation_points(destination)
+	var key = "pilot_index_"+str(destination)
+	var index = int(battle.get_meta(key,0)) if battle.field_course != null else 0
 	while index < points.size()-1:
 		var reached = battle.player.position.distance_to(points[index]) < 0.6
 		var passed = battle.player.position.x > points[index].x+0.4
 		var corner = points[index].x == points[index+1].x and battle.player.position.x >= points[index].x-0.4
 		if not reached and not passed and not corner: break
 		index += 1
+	if battle.field_course != null: battle.set_meta(key,index)
 	var offset: Vector3 = points[index]-battle.player.position
 	var desired = atan2(-offset.z,offset.x)
 	var error = angle_difference(battle.player.rotation.y,desired)

@@ -20,7 +20,7 @@ func capture(path: String):
 	root.get_texture().get_image().save_png(path)
 func click(index: int):
 	if DisplayServer.get_name() == "headless":
-		game.choose_run_option(index)
+		preload("res://tests/profile_fixture.gd").claim_reward(game,index)
 		return
 	var event = InputEventMouseButton.new()
 	event.button_index = MOUSE_BUTTON_LEFT
@@ -111,11 +111,12 @@ func run():
 	run_state.finish_sector(true,80)
 	check(run_state.phase == "reward" and run_state.cleared == 5,"final stage also offers an item reward")
 	run_state.choose_reward(0)
+	if run_state.phase == "shop": run_state.finish_shopping()
 	check(run_state.phase == "won" and run_state.rewards_taken == 5 and not run_state.choose_reward(0),"final reward is granted once before victory")
 	var exhausted = Run.new(1)
 	exhausted.equipment = Run.EQUIPMENT.keys()
 	exhausted.offer_rewards()
-	check(exhausted.phase == "route" and exhausted.reward_options.is_empty(),"legacy all-owned state advances without an empty modal")
+	check(exhausted.phase == "prepare" and exhausted.reward_options.is_empty(),"legacy all-owned state advances without an empty modal")
 	exhausted = Run.new(1)
 	exhausted.equipment = Run.EQUIPMENT.keys().slice(0,Run.EQUIPMENT.size()-1)
 	exhausted.offer_rewards()
@@ -134,7 +135,7 @@ func run():
 	check(game.expedition.phase == "reward" and game.choice_popup.visible and not game.choice_popup.continue_button.visible,"actual stage clear opens the random item draft directly")
 	check(game.expedition.recipes.is_empty() and game.expedition.equipment.is_empty(),"battle kills grant no free gear before the clear choice")
 	var clear_save = game.checkpoint.snapshot(game)
-	check(game.checkpoint.validate(clear_save) and clear_save.version == 7,"new save stores construction materials and pending equipment draft")
+	check(game.checkpoint.validate(clear_save) and clear_save.version == 9,"new save stores construction materials and pending equipment draft")
 	var choices = game.expedition.reward_options.duplicate()
 	game.open_menu()
 	game.close_menu()
@@ -148,7 +149,7 @@ func run():
 		game.expedition.reward_options = [id]+alternatives
 		game.refresh_view()
 		var award_stock = game.factory.reserves.duplicate()
-		game.choose_run_option(0)
+		preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 		var gear = id.trim_prefix("gear:")
 		check(gear in game.expedition.equipment and (gear not in Factory.AUXILIARY or game.factory.auxiliary_position(gear).x >= 0) and game.factory.reserves == award_stock,"gear award installs without recipes or resource payment: "+gear)
 		check(game.checkpoint.validate(game.checkpoint.snapshot(game)),"awarded state is saveable: "+id)
@@ -159,7 +160,8 @@ func run():
 	await process_frame
 	await capture("res://preview-item-rewards-960.png")
 	await click(0)
-	check(game.expedition.phase == "route" and "armor" in game.expedition.equipment,"minimum-window real click selects equipment")
+	check(game.expedition.phase in ["prepare","shop"] and "armor" in game.expedition.equipment,"minimum-window real click selects equipment")
+	if game.expedition.phase == "shop": game.leave_shop()
 	await click(0)
 	game.cycle_tools()
 	game.cycle_tools()

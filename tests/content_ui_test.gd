@@ -65,6 +65,8 @@ func run():
 			placed += 1
 	check(placed == 10,"every added line block is reachable in the UI")
 	await capture("res://preview-expanded-line.png")
+	game.expedition.current.erase("field_version") # Legacy equipment/route-card migration coverage.
+	game.expedition.current.erase("encounters_version")
 	game.toggle_running()
 	check(not game.set_difficulty("easy"),"difficulty cannot be changed during a run")
 	game.factory.running = false
@@ -117,6 +119,10 @@ func run():
 	await process_frame
 	for reward in Run.REWARDS:
 		game.reset_battle()
+		game.expedition.current.erase("field_version")
+		game.expedition.current.erase("encounters_version")
+		game.release_battle()
+		game.ensure_battle()
 		game.started = true
 		game.expedition.phase = "reward"
 		game.expedition.cleared = 1
@@ -124,7 +130,7 @@ func run():
 		game.battlefield.hull = 60
 		game.factory.reserves = {"scrap":20,"coal":10}
 		game.expedition.reward_options = [reward,"production","economy"]
-		game.choose_run_option(0)
+		preload("res://tests/profile_fixture.gd").claim_reward(game,0)
 		var m = game.expedition.modifiers
 		var applied = false
 		match reward:

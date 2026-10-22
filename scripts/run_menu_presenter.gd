@@ -46,7 +46,7 @@ func set_volume(value: float):
 	game.sound.set_volume(value)
 
 func layout_action(kind: String):
-	# Pausing travel must never grant permission to edit the line.
+	# Layout management is available in preparation and during live travel.
 	if not game.can_manage_layout(): return
 	var success = true
 	match kind:
