@@ -16,7 +16,7 @@ const ARMOR_HITS = 3
 const ARMOR_DAMAGE_MULTIPLIER = 0.5
 const RECIPES = {"furnace":["scrap","steel",6],"press":["steel","shell",8],"refinery":["coal","fuel",8],"blast_furnace":["scrap","steel",3],"auto_press":["steel","shell",4]}
 const FILTERS = {"scrap_filter":"scrap","shell_filter":"shell","fuel_filter":"fuel"}
-const AUXILIARY = {"left_gun":Vector2i(11,1),"right_gun":Vector2i(11,6),"rapid_gun":Vector2i(8,0),"long_gun":Vector2i(12,4),"mortar_gun":Vector2i(6,6),"rear_gun":Vector2i(2,0),"scatter_gun":Vector2i(10,6),"arc_gun":Vector2i(10,0)}
+const AUXILIARY = Gear.Data.GUN_PORTS
 var layout_version = 1
 var ports: Dictionary = PORTS.duplicate()
 var blocks: Array = []
@@ -89,6 +89,8 @@ func mounted_at(p: Vector2i, except_id: String = "") -> String:
 
 func can_place_equipment(id: String, at: Vector2i) -> bool:
 	if layout_version != 2 or loadout_locked or layout_locked or id not in Gear.DEFINITIONS: return false
+	for mounted in equipment_mounts:
+		if mounted != id and Gear.family(mounted) == Gear.family(id): return false
 	var size: Vector2i = Gear.DEFINITIONS[id].size
 	if Gear.DEFINITIONS[id].genre == "secondary" and not Layout.roof_clearance(at,size): return false
 	for y in range(at.y,at.y+size.y):

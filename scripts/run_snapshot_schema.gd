@@ -2,7 +2,7 @@ extends RefCounted
 ## Data-only checkpoint contract. No file IO, scene creation, or live-state mutation.
 const Factory = preload("res://scripts/factory.gd")
 const RunState = preload("res://scripts/run_state.gd")
-const VERSION = 10
+const VERSION = 11
 const FIELDS = ["cells","clock","elapsed","ticks","fuel","fuel_used","ammo","rate","fire_clock","shots","supplied","injected","manufactured","missed","history","moves","completed","undo_stack","reserves","collected","reserve_capacity","work_multiplier","ammo_capacity"]
 const RUN_FIELDS = ["run_seed","sector","phase","hull","cleared","rewards_taken","modifiers","route_options","reward_options","current"]
 const CRAFT_FIELDS = ["recipes","equipment","stage_recipes"]
@@ -65,7 +65,7 @@ func valid_route(route) -> bool:
 
 func validate(data) -> bool:
 	if not data is Dictionary or not safe_value(data) or not data.has_all(["version","factory","run","rng_state","started","battle_mode","view","battle"]): return invalid("validation_1")
-	if data.version not in [1,2,3,4,5,6,7,8,9,VERSION] or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
+	if data.version not in [1,2,3,4,5,6,7,8,9,10,VERSION] or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
 	var f = data.factory
 	var r = data.run
 	if not f is Dictionary or not f.has_all(FIELDS) or not r is Dictionary or not r.has_all(RUN_FIELDS): return invalid("validation_5")
@@ -75,6 +75,7 @@ func validate(data) -> bool:
 		var seen = []
 		for id in ids:
 			if not id is String or not RunState.EQUIPMENT.has(id) or id in seen: return invalid("craft_id")
+			if not r.get("item_mode",false) and id not in RunState.Content.BASE_EQUIPMENT: return invalid("legacy_equipment_id")
 			if key != "recipes" and id not in r.get("recipes",[]): return invalid("craft_locked")
 			seen.append(id)
 	if data.version >= 10 and (not r.has_all(["item_mode","gear_items","next_item_uid"]) or not f.has("equipment_mounts")): return invalid("missing_item_state")
@@ -237,7 +238,7 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 		if local.x < 0 or local.x > 16 or absf(local.z) > 8: return invalid("field_arrival")
 	if run.phase in ["craft","shop"] and b.result != 1: return invalid("craft_battle")
 	var gun_ids = []
-	for id in RunState.Content.GUNS:
+	for id in RunState.Content.ALL_GUNS:
 		if id in run.get("equipment",[]): gun_ids.append(id)
 	var auxiliary = b.get("auxiliary",[])
 	if not auxiliary is Array or auxiliary.size() != gun_ids.size(): return invalid("auxiliary_count")
@@ -265,7 +266,7 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 		for shot in b[key]:
 			if not shot is Dictionary or not shot.has_all(["origin","target","age","duration","position"]): return invalid("validation_75")
 			if not shot.origin is Vector3 or not shot.position is Vector3 or not numeric(shot.age,0,1000) or not numeric(shot.duration,0.001,1000) or shot.age > shot.duration: return invalid("validation_76")
-			if not numeric(shot.get("splash",0.0),0,10 if run.get("item_mode",false) else 8) or not numeric(shot.get("radius",6.0),1,12) or not numeric(shot.get("damage",10.0),0,100): return invalid("projectile_effect")
+			if not numeric(shot.get("splash",0.0),0,16 if run.get("item_mode",false) else 8) or not numeric(shot.get("radius",6.0),1,12) or not numeric(shot.get("damage",10.0),0,100): return invalid("projectile_effect")
 			if not shot.get("chain",0) is int or not numeric(shot.get("chain",0),0,2): return invalid("projectile_chain")
 			if shot.get("style","heavy") not in RunState.Content.BALLISTICS: return invalid("projectile_style")
 			if key == "projectiles":

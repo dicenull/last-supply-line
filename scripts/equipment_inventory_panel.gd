@@ -123,7 +123,10 @@ func refresh():
 			filtered_items.sort_custom(func(a,b):
 				var a_power: float = Catalog.RARITIES[a.rarity].power
 				var b_power: float = Catalog.RARITIES[b.rarity].power
-				return a_power > b_power if a_power != b_power else a.uid < b.uid)
+				if a_power != b_power: return a_power > b_power
+				var a_level = Catalog.level(a.kind)
+				var b_level = Catalog.level(b.kind)
+				return a_level > b_level if a_level != b_level else a.uid < b.uid)
 	bulk_quote = Inventory.quote_normals(state.items,bulk_uids)
 	if bulk_quote.is_empty() or state.phase in ["lost","won","retreated"]: cancel_bulk()
 	var previewing = not bulk_quote.is_empty()
@@ -152,7 +155,7 @@ func refresh():
 		var mounted = item.position != Inventory.STOWED
 		var materials = Catalog.salvage(item)
 		row_buttons[i].tooltip_text = "%s · %s\n%s / %d×%d\n%s\n%s" % [rarity.name,Catalog.Content.EQUIPMENT[item.kind].name,Catalog.GENRES[definition.genre],definition.size.x,definition.size.y,Catalog.description(item),"D&Dで配置（同型は1基まで）" if state.editable else "出撃中：装備変更不可"]
-		if item.kind in Catalog.Content.GUNS:
+		if item.kind in Catalog.Content.ALL_GUNS:
 			row_buttons[i].tooltip_text += "\n主砲の旋回範囲外に設置 / 2×2枠の外周から給弾"
 			if item.get("ammo",0) > 0: row_buttons[i].tooltip_text += "\n保管弾 %d発" % item.ammo
 		stow_buttons[i].disabled = previewing or not mounted or not state.editable
@@ -184,7 +187,8 @@ func _draw():
 		icon(GENRE_ICONS[Catalog.DEFINITIONS[item.kind].genre],Rect2(at+Vector2(80,12),Vector2(24,24)),Color(rarity.color))
 		for j in range(rank): draw_rect(Rect2(at+Vector2(80+j*14,46),Vector2(10,8)),Color(rarity.color))
 		var footprint: Vector2i = Catalog.DEFINITIONS[item.kind].size
-		draw_string(font,at+Vector2(156,44),"%d×%d" % [footprint.x,footprint.y],HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
+		draw_string(font,at+Vector2(148,30),"Lv.%d" % Catalog.level(item.kind),HORIZONTAL_ALIGNMENT_LEFT,-1,18,Style.INK)
+		draw_string(font,at+Vector2(152,55),"%d×%d" % [footprint.x,footprint.y],HORIZONTAL_ALIGNMENT_LEFT,-1,16,Style.MUTED)
 		if item.position != Inventory.STOWED: icon("victory",Rect2(at+Vector2(206,5),Vector2(18,18)))
 		icon("cargo",Rect2(stow_buttons[i].position+Vector2(13,23),Vector2(28,28)),Style.MUTED if stow_buttons[i].disabled else Style.INK)
 		icon("scrap",Rect2(salvage_buttons[i].position+Vector2(16,12),Vector2(28,28)),Style.MUTED if salvage_buttons[i].disabled else Style.GOLD)

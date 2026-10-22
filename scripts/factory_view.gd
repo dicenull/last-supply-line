@@ -263,6 +263,7 @@ func sync_equipment():
 		battlefield.sync_damage(factory)
 		battlefield.combat_modifiers = expedition.modifiers.duplicate()
 		battlefield.combat_modifiers.equipment_power = Inventory.powers(expedition)
+		if expedition.item_mode: battlefield.combat_modifiers.equipment_effects = Inventory.effects(expedition)
 
 func recover_recipe(role: int):
 	var id = expedition.recover_recipe(role)
@@ -1186,7 +1187,7 @@ func begin_item_drag(uid: int):
 		return
 	var item = Inventory.find_item(expedition,uid)
 	if item.is_empty(): return
-	if item.position == Inventory.STOWED and item.kind in expedition.equipment:
+	if item.position == Inventory.STOWED and expedition.equipment.any(func(id): return Inventory.Catalog.family(id) == Inventory.Catalog.family(item.kind)):
 		factory.message = "同型の装備は1基までです。先に取り外してください。"
 		return
 	battle_mode = false

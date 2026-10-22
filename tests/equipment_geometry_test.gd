@@ -49,7 +49,7 @@ func run():
 		world.configure_equipment([id],f.auxiliary_positions(),f.equipment_mounts)
 		battle.configure_equipment([id],f.auxiliary_positions(),f.equipment_mounts)
 		var size: Vector2i = Gear.DEFINITIONS[id].size
-		if id in F.Content.GUNS:
+		if id in F.Content.ALL_GUNS:
 			var gun: Dictionary = world.auxiliary_guns[0]
 			var fits = true
 			for i in range(24):
@@ -66,10 +66,11 @@ func run():
 			world.toggle_roof()
 			check(not model.visible,"closed armor hides its internal module: "+id)
 			world.toggle_roof()
-		if id in F.Content.GUNS:
+		if id in F.Content.ALL_GUNS:
 			check(is_equal_approx(battle.auxiliary_guns[0].pivot.position.y,4.18),"battle exposes mounted weapon on the roof: "+id)
 		else:
 			check(battle.mounted_models[id].position == world.mounted_models[id].position,"battle uses the same installed module location: "+id)
+		await process_frame
 	interior_view.queue_free()
 	exterior_view.queue_free()
 	await process_frame

@@ -88,6 +88,7 @@ def design(family, base, level, profile, profile_index):
             effects[secondary[0]] = secondary[1] if focused else secondary[2]
         item['effects'] = {k: v if k == 'salvage_rate' else rounded(v) for k, v in effects.items()}
         item['effect'] = f'{label}型 / 装備Lv.{level}'
+    if original: item['effect'] = base['effect']
     return item
 
 

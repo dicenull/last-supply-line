@@ -76,9 +76,10 @@ func configure_equipment(ids: Array, positions: Dictionary = {}, mounts: Diction
 	mounted_models.clear()
 	upgrade_mount = Node3D.new()
 	turret.get_parent().add_child(upgrade_mount)
-	for id in F.Content.GUNS:
+	for id in F.Content.ALL_GUNS:
 		if id not in ids: continue
-		var side = -1 if id == "left_gun" else 1
+		var family = F.Gear.family(id)
+		var side = -1 if family == "left_gun" else 1
 		var pivot = Node3D.new()
 		upgrade_mount.add_child(pivot)
 		pivot.position = Vector3(4.4,3.2,side*4.0)
@@ -91,28 +92,29 @@ func configure_equipment(ids: Array, positions: Dictionary = {}, mounts: Diction
 		beam(gun_barrel,Vector3.ZERO,Vector3(2.1,0,0),0.16,"turret_dark",24)
 		beam(gun_barrel,Vector3.ZERO,Vector3(0.8,0,0),0.27,"turret_armor",24)
 		beam(gun_barrel,Vector3(1.95,0,0),Vector3(2.1,0,0),0.22,"turret_edge",24)
-		if id == "long_gun": beam(gun_barrel,Vector3(2,0,0),Vector3(3.4,0,0),0.13,"turret_dark",24)
-		if id == "rapid_gun": beam(gun_barrel,Vector3(0,0,0.25),Vector3(2.1,0,0.25),0.1,"turret_dark",16)
-		if id == "mortar_gun": beam(pivot,Vector3(0,0.6,0),Vector3(0.8,2.1,0),0.3,"turret_edge",24)
-		if id == "rear_gun": cylinder(pivot,Vector3(0,1.15,0),0.4,0.12,"turret_dark",16)
-		if id == "scatter_gun":
+		if family == "long_gun": beam(gun_barrel,Vector3(2,0,0),Vector3(3.4,0,0),0.13,"turret_dark",24)
+		if family == "rapid_gun": beam(gun_barrel,Vector3(0,0,0.25),Vector3(2.1,0,0.25),0.1,"turret_dark",16)
+		if family == "mortar_gun": beam(pivot,Vector3(0,0.6,0),Vector3(0.8,2.1,0),0.3,"turret_edge",24)
+		if family == "rear_gun": cylinder(pivot,Vector3(0,1.15,0),0.4,0.12,"turret_dark",16)
+		if family == "scatter_gun":
 			for z in [-0.36,0.36]:
 				beam(gun_barrel,Vector3(0,0,z),Vector3(1.8,0,z),0.22,"turret_dark",16)
 				beam(gun_barrel,Vector3(1.65,0,z),Vector3(1.9,0,z),0.28,"turret_edge",16)
-		if id == "arc_gun":
+		if family == "arc_gun":
 			for x in [0.55,1.0,1.45]:
 				var coil = cylinder(gun_barrel,Vector3(x,0,0),0.34,0.16,"machine_fuel",16)
 				coil.rotation.z = PI/2
 			for z in [-0.48,0.48]: cylinder(pivot,Vector3(-0.35,1.0,z),0.18,0.7,"machine_bronze",12)
-		var flash = box(gun_barrel,Vector3(3.65 if id == "long_gun" else 2.35,0,0),Vector3(0.7,0.35,0.35),"arc_light" if id == "arc_gun" else "fire")
-		if id == "scatter_gun":
+		var flash = box(gun_barrel,Vector3(3.65 if family == "long_gun" else 2.35,0,0),Vector3(0.7,0.35,0.35),"arc_light" if family == "arc_gun" else "fire")
+		if family == "scatter_gun":
 			for z in [-0.36,0.36]: box(flash,Vector3(-0.3,0,z),Vector3(0.55,0.27,0.27),"fire")
 		flash.visible = false
+		if layout_version == 2: equipment_markings(pivot,id,1.10,Vector2(1.05,0.5))
 		if layout_version == 2: solid_mounted_materials(pivot)
 		auxiliary_guns.append({"id":id,"pivot":pivot,"barrel":gun_barrel,"muzzle":flash,"cooldown":0.0,"flash":0.0,"recoil":0.0})
 	if layout_version == 2:
 		for id in ids:
-			if id in F.Content.GUNS: continue
+			if id in F.Content.ALL_GUNS: continue
 			var model = Node3D.new()
 			model.name = "Mounted_"+id
 			upgrade_mount.add_child(model)
@@ -156,8 +158,9 @@ func position_auxiliary_guns(positions: Dictionary):
 			if layout_version == 2:
 				gun.pivot.position = Vector3(at.x+0.5,4.18 if roof_closed else DECK_Y+0.28,at.z+0.5)
 				# The entire rotating barrel and muzzle fit inside the 2×2 reservation.
-				gun.pivot.scale = Vector3(0.8,(0.2 if gun.id == "mortar_gun" else 0.4) if roof_closed else 0.65,0.8)
-				gun.barrel.scale = Vector3(0.15,0.65,0.65)
+				gun.pivot.scale = Vector3(0.8,(0.2 if F.Gear.family(gun.id) == "mortar_gun" else 0.4) if roof_closed else 0.65,0.8)
+				var profile: String = F.Content.EQUIPMENT[gun.id].profile
+				gun.barrel.scale = Vector3(0.12 if profile == "rapid" else 0.15,0.65,0.65)
 
 func material(name: String, color: String, metal: float = 0.0, glow: float = 0.0) -> StandardMaterial3D:
 	var m = StandardMaterial3D.new()
@@ -888,7 +891,7 @@ func machine(kind: String, parent: Node3D, inputs: Array = [2]) -> Dictionary:
 			beam(parent,Vector3(0.23,0.3,0),Vector3(0.23,0.95,0),0.14,"machine_bronze")
 			if F.AUXILIARY.has(kind):
 				# Different side stripes identify the two independent magazines.
-				box(parent,Vector3(0,0.05,-0.43 if kind == "left_gun" else 0.43),Vector3(0.85,0.05,0.08),"machine_fuel")
+				box(parent,Vector3(0,0.05,-0.43 if F.Gear.family(kind) == "left_gun" else 0.43),Vector3(0.85,0.05,0.08),"machine_fuel")
 	if kind in ["furnace","press","depot","refinery","source","coal_source"]:
 		machine_cover(kind,parent)
 	if kind not in ["belt","splitter"]: flow_ports(kind,parent,inputs)
@@ -1116,11 +1119,25 @@ func build_mounted_model(parent: Node3D, id: String):
 			box(parent,Vector3(0,0.72,0),Vector3(1.6,0.08,0.55),"edge")
 		_:
 			cylinder(parent,Vector3(0,0.38,0),0.32,0.4,"machine_bronze",16)
-			if id == "salvage_arm":
+			if F.Gear.family(id) == "salvage_arm":
 				beam(parent,Vector3(0,0.5,0),Vector3(0,1.2,0),0.12,"edge",12)
 				beam(parent,Vector3(0,1.2,0),Vector3(0.7,1.2,0.6),0.1,"edge",12)
-			elif id == "rangefinder": beam(parent,Vector3(-0.7,0.8,0),Vector3(0.7,0.8,0),0.12,"edge",12)
+			elif F.Gear.family(id) == "rangefinder": beam(parent,Vector3(-0.7,0.8,0),Vector3(0.7,0.8,0),0.12,"edge",12)
 			else: box(parent,Vector3(0,0.65,0),Vector3(0.6,0.14,0.6),"machine_fuel")
+	equipment_markings(parent,id,0.22,Vector2(size.x-0.25,size.y-0.2))
+
+func equipment_markings(parent: Node3D, id: String, height: float, area: Vector2):
+	var spec: Dictionary = F.Content.EQUIPMENT[id]
+	if spec.level == 1 and spec.profile == "balanced": return
+	# Level studs and role plates fit inside the reservation; no added collider.
+	var span = area.x*0.8
+	for index in range(spec.level):
+		var x = -span*0.5+span*(index+0.5)/10.0
+		box(parent,Vector3(x,height,-area.y*0.35),Vector3(span/16.0,0.045,0.065),"machine_bronze")
+	if spec.visual == 1:
+		for side in [-1,1]: box(parent,Vector3(side*area.x*0.3,height+0.06,area.y*0.2),Vector3(0.06,0.13,0.12),"edge")
+	elif spec.visual == 2:
+		box(parent,Vector3(0,height+0.02,area.y*0.2),Vector3(area.x*0.55,0.05,0.12),"machine_fuel")
 
 func preview_equipment(factory, item: Dictionary, at: Vector2i, allowed: bool = true):
 	if item.is_empty() or roof_closed or not factory.inside(at):

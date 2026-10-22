@@ -130,7 +130,7 @@ func craft_cost(id: String) -> Dictionary:
 	return {"scrap":ceili(EQUIPMENT[id].scrap*modifiers.get("craft",1.0)),"coal":ceili(EQUIPMENT[id].coal*modifiers.get("craft",1.0))}
 
 func can_craft(id: String, reserves: Dictionary) -> bool:
-	if item_mode or phase != "craft" or id not in recipes or id in equipment or not EQUIPMENT.has(id): return false
+	if item_mode or id not in Content.BASE_EQUIPMENT or phase != "craft" or id not in recipes or id in equipment or not EQUIPMENT.has(id): return false
 	var recipe: Dictionary = craft_cost(id)
 	return reserves.get("scrap",0) >= recipe.scrap and reserves.get("coal",0) >= recipe.coal
 
@@ -158,7 +158,7 @@ func finish_sector(won: bool, remaining_hull: int, inventory: Dictionary = {}, m
 
 func reward_pool(inventory: Dictionary = {}, mount_space: bool = true) -> Array:
 	var pool: Array = []
-	for id in EQUIPMENT:
+	for id in (EQUIPMENT if item_mode else Content.BASE_EQUIPMENT):
 		if item_mode or (id not in equipment and (mount_space or id not in Content.GUNS)): pool.append("gear:"+id)
 	return pool
 

@@ -15,7 +15,8 @@ const BALLISTICS = {
 	"demolition":{"speed":55.0,"width":0.24,"tail":0.8,"blast":5.8,"life":1.6,"fire_time":0.4,"column":0.8},
 	"electric":{"speed":110.0,"width":0.13,"tail":0.9,"blast":2.4,"life":0.7,"fire_time":0.16,"column":1.4}
 }
-const EQUIPMENT = {
+const EquipmentData = preload("res://scripts/equipment_data.gd")
+const BASE_EQUIPMENT = {
 	"left_gun":{"ballistics":"standard","name":"左舷副砲","icon":"gun","scrap":16,"coal":4,"effect":"独立給弾 / 標準副砲","interval":1.5,"range":36.0,"ammo":1},
 	"right_gun":{"ballistics":"standard","name":"右舷副砲","icon":"gun","scrap":16,"coal":4,"effect":"独立給弾 / 標準副砲","interval":1.5,"range":36.0,"ammo":1},
 	"armor":{"name":"追加装甲","icon":"shield","scrap":20,"coal":6,"effect":"被ダメージ −25%"},
@@ -34,6 +35,8 @@ const EQUIPMENT = {
 	"blast_fuse":{"name":"破砕信管","icon":"blast_fuse","scrap":20,"coal":4,"effect":"全砲の爆発範囲 +4m"},
 	"drum_loader":{"name":"回転式装填機","icon":"drum_loader","scrap":22,"coal":5,"effect":"主砲・副砲の射撃間隔 −20%"}
 }
+const EQUIPMENT = EquipmentData.ITEMS
+const ALL_GUNS = EquipmentData.GUNS
 const GUNS = ["left_gun","right_gun","rapid_gun","long_gun","mortar_gun","rear_gun","scatter_gun","arc_gun"]
 const BLOCK_LIMITS = {"belt":80,"furnace":4,"press":4,"splitter":6,"depot":3,"refinery":3,
 	"smart_splitter":4,"priority_splitter":4,"overflow_gate":4,"router":3,"scrap_filter":6,"shell_filter":6,"fuel_filter":6,"blast_furnace":2,"auto_press":2,"fuel_depot":3,"armor_block":8}

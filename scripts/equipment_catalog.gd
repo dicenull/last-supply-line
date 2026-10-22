@@ -8,25 +8,8 @@ const RARITIES = {
 	"legendary":{"name":"レジェンダリー","color":"e4b35c","weight":1,"power":1.5,"salvage":4.0}
 }
 const GENRES = {"secondary":"副砲","protection":"防御装備","engine":"動力装備","support":"支援装備"}
-const DEFINITIONS = {
-	"left_gun":{"genre":"secondary","size":Vector2i(2,2)},
-	"right_gun":{"genre":"secondary","size":Vector2i(2,2)},
-	"rapid_gun":{"genre":"secondary","size":Vector2i(2,2)},
-	"long_gun":{"genre":"secondary","size":Vector2i(2,2)},
-	"mortar_gun":{"genre":"secondary","size":Vector2i(2,2)},
-	"rear_gun":{"genre":"secondary","size":Vector2i(2,2)},
-	"scatter_gun":{"genre":"secondary","size":Vector2i(2,2)},
-	"arc_gun":{"genre":"secondary","size":Vector2i(2,2)},
-	"armor":{"genre":"protection","size":Vector2i(2,1)},
-	"skirts":{"genre":"protection","size":Vector2i(2,1)},
-	"supercharger":{"genre":"engine","size":Vector2i(2,1)},
-	"economizer":{"genre":"engine","size":Vector2i(2,1)},
-	"rangefinder":{"genre":"support","size":Vector2i(2,1)},
-	"servo":{"genre":"support","size":Vector2i(1,1)},
-	"salvage_arm":{"genre":"support","size":Vector2i(2,2)},
-	"blast_fuse":{"genre":"support","size":Vector2i(1,1)},
-	"drum_loader":{"genre":"support","size":Vector2i(2,1)}
-}
+const Data = preload("res://scripts/equipment_data.gd")
+const DEFINITIONS = Data.DEFINITIONS
 const DROP_TABLES = {
 	"frontline":[["left_gun",16],["right_gun",16],["rapid_gun",10],["rear_gun",8],["armor",16],["skirts",12],["supercharger",10],["servo",12]],
 	"artillery":[["long_gun",18],["mortar_gun",18],["scatter_gun",12],["arc_gun",8],["rangefinder",16],["blast_fuse",14],["drum_loader",14]],
@@ -63,20 +46,40 @@ static func salvage(item: Dictionary) -> Dictionary:
 static func valid(item) -> bool:
 	return item is Dictionary and item.get("kind") in DEFINITIONS and item.get("rarity") in RARITIES
 
+static func family(id: String) -> String:
+	return str(Data.ITEMS.get(id,{}).get("family",id))
+
+static func level(id: String) -> int:
+	return int(Data.ITEMS[id].level)
+
+static func effect_values(item: Dictionary) -> Dictionary:
+	var values: Dictionary = Data.ITEMS[item.kind].effects.duplicate()
+	var power: float = RARITIES[item.rarity].power
+	for key in values:
+		# Quality improves benefits; operating costs and tradeoffs stay explicit.
+		if (key == "fuel_bonus" and values[key] < 0) or (key != "fuel_bonus" and values[key] > 0): values[key] *= power
+	if item.kind == "salvage_arm": values.salvage_rate = 1.0/maxi(2,roundi(3/power))
+	return values
+
 static func description(item: Dictionary) -> String:
 	var kind: String = item.kind
 	var power: float = RARITIES[item.rarity].power
-	if kind in Content.GUNS:
+	if kind in Content.ALL_GUNS:
 		var spec: Dictionary = Content.EQUIPMENT[kind]
-		return "%.2f秒間隔 / 射程%dm / 砲弾%d発" % [spec.interval/power,spec.range,spec.ammo]
-	match kind:
-		"armor": return "被ダメージ −%.1f%%" % (25*power)
-		"skirts": return "被ダメージ −%.1f%% / 追加装甲と併用可" % (20*power)
-		"supercharger": return "走行速度 +%.1f%% / 燃料消費 +10%%" % (20*power)
-		"economizer": return "走行燃料消費 −%.1f%%" % (20*power)
-		"rangefinder": return "全砲の射程 +%.1fm" % (6*power)
-		"servo": return "全砲の旋回速度 +%.1f%%" % (60*power)
-		"salvage_arm": return "敵%d体撃破ごとに装備を1個追加回収" % maxi(2,roundi(3/power))
-		"blast_fuse": return "全砲の爆発範囲 +%.1fm" % (4*power)
-		"drum_loader": return "主砲・副砲の射撃間隔 −%.1f%%" % (20*power)
-	return Content.EQUIPMENT[kind].effect
+		var lines = ["Lv.%d · %.2f秒間隔 / 射程%.1fm / 砲弾%d発" % [level(kind),spec.interval/power,spec.range,spec.ammo],"旋回 %.2frad/秒" % spec.turn]
+		if spec.get("splash",0) > 0: lines.append("爆発半径 %.2fm" % spec.splash)
+		if spec.get("pellets",1) > 1: lines.append("同時標的 %d両" % spec.pellets)
+		if spec.get("chain",0) > 0: lines.append("追加連鎖 %d回" % spec.chain)
+		return " / ".join(lines)
+	var labels = {"damage_reduction":"被ダメージ","speed_bonus":"走行速度","fuel_bonus":"燃料消費","turn_bonus":"砲塔旋回速度","reload_bonus":"射撃間隔"}
+	var lines = ["装備 Lv.%d" % level(kind)]
+	var values = effect_values(item)
+	for key in values:
+		var value: float = values[key]
+		if key in labels:
+			if key in ["damage_reduction","reload_bonus"]: value = -value
+			lines.append("%s %s%.1f%%" % [labels[key],"+" if value >= 0 else "−",absf(value)*100])
+		elif key == "range_bonus": lines.append("全砲の射程 +%.2fm" % value)
+		elif key == "splash_bonus": lines.append("爆発範囲 +%.2fm" % value)
+		elif key == "salvage_rate": lines.append("敵100体あたり装備 %.1f個を追加回収" % (value*100))
+	return " / ".join(lines)

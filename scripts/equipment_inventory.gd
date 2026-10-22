@@ -14,7 +14,7 @@ static func editable(run, factory) -> bool:
 static func can_place(run, factory, uid: int, at: Vector2i) -> bool:
 	var item = find_item(run,uid)
 	if item.is_empty() or not editable(run,factory): return false
-	if item.position == STOWED and item.kind in run.equipment: return false
+	if item.position == STOWED and run.equipment.any(func(id): return Catalog.family(id) == Catalog.family(item.kind)): return false
 	return factory.can_place_equipment(item.kind,at)
 
 static func place(run, factory, uid: int, at: Vector2i) -> bool:
@@ -87,4 +87,21 @@ static func powers(run) -> Dictionary:
 	var result = {}
 	for item in run.gear_items:
 		if item.position != STOWED: result[item.kind] = Catalog.RARITIES[item.rarity].power
+	return result
+
+static func effects(run) -> Dictionary:
+	var result = {"damage":1.0,"speed":1.0,"fuel":1.0,"turn":1.0,"reload":1.0,"range":0.0,"splash":0.0,"salvage_rate":0.0}
+	for item in run.gear_items:
+		if item.position == STOWED: continue
+		var values = Catalog.effect_values(item)
+		result.damage *= 1.0-values.get("damage_reduction",0.0)
+		result.speed *= 1.0+values.get("speed_bonus",0.0)
+		result.fuel *= 1.0+values.get("fuel_bonus",0.0)
+		result.turn *= 1.0+values.get("turn_bonus",0.0)
+		result.reload *= 1.0-values.get("reload_bonus",0.0)
+		result.range += values.get("range_bonus",0.0)
+		result.splash += values.get("splash_bonus",0.0)
+		result.salvage_rate += values.get("salvage_rate",0.0)
+	var bounds = {"damage":Vector2(0.2,1),"speed":Vector2(0.5,2),"fuel":Vector2(0.25,2),"turn":Vector2(0.25,4),"reload":Vector2(0.35,1.5),"range":Vector2(0,20),"splash":Vector2(0,12),"salvage_rate":Vector2(0,0.75)}
+	for key in bounds: result[key] = clampf(result[key],bounds[key].x,bounds[key].y)
 	return result
