@@ -23,8 +23,13 @@ func snapshot(game) -> Dictionary:
 		"view":{"yaw":game.world.yaw,"pitch":game.world.pitch,"zoom":game.world.zoom,"roof":game.world.roof_closed},"battle":{}}
 	data.run.merge(fields(game.expedition,CRAFT_FIELDS))
 	data.factory.wrecks = game.factory.wrecks.duplicate()
+	data.factory.layout_version = game.factory.layout_version
+	data.factory.equipment_mounts = game.factory.equipment_mounts.duplicate()
 	data.factory.wreck_directions = game.factory.wreck_directions.duplicate()
 	data.run.difficulty = game.expedition.difficulty
+	data.run.item_mode = game.expedition.item_mode
+	data.run.gear_items = game.expedition.gear_items.duplicate(true)
+	data.run.next_item_uid = game.expedition.next_item_uid
 	if game.battlefield == null: return data
 	var b = game.battlefield
 	var state = fields(b,BATTLE_FIELDS)
@@ -130,7 +135,9 @@ func apply(game, data: Dictionary) -> bool:
 		return false
 	game.sound.stop_all()
 	if game.world.feedback != null: game.world.feedback.clear()
-	var restored_factory = Factory.new()
+	var restored_factory = Factory.new(data.factory.get("layout_version",1))
+	restored_factory.equipment_mounts = data.factory.get("equipment_mounts",{}).duplicate()
+	restored_factory.loadout_locked = data.started
 	for key in FIELDS: restored_factory.set(key,data.factory[key].duplicate(true) if data.factory[key] is Array or data.factory[key] is Dictionary else data.factory[key])
 	restored_factory.wrecks = data.factory.get("wrecks",{}).duplicate()
 	for pos in restored_factory.wrecks:
@@ -159,6 +166,9 @@ func apply(game, data: Dictionary) -> bool:
 		if not Factory.AUXILIARY.has(id): continue
 		if data.version == 1: restored_factory.install_auxiliary(id)
 		else: restored_factory.auxiliary_ids.append(id)
+	restored_run.item_mode = data.run.get("item_mode",false)
+	restored_run.gear_items = data.run.get("gear_items",[]).duplicate(true)
+	restored_run.next_item_uid = data.run.get("next_item_uid",1)
 	restored_run.rng.state = data.rng_state
 	game.release_battle()
 	game.factory = restored_factory
@@ -172,7 +182,8 @@ func apply(game, data: Dictionary) -> bool:
 	game.world.rendered_layout = ""
 	game.world.old_shots = restored_factory.shots
 	game.world.pending_shots = 0
-	game.world.configure_equipment(restored_run.equipment,restored_factory.auxiliary_positions())
+	game.world.set_layout_version(restored_factory.layout_version)
+	game.world.configure_equipment(restored_run.equipment,restored_factory.auxiliary_positions(),restored_factory.equipment_mounts)
 	for key in ["yaw","pitch","zoom"]: game.world.set(key,data.view[key])
 	if game.world.roof_closed != data.view.roof: game.world.toggle_roof()
 	game.world.update_camera()

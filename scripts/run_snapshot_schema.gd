@@ -2,7 +2,7 @@ extends RefCounted
 ## Data-only checkpoint contract. No file IO, scene creation, or live-state mutation.
 const Factory = preload("res://scripts/factory.gd")
 const RunState = preload("res://scripts/run_state.gd")
-const VERSION = 9
+const VERSION = 10
 const FIELDS = ["cells","clock","elapsed","ticks","fuel","fuel_used","ammo","rate","fire_clock","shots","supplied","injected","manufactured","missed","history","moves","completed","undo_stack","reserves","collected","reserve_capacity","work_multiplier","ammo_capacity"]
 const RUN_FIELDS = ["run_seed","sector","phase","hull","cleared","rewards_taken","modifiers","route_options","reward_options","current"]
 const CRAFT_FIELDS = ["recipes","equipment","stage_recipes"]
@@ -57,7 +57,7 @@ func valid_route(route) -> bool:
 		var offers = route.get("shop_offers")
 		var purchased = route.get("shop_purchased")
 		if not offers is Array or offers.size() not in [2,3] or not purchased is Array or purchased.size() != offers.size(): return false
-		if offers[0] != "coal" or offers[1] != "shell": return false
+		if [offers[0],offers[1]] not in [["coal","shell"],["gear:economizer","gear:armor"]]: return false
 		if offers.size() == 3 and (not offers[2] is String or not offers[2].begins_with("gear:") or offers[2].trim_prefix("gear:") not in RunState.EQUIPMENT): return false
 		for taken in purchased:
 			if not taken is bool: return false
@@ -65,10 +65,43 @@ func valid_route(route) -> bool:
 
 func validate(data) -> bool:
 	if not data is Dictionary or not safe_value(data) or not data.has_all(["version","factory","run","rng_state","started","battle_mode","view","battle"]): return invalid("validation_1")
-	if data.version not in [1,2,3,4,5,6,7,8,VERSION] or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
+	if data.version not in [1,2,3,4,5,6,7,8,9,VERSION] or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
 	var f = data.factory
 	var r = data.run
 	if not f is Dictionary or not f.has_all(FIELDS) or not r is Dictionary or not r.has_all(RUN_FIELDS): return invalid("validation_5")
+	for key in CRAFT_FIELDS:
+		var ids = r.get(key,[])
+		if not ids is Array or ids.size() > RunState.EQUIPMENT.size(): return invalid("craft_ids")
+		var seen = []
+		for id in ids:
+			if not id is String or not RunState.EQUIPMENT.has(id) or id in seen: return invalid("craft_id")
+			if key != "recipes" and id not in r.get("recipes",[]): return invalid("craft_locked")
+			seen.append(id)
+	if data.version >= 10 and (not r.has_all(["item_mode","gear_items","next_item_uid"]) or not f.has("equipment_mounts")): return invalid("missing_item_state")
+	var layout_version = f.get("layout_version",1)
+	if not layout_version is int or layout_version not in [1,2] or (data.version < 10 and layout_version != 1): return invalid("factory_layout")
+	if data.version >= 10 and not f.has("layout_version"): return invalid("missing_factory_layout")
+	var candidate = Factory.new(layout_version)
+	var mounts = f.get("equipment_mounts",{})
+	if not mounts is Dictionary or mounts.size() > Factory.Gear.DEFINITIONS.size() or (layout_version == 1 and not mounts.is_empty()): return invalid("equipment_mounts")
+	for id in mounts:
+		if id not in r.get("equipment",[]) or not mounts[id] is Vector2i or not candidate.can_place_equipment(id,mounts[id]): return invalid("equipment_footprint")
+		candidate.equipment_mounts[id] = mounts[id]
+	var item_mode = r.get("item_mode",false)
+	var items = r.get("gear_items",[])
+	var next_uid = r.get("next_item_uid",1)
+	if not item_mode is bool or not items is Array or items.size() > 10000 or not next_uid is int or next_uid < 1: return invalid("item_inventory")
+	if item_mode != (layout_version == 2) or (not item_mode and not items.is_empty()): return invalid("item_layout")
+	var seen_uids = []
+	var installed = {}
+	for item in items:
+		if not Factory.Gear.valid(item) or not item.get("uid") is int or item.uid < 1 or item.uid >= next_uid or item.uid in seen_uids or not item.get("position") is Vector2i: return invalid("item_instance")
+		seen_uids.append(item.uid)
+		if item.kind not in r.get("recipes",[]): return invalid("item_recipe")
+		if item.position == Vector2i(-1,-1): continue
+		if installed.has(item.kind) or mounts.get(item.kind,Vector2i(-1,-1)) != item.position: return invalid("item_installation")
+		installed[item.kind] = item.position
+	if item_mode and (installed != mounts or mounts.size() != r.get("equipment",[]).size()): return invalid("item_mounts")
 	if not numeric(r.sector,1,5) or not numeric(r.hull,0,100) or not numeric(r.cleared,0,5) or not numeric(r.rewards_taken,0,5) or not r.run_seed is int: return invalid("validation_6")
 	if data.version == 4 and not f.has("inventory"): return invalid("missing_inventory")
 	if f.has("inventory"):
@@ -80,14 +113,6 @@ func validate(data) -> bool:
 			if not Factory.LIMITS.has(kind): return invalid("inventory_kind")
 	if r.get("difficulty","normal") not in RunState.Content.DIFFICULTIES: return invalid("difficulty")
 	if r.phase not in ["prepare","travel","craft","reward","route","shop","won","lost","retreated"] or not valid_route(r.current): return invalid("validation_7")
-	for key in CRAFT_FIELDS:
-		var ids = r.get(key,[])
-		if not ids is Array or ids.size() > RunState.EQUIPMENT.size(): return invalid("craft_ids")
-		var seen = []
-		for id in ids:
-			if not id is String or not RunState.EQUIPMENT.has(id) or id in seen: return invalid("craft_id")
-			if key != "recipes" and id not in r.get("recipes",[]): return invalid("craft_locked")
-			seen.append(id)
 	if r.phase == "shop":
 		if r.cleared != r.sector or not r.current.has("shop_offers") or r.current.get("shop_done",false) or r.current.get("encounters_version",0) != 1 or r.current.get("destination_index",-1) < 0: return invalid("shop_state")
 		if RunState.FieldCourse.new(r.current).destinations[r.current.destination_index].get("encounter","") != "shop": return invalid("shop_destination")
@@ -108,7 +133,7 @@ func validate(data) -> bool:
 			if reward.trim_prefix("block:") not in Factory.LIMITS: return invalid("reward_block")
 		elif reward.begins_with("gear:"):
 			var gear = reward.trim_prefix("gear:")
-			if gear not in RunState.EQUIPMENT or gear in r.get("equipment",[]): return invalid("reward_gear")
+			if gear not in RunState.EQUIPMENT or (not item_mode and gear in r.get("equipment",[])): return invalid("reward_gear")
 		elif reward not in RunState.REWARDS: return invalid("reward_id")
 		seen_rewards.append(reward)
 	if r.phase == "travel" and not data.started: return invalid("validation_15")
@@ -130,6 +155,7 @@ func validate(data) -> bool:
 	if not wrecks is Dictionary or wrecks.size() > Factory.W*Factory.H: return invalid("wrecks")
 	for pos in wrecks:
 		if not pos is Vector2i or pos.x < 0 or pos.x >= Factory.W or pos.y < 0 or pos.y >= Factory.H or f.cells.has(pos) or not wrecks[pos] is String or not Factory.LIMITS.has(wrecks[pos]): return invalid("wreck_cell")
+		if pos in candidate.blocks or candidate.ports.has(pos) or candidate.mounted_at(pos) != "": return invalid("wreck_fixed_cell")
 	var wreck_directions = f.get("wreck_directions",{})
 	if not wreck_directions is Dictionary: return invalid("wreck_directions")
 	if data.version >= 7 and (not f.has("wreck_directions") or wreck_directions.size() != wrecks.size()): return invalid("missing_wreck_direction")
@@ -152,12 +178,12 @@ func validate(data) -> bool:
 		for item in c.items:
 			if item not in ITEMS: return invalid("validation_30")
 		if c.work > 0 and (not Factory.RECIPES.has(c.kind) or c.items.size() != 1): return invalid("validation_31")
-		if Factory.PORTS.has(pos):
-			if Factory.PORTS[pos] != c.kind: return invalid("validation_33")
+		if candidate.ports.has(pos):
+			if candidate.ports[pos] != c.kind: return invalid("validation_33")
+			if layout_version == 2 and c.dir != Factory.Layout.DIRECTIONS.get(pos,0): return invalid("fixed_port_direction")
 		else: rows.append([pos.x,pos.y,c.kind,c.dir])
-	for pos in Factory.PORTS:
+	for pos in candidate.ports:
 		if not f.cells.has(pos): return invalid("validation_36")
-	var candidate = Factory.new()
 	candidate.inventory = f.get("inventory",Factory.LIMITS).duplicate()
 	if data.version >= 2:
 		for id in r.get("equipment",[]):
@@ -234,7 +260,7 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 		for shot in b[key]:
 			if not shot is Dictionary or not shot.has_all(["origin","target","age","duration","position"]): return invalid("validation_75")
 			if not shot.origin is Vector3 or not shot.position is Vector3 or not numeric(shot.age,0,1000) or not numeric(shot.duration,0.001,1000) or shot.age > shot.duration: return invalid("validation_76")
-			if not numeric(shot.get("splash",0.0),0,8) or not numeric(shot.get("radius",6.0),1,12) or not numeric(shot.get("damage",10.0),0,100): return invalid("projectile_effect")
+			if not numeric(shot.get("splash",0.0),0,10 if run.get("item_mode",false) else 8) or not numeric(shot.get("radius",6.0),1,12) or not numeric(shot.get("damage",10.0),0,100): return invalid("projectile_effect")
 			if not shot.get("chain",0) is int or not numeric(shot.get("chain",0),0,2): return invalid("projectile_chain")
 			if shot.get("style","heavy") not in RunState.Content.BALLISTICS: return invalid("projectile_style")
 			if key == "projectiles":
