@@ -28,7 +28,7 @@ VISUAL = (
     'pipe_connections', 'placement_preview', 'tank_ui', 'battle', 'run_ui',
     'item_rewards', 'research', 'auxiliary_ports', 'menu', 'history', 'blueprint',
     'variety', 'logistics', 'audio', 'window', 'content_ui', 'phase_movement',
-    'equipment_ui', 'footer_tools', 'equipment_audio',
+    'equipment_ui', 'footer_tools', 'equipment_audio', 'field_map',
 )
 # These need their own invocation or are aliases; never silently count them twice.
 SPECIAL = {'crafting', 'exit_save', 'overnight_soak', 'pack_smoke'}

@@ -2,8 +2,10 @@ extends Control
 ## Icon-only minimap. Driving into a yard selects the destination.
 var state_provider: Callable
 var icons
-var battle
 var course
+var player_position = Vector3.ZERO
+var player_forward = Vector2.RIGHT
+var arrived_destination = -1
 const PANEL = Rect2(1168,96,240,184)
 const MAP = Rect2(1184,112,208,152)
 var panel_style = preload("res://scripts/ui_style.gd").style(Color("242b24"),Color("837c5b"))
@@ -14,11 +16,18 @@ func _ready():
 
 func _process(_delta):
 	var state: Dictionary = state_provider.call()
-	battle = state.get("battle")
-	visible = state.get("visible",false) and is_instance_valid(battle) and battle.field_course != null
+	var battle = state.get("battle")
+	visible = state.get("visible",false) and is_instance_valid(battle) and is_instance_valid(battle.player) and battle.field_course != null
 	if visible:
+		# Drawing may run after the battlefield was freed by a checkpoint or
+		# sector transition. Retain course data and copy the pose, not nodes.
 		course = battle.field_course
+		player_position = battle.player.position
+		player_forward = Vector2(battle.player.basis.x.x,battle.player.basis.x.z).normalized()
+		arrived_destination = battle.arrived_destination
 		queue_redraw()
+	else:
+		course = null
 
 func project(at: Vector3) -> Vector2:
 	# Keep road angles and heading faithful to the field, with room for badges.
@@ -44,12 +53,12 @@ func _draw():
 	for i in range(course.destinations.size()):
 		var site: Dictionary = course.destinations[i]
 		var at = project(site.position)
-		var selected = i == battle.arrived_destination
+		var selected = i == arrived_destination
 		draw_circle(at,17,Color("e6bd73") if selected else Color("8d9d7b"))
 		draw_circle(at,15,Color("778365"))
 		draw_texture_rect(icons.texture(preload("res://scripts/field_services.gd").icon(site)),Rect2((at-Vector2.ONE*14).round(),Vector2.ONE*28),false)
-	var player_at = project(battle.player.position)
-	var forward = Vector2(battle.player.basis.x.x,battle.player.basis.x.z).normalized()
+	var player_at = project(player_position)
+	var forward = player_forward
 	var side = Vector2(-forward.y,forward.x)
 	draw_circle(player_at,8,Color("242b24"))
 	draw_colored_polygon(PackedVector2Array([player_at+forward*8,player_at-forward*5+side*5,player_at-forward*5-side*5]),Color("ffe3a5"))
