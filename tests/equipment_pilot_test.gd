@@ -15,7 +15,8 @@ func run():
 	for sample in [
 		{"seed":1333,"sector":5,"kind":"coalfield","encounter":"rich","route_seed":872583036,"at":Vector3(26.97793,0,14.86048),"yaw":0.005510688,"taken":1,"variant":76,"terrain":"mud"},
 		{"seed":2251,"sector":3,"kind":"arsenal","encounter":"hostile","route_seed":1660790971,"at":Vector3(76.91239,0,-25.97725),"yaw":-0.365832716,"taken":3,"variant":130,"terrain":"mud"},
-		{"seed":3577,"sector":5,"kind":"coalfield","encounter":"shop","route_seed":1098885777,"at":Vector3(26.93572,0,16.04033),"yaw":-0.057107095,"taken":1,"variant":208,"terrain":"road"}
+		{"seed":3577,"sector":5,"kind":"coalfield","encounter":"shop","route_seed":1098885777,"at":Vector3(26.93572,0,16.04033),"yaw":-0.057107095,"taken":1,"variant":208,"terrain":"road"},
+		{"seed":3662,"sector":1,"kind":"scrapyard","encounter":"standard","route_seed":1531326520,"at":Vector3(41.75213,0,-25.59912),"yaw":0.292945951,"taken":2,"variant":213,"terrain":"road","mode":"hard"}
 	]: await scenario(sample)
 	print("EQUIPMENT PILOT RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
@@ -25,7 +26,7 @@ func scenario(sample: Dictionary):
 	var game = load("res://main.tscn").instantiate()
 	Fixture.assign(game,"equipment_pilot_test",2)
 	game.show_start_menu = false
-	game.expedition = preload("res://scripts/run_state.gd").new(sample.seed,"easy")
+	game.expedition = preload("res://scripts/run_state.gd").new(sample.seed,sample.get("mode","easy"))
 	game.expedition.sector = sample.sector
 	game.expedition.current = game.expedition.make_route(sample.kind,false,sample.encounter)
 	game.expedition.current.seed = sample.route_seed
@@ -39,7 +40,7 @@ func scenario(sample: Dictionary):
 	var b = game.battlefield
 	for enemy in b.enemies: enemy.hp = 0
 	b.kills = b.total
-	# Recorded poses from overnight runs 76, 130 and 208, after supply collection.
+	# Recorded poses from overnight runs 76, 130, 208 and 213, after supply collection.
 	b.player.position = sample.at
 	b.player.rotation.y = sample.yaw
 	for i in range(sample.taken):
