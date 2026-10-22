@@ -32,10 +32,16 @@ func refresh():
 	state = state_provider.call()
 	visible = state.get("visible",false)
 	button.disabled = not state.get("allowed",false)
+	var action_rect = RECT
+	var occupied: Rect2 = state.get("occupied",Rect2())
+	if action_rect.intersects(occupied):
+		action_rect.position.x = occupied.position.x-action_rect.size.x-12
+	button.position = action_rect.position
+	face.position = action_rect.position
 	button.tooltip_text = "一括修復 / 廃材 %d" % int(state.get("cost",0))
 	face.queue_redraw()
 
 func draw_face():
-	face.draw_texture_rect(icons.texture("repair"),Rect2(RECT.position+Vector2(26,5),Vector2(36,36)),false)
-	face.draw_texture_rect(icons.texture("scrap"),Rect2(RECT.position+Vector2(12,48),Vector2(22,22)),false)
-	face.draw_string(font,RECT.position+Vector2(40,65),str(state.get("cost",0)),HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color("f2eddf") if state.get("allowed",false) else Color("f29c84"))
+	face.draw_texture_rect(icons.texture("repair"),Rect2(Vector2(26,5),Vector2(36,36)),false)
+	face.draw_texture_rect(icons.texture("scrap"),Rect2(Vector2(12,48),Vector2(22,22)),false)
+	face.draw_string(font,Vector2(40,65),str(state.get("cost",0)),HORIZONTAL_ALIGNMENT_LEFT,-1,18,Color("f2eddf") if state.get("allowed",false) else Color("f29c84"))

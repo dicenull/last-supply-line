@@ -173,7 +173,21 @@ func run():
 		game._process(0)
 		await mouse(pressed_at,false)
 		check(game.Inventory.find_item(game.expedition,2).is_empty() and not game.Inventory.find_item(game.expedition,1).is_empty() and game.expedition.gear_items.back().rarity == "legendary","loot reordering between press and release cannot dismantle the wrong item")
+		game.battlefield.hull = 70
+		game.factory.reserves.scrap = 100
+		game.field_actions.refresh()
+		var repair_rect = game.field_actions.button.get_global_rect()
+		check(game.field_actions.visible and not repair_rect.intersects(game.inventory_panel.get_global_rect()) and not repair_rect.intersects(game.FOOTER_RECT) and not repair_rect.intersects(game.HEADER_RECT),"repair stays outside the inventory, header and footer when the vehicle is damaged")
+		await capture("inventory-repair-"+str(dimensions.x))
+		var repair_cost = game.repair_state().cost
+		var repair_layout = game.factory.layout()
+		var repair_items = game.expedition.gear_items.duplicate(true)
+		await click(game.field_actions.button)
+		check(game.battlefield.hull == 100 and game.factory.reserves.scrap == 100-repair_cost and game.inventory_panel.visible and game.expedition.gear_items == repair_items and game.factory.layout() == repair_layout,"repair click beside inventory charges once without closing the list or painting the line")
 		game.inventory_panel.hide()
+		game.battlefield.hull = 70
+		game.field_actions.refresh()
+		check(game.field_actions.button.get_rect() == game.field_actions.RECT,"closing inventory returns repair to its usual floating position")
 	game.reset_battle(42)
 	game.toggle_running()
 	game.factory.running = false

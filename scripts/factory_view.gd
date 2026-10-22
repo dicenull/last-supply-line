@@ -1111,7 +1111,8 @@ func repair_state() -> Dictionary:
 	var hull = battlefield.hull if battlefield != null else expedition.hull
 	var cost = RunState.Services.repair_cost(factory,hull)
 	var active = can_manage_layout() and hull > 0
-	return {"visible":active and cost > 0 and menu != null and not menu.visible,"allowed":active and cost > 0 and factory.reserves.scrap >= cost,"cost":cost}
+	return {"visible":active and cost > 0 and menu != null and not menu.visible,"allowed":active and cost > 0 and factory.reserves.scrap >= cost,"cost":cost,
+		"occupied":inventory_panel.get_global_rect() if inventory_panel != null and inventory_panel.visible else Rect2()}
 
 func repair_vehicle() -> bool:
 	if menu.visible or not repair_state().allowed: return false
