@@ -51,10 +51,10 @@ static func prepare(game, variant: int = 0) -> int:
 
 static func best_item(items: Array, kinds: Array, variant: int) -> Dictionary:
 	var best: Dictionary = {}
-	var score = -1
+	var score = -1.0
 	for item in items:
-		if item.kind not in kinds: continue
-		var value = Gear.RARITIES.keys().find(item.rarity)*100+posmod(kinds.find(item.kind)+variant,kinds.size())
+		if Gear.family(item.kind) not in kinds: continue
+		var value = Gear.RARITIES[item.rarity].power*(1+0.025*(Gear.level(item.kind)-1))*1000+posmod(kinds.find(Gear.family(item.kind))+variant,kinds.size())
 		if value > score:
 			best = item
 			score = value

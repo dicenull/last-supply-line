@@ -65,7 +65,7 @@ func run():
 			a.choose_route(0)
 			b.choose_route(0)
 	check(deterministic,"32 seeds reproduce all reward and route choices")
-	check(unique and seen_reward.size() == Run.EQUIPMENT.size() and seen_reward.keys().all(func(id): return id.begins_with("gear:")),"three distinct offers cover the equipment-only reward pool")
+	check(unique and seen_reward.size() == Run.Content.BASE_EQUIPMENT.size() and seen_reward.keys().all(func(id): return id.begins_with("gear:")),"three distinct offers cover the equipment-only reward pool")
 	check(seen_terrain.size() == 3 and seen_formation.size() == 3,"all terrain and formation variants appear")
 	var first = Run.new(77)
 	check(first.current.terrain == "road" and first.current.formation == "patrol","opening encounter retains baseline conditions")

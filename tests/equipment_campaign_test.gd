@@ -19,9 +19,9 @@ func prepare():
 		var best: Dictionary = {}
 		var installed: Dictionary = {}
 		for item in game.expedition.gear_items:
-			if item.kind != kind: continue
+			if Gear.family(item.kind) != kind: continue
 			if item.position != Inventory.STOWED: installed = item
-			if best.is_empty() or Gear.RARITIES[item.rarity].power > Gear.RARITIES[best.rarity].power: best = item
+			if best.is_empty() or Gear.RARITIES[item.rarity].power*(1+0.025*(Gear.level(item.kind)-1)) > Gear.RARITIES[best.rarity].power*(1+0.025*(Gear.level(best.kind)-1)): best = item
 		if best.is_empty() or best.position != Inventory.STOWED: continue
 		var at = {"armor":Vector2i(0,0),"economizer":Vector2i(2,0),"skirts":Vector2i(0,1),"drum_loader":Vector2i(2,1)}[kind]
 		if not installed.is_empty(): game.stow_item(installed.uid)

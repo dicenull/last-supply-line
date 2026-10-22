@@ -27,6 +27,9 @@ func run():
 	game.expedition.gear_items[0].rarity = "legendary"
 	game.factory.cells[Vector2i(0,0)].items = ["shell","shell"]
 	var data = game.checkpoint.snapshot(game)
+	var version_ten = data.duplicate(true)
+	version_ten.version = 10
+	check(game.checkpoint.apply(game,version_ten) and game.expedition.gear_items == data.run.gear_items and game.factory.auxiliary_ammo("left_gun") == 2,"version ten preserves original IDs, qualities, positions and ammunition")
 	check(game.checkpoint.write_file(PATH,data) and game.checkpoint.read_file(PATH) == data,"disk round-trip preserves rarity, identity, footprint and loaded ammunition")
 	for section in ["factory","run"]:
 		var fields = ["layout_version","equipment_mounts"] if section == "factory" else ["item_mode","gear_items","next_item_uid"]

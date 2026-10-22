@@ -58,6 +58,7 @@ func run():
 	check(status(f,Factory.AMMO_PORT) == "full" and status(f,Factory.FUEL_PORT) == "full","full consumers match actual whole-item acceptance")
 	game = load("res://main.tscn").instantiate()
 	Fixture.assign(game,"logistics_test")
+	game.expedition = preload("res://scripts/run_state.gd").new(42)
 	game.show_start_menu = false
 	root.add_child(game)
 	await process_frame
@@ -111,7 +112,11 @@ func run():
 	game.factory.running = true
 	game.battlefield.movement_direction = Vector3.RIGHT
 	var pickup = game.battlefield.resource_sites[0].node
-	game.battlefield.player.position = pickup.position-Vector3(pickup.COLLECTION_RADIUS+0.01,0,0)
+	# Approach from the road, not an arbitrary west-side pose inside scenery.
+	var road = game.battlefield.field_course.center_at(game.battlefield.resource_sites[0].distance)
+	var approach = (pickup.position-road).normalized()
+	game.battlefield.player.position = pickup.position-approach*(pickup.COLLECTION_RADIUS+0.01)
+	game.battlefield.player.rotation.y = atan2(-approach.z,approach.x)
 	game.factory.fuel = 1
 	game.factory.reserves = {"scrap":0,"coal":0}
 	game.battlefield.tick_battle(game.factory,0.1)

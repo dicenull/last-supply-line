@@ -88,7 +88,7 @@ func run():
 	check(not f.cells.has(second) and f.wrecks.has(second) and b.hull == 80 and b.bolts.is_empty(),"normal enemy projectile impact invokes local destruction exactly once")
 	check(b.damage_layer.get_child_count() == 10,"each destroyed cell has visible wreckage on vehicle")
 	var saved = game.checkpoint.snapshot(game)
-	check(saved.version == 10 and game.checkpoint.validate(saved) and saved.factory.wreck_directions[cell] == 3,"destroyed factory saves original orientation in version-ten checkpoint")
+	check(saved.version == 11 and game.checkpoint.validate(saved) and saved.factory.wreck_directions[cell] == 3,"destroyed factory saves original orientation in version-eleven checkpoint")
 	check(game.checkpoint.apply(game,saved) and game.factory.wrecks == saved.factory.wrecks and not game.factory.cells.has(cell) and not game.factory.layout_locked and game.factory.combat_editing,"loading preserves destruction and live editing without resurrecting machinery")
 	game.toggle_battle()
 	game._process(0)
