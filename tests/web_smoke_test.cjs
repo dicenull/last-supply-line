@@ -100,11 +100,30 @@ async function openGame(page) {
     await page.mouse.click(650,382); // 準備へ
     await page.waitForTimeout(400);
     await page.screenshot({path:path.join(out,'construction.png')});
+    await page.keyboard.press('i');
+    await page.waitForTimeout(250);
+    await page.mouse.move(1147,244);
+    await page.mouse.down();
+    await page.mouse.move(1117,244,{steps:3});
+    await page.mouse.move(591,207,{steps:12}); // Initial camera: grid cell (0,0).
+    await page.waitForTimeout(200);
+    await page.screenshot({path:path.join(out,'equipment-drag.png')});
+    await page.mouse.up();
+    await page.keyboard.press('i');
+    await page.waitForTimeout(250);
+    await page.mouse.click(1362,408); // Dismantle the stowed uncommon economizer.
+    await page.screenshot({path:path.join(out,'equipment-inventory.png')});
+    await page.keyboard.press('i');
     await page.keyboard.press('Escape');
     await page.mouse.click(650,308); // ランを保存
     await page.waitForTimeout(1500);
     const prepared = await readSave(page, 'prepared');
     check(!prepared.state.started && prepared.state.phase === 'prepare', 'preparation saves before departure');
+    check(prepared.state.layout_version === 2 && prepared.state.item_mode, 'new browser run uses central stock hull and equipment economy');
+    check(prepared.state.gear_items.length === 2 && prepared.state.gear_items[0].kind === 'left_gun' &&
+      JSON.stringify(prepared.state.gear_items[0].position) === '[0,0]', 'browser drag installs equipment on its reserved footprint');
+    check(prepared.state.reserves.scrap === 57 && prepared.state.reserves.coal === 35,
+      'browser dismantling turns stowed equipment into construction materials');
     await page.keyboard.press('Escape');
     await page.keyboard.press('Space');
     await page.waitForTimeout(16000);
@@ -148,6 +167,8 @@ async function openGame(page) {
     const restored = await readSave(page, 'restored');
     check(restored.state.seed === moved.state.seed && restored.state.ticks === moved.state.ticks &&
       JSON.stringify(restored.state.player) === JSON.stringify(moved.state.player), 'continue restores position and production, paused');
+    check(JSON.stringify(restored.state.gear_items) === JSON.stringify(moved.state.gear_items),
+      'browser reload retains equipment identities, rarities and installed positions');
     await page.mouse.click(650,700); // 保存してタイトルへ
     await page.waitForTimeout(2500);
     await page.mouse.click(650,438); // 続きから still works after scene reload.
