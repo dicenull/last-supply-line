@@ -50,6 +50,39 @@ static func dismantle(run, factory, uid: int) -> bool:
 	for raw in materials: factory.collect(raw,materials[raw])
 	return true
 
+static func normal_candidates(items: Array, genre: String = "") -> Array:
+	var result: Array = []
+	for item in items:
+		if item.rarity == "normal" and item.position == STOWED and item.get("ammo",0) == 0 and (genre == "" or Catalog.DEFINITIONS[item.kind].genre == genre): result.append(item.uid)
+	return result
+
+static func quote_normals(items: Array, uids: Array) -> Dictionary:
+	if uids.is_empty() or uids.size() > items.size(): return {}
+	var lookup: Dictionary = {}
+	for item in items: lookup[item.uid] = item
+	var quote = {"count":uids.size(),"scrap":0,"coal":0}
+	var seen: Dictionary = {}
+	for uid in uids:
+		if not uid is int or seen.has(uid) or not lookup.has(uid): return {}
+		seen[uid] = true
+		var item: Dictionary = lookup[uid]
+		if item.rarity != "normal" or item.position != STOWED or item.get("ammo",0) != 0: return {}
+		var materials = Catalog.salvage(item)
+		quote.scrap += materials.scrap
+		quote.coal += materials.coal
+	return quote
+
+static func dismantle_normals(run, factory, uids: Array) -> bool:
+	if not run.item_mode or run.phase in ["lost","won","retreated"]: return false
+	var quote = quote_normals(run.gear_items,uids)
+	if quote.is_empty(): return false
+	# Validate the complete reviewed selection before removing any item. New loot
+	# received since the preview is deliberately outside this explicit selection.
+	for index in range(run.gear_items.size()-1,-1,-1):
+		if run.gear_items[index].uid in uids: run.gear_items.remove_at(index)
+	for raw in ["scrap","coal"]: factory.collect(raw,quote[raw])
+	return true
+
 static func powers(run) -> Dictionary:
 	var result = {}
 	for item in run.gear_items:
