@@ -21,7 +21,7 @@ HEADLESS = (
     'field_course', 'ui_architecture', 'campaign_variety', 'equipment_catalog',
     'inventory_model', 'factory_layout', 'equipment_geometry', 'equipment_save',
     'equipment_campaign', 'equipment_inventory', 'equipment_feed',
-    'equipment_feedback', 'equipment_bulk', 'equipment_pilot', 'equipment_design', 'equipment_progression',
+    'equipment_feedback', 'equipment_bulk', 'equipment_pilot', 'equipment_design', 'equipment_progression', 'equipment_runtime',
 )
 VISUAL = (
     'menu_pages', 'field_landscape', 'field_surface', 'field_services',
