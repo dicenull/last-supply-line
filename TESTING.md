@@ -1,11 +1,35 @@
 # 検証手順
 
+## Web版（2026-10-22）
+
+`npm run dev:web`で起動し、別ターミナルから`WEB_URL=http://127.0.0.1:8791 npm run test:web`を実行する。Chromiumは`npx playwright install chromium`で用意。Godotが標準パスにない場合は`GODOT`環境変数で指定する。
+
+隔離ブラウザで19項目を確認する。WASMのMIMEと復号、404、実生産・給油、W移動、走行中の実音声波形、IndexedDBの保存ファイルをネイティブGodotで検証、再読込後のバイト一致、続きからの位置・生産tick一致、保存してタイトルへの帰還、最小画面、エラー不在を検査。ゲーム状態の書換えやデバッグ用APIは製品に追加していない。
+
+ローカルと公開先`https://last-supply-line.dicenull-dev.workers.dev`で各19項目成功。公開先の証跡は`WEB_AUDIT_DIR=build/web-audit/production`で分離した。ネイティブのmenu_testも21項目成功。手順と検証範囲は`web/README.md`に記載。
+
+## 構築反応・装備・敵の拡張（2026-10-21）
+
+`feedback_test.gd` は成功した配置・接続・実生産・給弾・給油、演出の一回消費、停止、復帰時の消去、最大48件の演出上限、砲塔の上に出る防護の火花、連続撃破を18項目で確認する。`arsenal_feedback_test.gd` は実生産ラインから新砲への独立給弾、散弾の3両同時撃破、放電2連鎖と範囲外への停止、飛翔中のディスク保存復帰と旧項目省略互換、信管・装填機の実作用、複数火薬車の連鎖誘爆と報酬重複防止、5発斉射の全予告範囲、突撃自爆を28項目で確認する。
+
+追加後の音声は `audio_test.gd` 42項目で、実ミキサーの非ゼロ出力とクリッピング防止、配置・接続・装甲・連続撃破、固定8音の優先割当、停止・ミュート・設定復旧を検証済み。`soak_test.gd` 11項目も成功し、60回の再出撃・復帰で後半のオブジェクトとリソース数が増加しない。
+
+`balance_test.gd` は3難易度×3シード×標準／防護付き並列ラインの18ランを比較する。防御は素材を消費して燃料系統から順に設置する。装甲なしの並列はハード1/3勝、防護付きは全難易度3/3勝。これは固定の経路操縦と装備選択による検証で、人間の勝率推定ではない。敵の数値を緩和する変更は行っていない。
+
+`overnight_soak_test.gd` は実経過時間で動く別試験。`-- --duration=28800 --speed=1` で8時間、100msごとに1ステップ進め、ランの再作成・資源・演出上限・解放後のノード／リソースを監視する。約60秒ごとに実ファイルへ保存して再読込し、停止状態から再開する。ログとJSONへ経過を記録する。`--speed=100` の90秒予備試験では20ラン・76,550ステップ・1回のディスク復帰で失敗なし。headlessの実行結果はGPU描画の長時間検証とは区別する。8時間試験の完了は最終RESULTで判断する。
+
+描画ありでは `--headless` を付けず、`--duration=21600 --speed=1 --suite=overnight_gpu_test` で6時間実行する。30fpsを上限とし、10分ごとに1440×940・960×628・1920×1080へ切り替えて画面を保存する。`--report=/絶対パス/progress.json` でJSONと画像の保存先を指定する（親フォルダは先に作成）。並行実行時は `--suite` を別名にしてテスト用保存データを分離する。両試験とも最後の `OVERNIGHT RESULT`、実経過時間、エラーの有無、終了コードを確認する。途中の正常なハートビートだけでは完了と扱わない。
+
+接続表示の直近検証：pipe_connections／placement_preview／tank_uiの3スイート83項目成功。直線・L字・分岐・設備継ぎ手・回転・取り消し・部位破壊・プレビュー・実生産を確認。最小画面を目視確認し、証跡をbuild/pipe-connections-auditに保存。
+
+配置プレビューと角形パイプの直近検証：placement_preview／tank_ui／phase_movementの3スイート110項目成功。最小画面で4方向の矢印・分岐先・赤い不可表示を目視確認。証跡はbuild/pipe-preview-audit。
+
 Godot 4.7.2 / Compatibility / macOSで確認。実行場所はプロジェクト直下。
 Godot実行ファイルを指定し、下記のスクリプトを実行する。
 
 ```sh
-/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/factory_test.gd
-/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --path . --script res://tests/variety_test.gd
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/factory_test.gd
+/Applications/Godot.app/Contents/MacOS/Godot --path . --script res://tests/variety_test.gd
 ```
 
 画面描画が必要な試験には `--headless` を付けない。描画完了を待つ処理があるため、画面なしでは終了しない。画面試験は1つずつ実行する。
@@ -13,59 +37,109 @@ Godot実行ファイルを指定し、下記のスクリプトを実行する。
 | スクリプト | 項目数 | 画面描画 | 主な検証 |
 |---|---:|---|---|
 | factory_test.gd | 33 | 不要 | 生産・搬送・合流・分岐・保存・燃料 |
+| pipe_connections_test.gd | 22 | 任意 | 4方向の接続・設備継ぎ手・曲がり角・分岐・素材互換・プレビュー・破壊・物流維持 |
+| placement_preview_test.gd | 24 | 必要 | 角形パイプ・半透明プレビュー・Rの4方向・分岐・配置方向一致・不可表示・編集ロック |
 | tank_ui_test.gd | 37 | 必要 | 3D車体・砲塔・可視物資・実入力 |
-| battle_test.gd | 32 | 必要 | 自動走行・射撃・燃料停止・視点切替・走行中編集 |
-| run_test.gd | 40 | 不要 | 5戦・資源・持越・報酬・ルート・ボス・撤退 |
-| run_ui_test.gd | 9 | 必要 | 報酬・ルート・出発・メニュー撤退・選択時の表示領域 |
-| checkpoint_test.gd | 23 | 不要 | 生産・敵・飛翔弾の復元、同一進行、破損・バックアップ |
+| battle_test.gd | 51 | 必要 | 画面外からの連続進入・射程・一撃撃破・重複発射防止・俯瞰視点・残り距離・戦闘中編集ロック |
+| run_test.gd | 46 | 不要 | 5戦・資源・持越・報酬・ルート・ボス・撤退 |
+| run_ui_test.gd | 14 | 必要 | 中央ポップアップ・背景遮断・最小画面の選択・Esc重なり・保存復帰・出発・撤退 |
+| item_rewards_test.gd | 91 | 任意 | 装備17種の3択・素材建設と返却・不足時の原子性・最小画面・保存と旧版移行 |
+| research_test.gd | 31 | 任意 | 死亡で1種類の恒久解放・重複防止・履歴上限・保存失敗・旧プロフィール・新ラン建設 |
+| auxiliary_ports_test.gd | 38 | 必要 | 独立給弾・弾薬分離・実ドラッグ・マスと砲の位置同期・最小画面・新旧保存・満床時の副砲獲得拒否 |
+| checkpoint_test.gd | 27 | 不要 | 新旧戦闘ルール・敵の向き・飛翔弾の復元、同一進行、破損・バックアップ |
 | menu_test.gd | 21 | 必要 | 開始・続きから・保存・新ラン・配置管理・カメラ・装甲・撤退・入力遮断 |
 | history_test.gd | 12 | 必要 | 結果・64bitシード・重複抑止・履歴上限・復旧 |
 | blueprint_test.gd | 29 | 必要 | 開放・旧プロフィール移行・永続化・実クリック・実生産・予備弾16発 |
 | variety_test.gd | 30 | 必要 | 32シード再現・実速度と燃料・編成・装填と積載・新旧保存 |
 | campaign_variety_test.gd | 28 × 2 | 不要 | 6シード×2構成×安全／危険ルートの24ラン |
-| supply_recovery_test.gd | 15 | 不要 | 走行中の供給再接続・枯渇時撤退・再出撃 |
+| supply_recovery_test.gd | 15 | 不要 | 出撃後の再接続禁止・枯渇時撤退・構築し直して再出撃 |
 | logistics_test.gd | 31 | 必要 | 診断・実回収・積み残し・停止／再開・屋根・入力透過 |
-| audio_test.gd | 31 | 必要 | 実波形・音量・停止・設定保存・破損・8音上限・バス解放 |
+| audio_test.gd | 42 | 必要 | 実波形・10音源・音量・停止・設定保存・破損・8音上限・音の優先制御・バス解放 |
 | window_test.gd | 58 | 必要 | 5サイズ・実クリック・最小サイズ・表示専用ヘッダー・フッター操作・中央画面 |
 | soak_test.gd | 11 | 不要 | 加速4時間・60回の再出撃／復帰・ノード／オブジェクト上限 |
+| expansion_test.gd | 74 | 不要 | 17装備・16敵種・17設備・追加設備の実物流・有限原料の難易度別進行 |
+| enemy_roles_test.gd | 59 | 不要 | 既存13敵種の実弾・威力・半径・三連射・指揮・予測・突破・回収・旋回機 |
+| content_ui_test.gd | 69 | 必要 | 難易度実クリック・全設備配置・17装備獲得・8独立給弾口・旧報酬互換・新砲実射・保存 |
+| balance_test.gd | 24 | 不要 | 3難易度×3シード×2構成の18ラン・給弾増設の効果 |
+| tank_steering_test.gd | 15 | 不要 | 中心を固定した旋回・車体基準の前後進・円弧・燃料不足・境界・停止 |
+| phase_movement_test.gd | 49 | 必要 | 構築／戦闘分離・実キー8種・超信地旋回・停止・燃料・回避・全編集ロック・保存・次戦解除 |
+| local_damage_test.gd | 42 | 任意 | 命中位置・旋回・断線・物資喪失・戦闘ロック・有料再建・破壊跡・新旧保存 |
+| armor_block_test.gd | 38 | 任意 | 廃材建設・8方向防護・3回耐久・車体軽減・地雷・修復・保存・旧在庫・9キー・3枚の装甲板 |
+| ballistics_test.gd | 23 | 任意 | 7系統の爆発・弾速・反動・透明度・保存復帰 |
+| feedback_test.gd | 18 | 任意 | 配置・接続・生産・給弾・防護の可視位置・連続撃破・演出上限・停止と復帰 |
+| arsenal_feedback_test.gd | 28 | 任意 | 実生産から新砲への給弾・散弾・連鎖・信管・装填機・連鎖誘爆・5発斉射予告・突撃自爆・飛翔中のディスク復帰 |
+| overnight_soak_test.gd | 実時間 | 不要 | 8時間の通常ラン・実保存復帰・資源と演出上限・解放後のリソース監視 |
+| vehicle_collision_test.gd | 15 | 任意 | 30両・残骸・ボスの非重複と連続進入 |
+| course_goal_test.gd | 93 | 任意 | 3施設×初戦／最終戦・敷地侵入・横通過・残敵クリア・修復・保存再開 |
+| supply_point_test.gd | 51 | 任意 | 3経路の中間施設・回収前後の外観・回収量・再通過・保存再開 |
+| resource_storage_test.gd | 15 | 不要 | 資源上限撤廃・64bit数量・建設返却・取り消し・保存復帰・旧保存 |
+| course_obstacles_test.gd | 50 | 任意 | 左右の蛇行・全5コースの通路・車体と旋回の衝突・敵車両の遮断・双方の砲弾通過・地雷・部位破壊・保存互換 |
 | pack_smoke_test.gd | 9 | 書き出し後 | 空フォルダからのPCK起動・資源同梱・生産／戦闘 |
 
-ソース上の試験440項目（通しプレイを安全／危険の2設定で実行すると468項目）、書き出し後のPCK試験9項目。各スクリプト末尾のRESULTが0 failuresであること、終了コードが0であること、SCRIPT ERROR / ERRORがないことを確認する。
+各スクリプト末尾のRESULTが0 failures、終了コード0、SCRIPT ERROR / ERRORなしであることを確認する。直近の実行範囲と証跡は末尾の追補に記す。crafting_test.gdは旧コマンド互換のためitem_rewards_test.gdを実行する入口で、重複集計しない。
 試験用プロフィールはtests/profile_fixture.gdでプレイヤーの保存先と分離し、終了時に除去する。中断保存の試験も専用の一時保存先を使う。
+
+## 実時間の連続動作試験結果（2026-10-21）
+
+最終ソースの6時間描画試験は21,600.199秒、終了コード0、`failed=false` で完了。45ランを開始し、うち44ランを終了（35完走）。359回の実ファイル保存復帰、全17装備の実取得、3サイズの繰り返し切替を確認した。破棄後のリソース数は全44回で20、最終破棄後のノード検査も成功。エラー・解放警告なし。開始直後を含む監視RSSは278.6〜540.7MiB。通常計測は概ね28〜30fps、新ラン切替の計測で16〜17fpsに下がり、次の計測で30fpsへ戻る例を記録した。終盤5時間50分の画像を目視確認済み。証跡は `build/gpu-soak-audit`、最終ソースとの一致と通常1,379項目の結果は `build/feedback-audit/final-checks.json`。
+
+8時間の状態試験は28,800.180秒、終了コード0、`failed=false` で完了。61ラン開始・60ラン終了・47完走、実ファイル保存復帰478回、全17装備の取得を確認した。終了ランはeasy／normal／hard各20、完走数は20／20／7。破棄後のリソース数は全60回で20、監視RSSは65.2〜186.6MiB、最終破棄を含めエラー・解放警告なし。証跡は `build/overnight-audit`。これは外観の最終調整前の固定ソースを画面なしで動かした試験で、最終描画の検証は上記6時間試験で行った。時間切れ時に進行中だったランは終了ランに数えず、実経過時間と加速シミュレーション時間も分けている。
+
+## ラインの防御ブロック
+
+`Godot --audio-driver Dummy --path . --script res://tests/armor_block_test.gd` で防御ブロックの38項目を確認する。描画不要なら `--headless` を付ける。周囲8方向の防護、1発につき1ブロックだけ消耗すること、3発目まで設備を保護して4発目で破壊すること、加工中の物資の維持、回転後の命中位置・車体ダメージ半減・地雷防御、損傷途中と破壊済みの一括修復を検証する。残り耐久の復帰、不正な耐久値・物資の拒否、旧在庫保存の互換、9キーと設備ページ3、搬送口を持たないプレビュー、耐久に応じた3枚の装甲板も確認する。
+
+追加後はarmor_block 38、local_damage 42、factory 33、checkpoint 27、item_rewards 79、pipe_connections 22の計241項目成功。通常1440×940と最小960×628を目視確認した。ログと画像は `build/armor-block-audit` に保存。
+
+## 道中の障害物
+
+`Godot --audio-driver Dummy --path . --script res://tests/course_obstacles_test.gd` で画面を含めて検証する。画面が不要な場合は `--headless` を指定できる。2シード×5コースを実寸の車体で蛇行し、衝突や地雷への接触なしで到着することを確認する。大きな移動ステップ・押し続け・超信地旋回・後退・実移動分の燃料、敵車両の通行、鉄柵と対戦車障害物越しの照準・双方の低い砲弾による命中、地雷の局所破壊と二重爆発防止、不正な地雷保存の拒否、旧保存の経路保持も検証する。描画実行では `preview-course-obstacles.png` を生成する。
+
+自動走行は `tests/profile_fixture.gd` の通路追従を使う。入力・旋回の単体試験と車両同士の密集回避試験は障害物なしの経路で独立して確認し、障害物を含む走行は上記試験とrun／checkpoint／balanceで確認する。
+
+射線通過と地雷の赤いアクセントへの変更後、course_obstaclesの50項目成功。鉄柵・対戦車障害物の両方で敵味方の砲弾命中と、車両の通行止めを確認し、地雷の配色を実画面で目視確認した。証跡は `build/course-obstacles-audit/shot-through-accent.log` と `shot-through-accent.png`。
+
+初回実装時はcourse_obstacles 46、run 46、checkpoint 27、phase_movement 49、vehicle_collision 15、resource_storage 15、tank_steering 15、balance 24の計237項目成功。鉄柵・地雷・対戦車障害物と路肩の補給施設を実描画で目視確認。ログと画面は `build/course-obstacles-audit` に保存した。射線を通す仕様変更前の難易度比較結果として扱う。
+
+balanceは3難易度×3シード×2構成。燃料ラインが切れたまま30秒間燃料ゼロなら、試験用操縦処理が既存の撤退操作を選ぶ。実ゲームが自動撤退する変更ではない。増設構成は各難易度で3シード中2以上の完走を検証する。被害比較は早期敗北と5コース完走を区別するため、入場したコース数で正規化する。燃料ラインの破壊で停止した場合にクリアを保証する試験ではない。
 
 ## 実終了と再開
 
 次を順に別プロセスで実行する。前半は実際にウィンドウ終了通知を受けて保存・終了し、後半は保存を読み取って進行を検証する。
 
 ```sh
-/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/exit_save_test.gd
-/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/exit_save_test.gd -- --verify
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/exit_save_test.gd
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/exit_save_test.gd -- --verify
 ```
 
 EXIT SAVE RESULT: PASSを確認する。エディター側の読込は次で確認する。
 
 ```sh
-/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --headless --path . --editor --quit
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --editor --quit
 ```
 
 ## 画面確認
 
 画面試験はpreview-*.pngを生成する。設置物・資源・加工品の判別、砲塔の透明度、向きと射撃、アイコン・数値・カードの重なりを目視確認する。
+一撃撃破の試験では通常編成・重砲とボス・旧保存相当の高耐久編成を実際に射撃し、生成された敵数と同数の砲弾で全両を撃破することと飛翔中の重複発射がないことを確認する。preview-battle-approach.pngで左下の自車両・前方の敵と「あとNm」を、preview-battle.pngで進軍中の残り距離を確認できる。
+敵は車体全体が画面外から始まり、連続移動で画面端を越えて接近すること、画面外では双方が射撃しないことを確認する。preview-reward.png／preview-route.pngは中央ポップアップ、末尾が-960.pngの画像は最小画面での表示。実クリック・背景遮断・選択待ちの保存復帰も検証する。
+報酬と建設は `Godot --audio-driver Dummy --path . --script res://tests/item_rewards_test.gd`、恒久解放は `Godot --audio-driver Dummy --path . --script res://tests/research_test.gd` で実行する。100シードで全装備13種の3択と全装備の取得、建設費・撤去返却・置換差額・取り消し・配置読込の素材保全、旧保存の移行を検証。research_testは10種の解放、同一死亡の再読込、履歴100件外への押出し、保存失敗、旧ランへの復元、次ランの有料建設を確認する。preview-item-rewards-960.png、preview-research-loss-960.png、preview-research-build-960.png、preview-research-menu-960.pngが最小画面の証跡。
+副砲給弾試験は `Godot --audio-driver Dummy --path . --script res://tests/auxiliary_ports_test.gd` で実行する。2本の実生産ラインが別々の副砲在庫を満たすこと、他の砲の弾薬を使わないこと、実ドラッグで車内／戦場の砲位置が移動することを確認する。preview-auxiliary-ports-960.pngは最小画面の移設後と副砲在庫表示。位置・弾薬の保存復帰と旧共有在庫形式からの移行も検証する。
 直近の追加画面はpreview-expanded-reward.png（装填・積載報酬）とpreview-expanded-routes.png（地形・編成・速度・燃料の比較）。
 
 ## 通しプレイの範囲と残る検証
 
 campaign_variety_testは並列／備蓄の2構成から開始し、第2戦前に燃料を並列化、備蓄型は第3戦前に弾薬を増設する。安全寄りのルートと加工・燃費重視の報酬選択を使う。
-6シード×2構成を安全／危険の2方針で実行し、24ラン全5戦の勝利を確認。危険方針は敵総耐久＋地形燃料倍率×10が高い候補を選ぶ。全3地形・全3編成を実際に通ったことも検証する。危険方針の並列型は残耐久86〜100、備蓄型は44〜80。安全方針より被害が増えるが、有限原料で完走できた。これは全シード・全報酬順・全ルートの勝利保証ではない。
+6シード×2構成を安全／危険の2方針で実行する。全ランが停止不能にならず勝敗へ到達すること、各構成で半数以上が勝つこと、第3戦の選択まで進むことを確認する。危険方針は敵数＋地形燃料倍率×10が高い候補を選ぶ。全3地形・旧互換の編成ラベル3種も通る。現在の追加敵を含むノーマルで安全・危険とも28項目成功。全シード・全報酬順・全ルートの勝利保証ではない。
 
 追加設定は次で実行する。
 
 ~~~sh
-/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --headless --path . --script tests/campaign_variety_test.gd -- --dangerous
-/Users/dice/Downloads/Godot.app/Contents/MacOS/Godot --headless --path . --script tests/supply_recovery_test.gd
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script tests/campaign_variety_test.gd -- --dangerous
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script tests/supply_recovery_test.gd
 ~~~
 
-supply_recovery_testは実ゲームの燃料／弾薬の接続を開始後に切り、12秒後に走行中編集でつなぎ直す。無料の物資追加なく走行と射撃が再開すること、原料ゼロでも撤退・新ランに進めることを15項目で検証。長時間と画面サイズは下記の専用試験で確認済み。配布アプリと最終監査はROADMAP.mdで追跡する。
+supply_recovery_testは構築中に燃料／弾薬の接続を外し、出撃後の再接続が拒否されることを検証する。撤退後に新ランの構築で接続を直し、実供給で移動・射撃できること、原料ゼロでも撤退・新ランに進めることを15項目で確認する。長時間と画面サイズは下記の専用試験で確認済み。配布アプリと最終監査はROADMAP.mdで追跡する。
 
 物流表示の試験はpreview-logistics.pngとpreview-pickup.pngを出力する。新規31項目と、変更に関連する既存138項目（工場・戦闘・保存・ラン・メニュー）を確認した。
 
@@ -100,6 +174,70 @@ tools/export_macos.pyは公式macOSリリーステンプレートで書き出し
 2026-10-08：ソース全16スイート410項目と、実終了・別プロセスの保存読込が成功。build/auditに各実行ログを保存。macOS書き出しではApple Siliconに必要なimport_etc2_astc設定の不足を修正した。
 
 単体アプリ実操作（2fc352d / ZIP SHA-256 99da4e5b0c444501b9c47b08b31bcff8ebe1f5afeb5ab59f490f12f58fac189d）：プロジェクト外へ展開し、開始・自動戦闘・走行中編集・B/Tab/Space・初戦クリア・報酬選択・次ルート選択・保存終了を実クリックで操作。再起動後に続きからを選び、製造数46、ライン上の物資、燃料、配置を保った第2戦準備へ停止状態で復帰することを画面確認した。テストスクリプトを単体アプリへ注入していない。
+
+## 2026-10-19：装備・敵・設備・報酬の拡張
+
+scripts/content.gdの定義を実際のシミュレーションとUIで検証する。装備3→13、敵3→13、設備6→16、報酬5→15の種類数を固定検査。追加設備は素材制約・分配先・待機・加工時間・石炭／燃料消費を確認し、追加砲は専用在庫から発射して着弾まで進める。迫撃砲は2発消費し、近接する2体を倒す。
+
+content_ui_testは難易度3択を実クリックし、実在庫の変化と出発後の変更禁止を確認する。全10追加設備をフッターから配置し、最小960×628で全13装備を報酬選択で獲得。旧15報酬の実状態への反映、偵察地図の第3経路選択も検証する。新設備の備蓄・分配順・支払済み加工進捗、新武器の飛翔弾・装填待ち、6個の独立出力口、難易度の保存復帰を含む。
+
+preview-difficulty-options.pngで難易度ダイアログ、preview-expanded-line.pngで設備ページ、preview-expanded-items-960.pngでアイテム選択後の経路、preview-three-routes.pngで3択経路を確認できる。
+
+enemy_roles_testは13種それぞれについて、実際に生成された予告円・弾数・飛翔時間・着弾ダメージを検査。指揮車の生存／撃破による攻撃間隔変化、突破車の後方到達、狙撃の未来位置への予告、輸送車の回収量、旋回機による主砲と副砲の実旋回速度も確認する。
+
+balance_testはシード7・42・1918を3難易度、見本／素材で増設した並列ラインの2構成で走らせる。設備・原料・装備の無料追加はせず、実際に抽選された候補だけを選ぶ。並列構成は防御・副砲を優先し、獲得した副砲へ建設した分配器で第2ラインを接続する。全18ランが素材と搭載上限を超えず勝敗まで到達し、今回の固定シードでは全ラン勝利した。詳細はbuild/item-reward-audit/balance-results.json。これは直進指示による回帰比較で、全シードの攻略保証ではない。
+
+## 2026-10-20：構築と戦闘の分離・手動移動
+
+phase_movement_testを画面ありで実行する。構築時の実クリック配置、WASD／矢印8キーそれぞれの初期車体方向を基準とした移動、キー解放停止、斜め速度の正規化、反対入力の相殺、実距離比例の燃料、燃料切れ、横移動と後退の残り距離、境界での無駄な燃料消費防止を検証する。
+
+出撃後は車内の配置・撤去・回転・副砲移設を実入力で拒否し、内部の配置変更API・全撤去・取り消し・読込でもロックを回避できないことを検査。一時停止、Esc、画面フォーカス喪失、保存復帰で移動キーを持ち越さず、ラインロックは維持する。勝利→報酬→経路→次戦構築で編集が再び可能になり、出撃で再ロックすることも確認する。
+
+実際の予告砲撃に対し、停止時は被弾し、横移動時は無傷で回避する比較を含む。最小960×628の戦闘UIはpreview-manual-combat-960.pngで確認する。ヘッダー「戦闘」、移動キー、南京錠と「ライン固定」、停止／再開を表示し、配置ツールと配置予定マーカーを隠す。
+
+既存の進行・保存・バランス試験はtests/profile_fixture.gdのdriveで明示的な前進指示を与える。ゲーム本体に自動走行の代替機能は追加していない。これらは一定の操縦指示で従来機能を比較する回帰試験であり、実キーボードと無入力時停止はphase_movement_testで別に確認する。車体が反対向きでもWが進路前方へ動くこと、画面上では左下から右上へ進むことも検証する。2026-10-19の18ラン比較も直進操作に相当し、プレイヤーの回避操作を含む難易度評価ではない。
+
+証跡はbuild/manual-combat-auditへ保存。旧保存も出撃中ならライン固定・手動移動で再開し、現在位置・向き・生産物・弾薬は保持する。キー押下状態と一時的な移動指示は保存しない。
+
+## 敵車両の衝突・高速砲弾
+
+```sh
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/vehicle_collision_test.gd
+```
+
+vehicle_collision_testは30両の混成・大型ボス・残骸について、停止時と前進時それぞれ60秒間の非重複、速度上限、車体全体が画面外から出現すること、後続の接近を確認する。移動経路が車両を横切るケースも拒否し、主砲の30mの飛翔時間が0.4秒となることを検査する。描画ありではpreview-vehicle-collision.pngを出力する。
+
+敵13種の弾速と着弾、主砲・副砲の撃破と在庫消費、予告円からの手動回避、短い飛翔中の保存復帰も既存スイートで検証。2026-10-20の関連8スイート計320項目成功。18ランの直進比較で全ランが勝敗まで解決し、ハードの増設構成は3シード中2勝。証跡はbuild/collision-audit。
+
+## 車種別の砲撃演出
+
+ballistics_test.gdは6系統の爆炎・衝撃波・煙の推移、描画方式に依存しない素材の透明度、寿命後の削除、主砲の後座、飛翔中および爆発中の保存復帰、不明系統の拒否と旧保存互換を21項目で確認する。描画付き実行ではpreview-ballistics-burst.pngとpreview-ballistics-smoke.pngを出力する。enemy_roles_test.gdは13車種の実弾速・着弾演出・ダメージを59項目で検証する。
+
+砲撃演出変更後は関連9スイート354項目が成功。証跡はbuild/ballistics-audit。描画確認では発光の白飛びを抑え、Compatibility描画で素材アルファが機能し、煙越しに地面が見えることを確認した。
+
+## ランダム報酬と有限設備の検証
+
+設備16種・装備13種の抽選、有限所持数、配置・取り消し・所持数の保存、新旧セーブ移行、直接獲得する全装備のUIと射撃を確認。関連17スイート計692項目と別プロセスの終了保存・再読込が成功。証跡はbuild/item-reward-audit。
+
+item_rewards_testの119項目はheadlessでも実行でき、描画ありでは最小画面の実クリックと画像出力も行う。旧crafting_testコマンドは同じ試験への互換入口。今回PCK・単体アプリは再出力していない。
+
+## 素材建設と死亡時の設備解放の検証（現仕様）
+
+関連16スイート599項目が成功。素材建設・撤去返却・置換差額・不足時の取り消し・装備13種の3択・死亡による全10設備の解放・同一死亡の二重計上防止・100件を超えた履歴・保存失敗・旧保存移行・新ラン引継ぎを検証。難易度別18ランと安全経路12ランの進行、最小画面の報酬・解放通知・建設パレット・Escメニューを確認した。ログと画像はbuild/construction-research-audit。保存は版5、プロフィールは版3。上記「ランダム報酬と有限設備」は変更前の検証履歴。配布PCKとmacOSアプリは未再出力。
+
+## 被弾による部位破壊の検証
+
+`Godot --audio-driver Dummy --path . --script res://tests/local_damage_test.gd` で部位破壊を検証。車体移動・旋回後の座標変換、実際の敵砲弾による破壊、外れ弾、無傷の系統の継続、物資と加工進捗の喪失、素材を返却しないこと、被弾前の取り消し無効化、戦闘中の修復禁止、クリア時の無料一括修復・向きと位置の復元・資源不変・敗北時非修復・満床での報酬抽選、保存版7と旧版5・6の読込を確認する。
+
+関連8スイート345項目が成功。local_damage／factory／checkpoint／run／item_rewards／battle／phase_movement／auxiliary_portsを実行し、SCRIPT ERROR／ERRORなし。最小画面の車内の破壊跡・部位破壊ヘッダーと戦場での着弾を確認。証跡はbuild/local-damage-audit。配布PCK・macOSアプリは未再出力。
+
+## 2026-10-20 超信地旋回
+
+A/Dと左右矢印は車体中心を固定した超信地旋回、W/Sと上下矢印は現在の車体方向に沿う前後進へ変更。同時入力は円弧走行。旋回時も履帯の移動量で燃料を使い、燃料不足では移動と旋回を比例縮小する。フッターの操作表示とREADMEを更新。関連6スイート210項目成功、SCRIPT ERROR／ERRORなし。実キー・最低画面サイズ・停止と復帰・燃料・境界・フレーム刻み・保存・旋回後の部位破壊を検証。証跡はbuild/pivot-steering-audit。配布PCK・macOSアプリは未再出力。
+
+## コースクリア修復と増援数
+
+車体と全破壊設備の無料修復、失われた物資の非補給、方向保存、報酬前の搭載余地判定をlocal_damage_testで検証。run_testで最終戦を含む5戦の修復、expansion_testで難易度別の敵数と波サイズ、vehicle_collision_testで30両・5両波の非重複と画面外進入、balance_testで18ランの進行を検証する。checkpoint_testとitem_rewards_testも含む7スイート計310項目が成功。ログと混戦の画面はbuild/clear-repair-audit/に保存。
 
 ## 設計リファクタの回帰検証（2026-10-22）
 
