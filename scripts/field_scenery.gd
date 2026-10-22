@@ -38,6 +38,9 @@ func build(world, course):
 		var landmarks = preload("res://scripts/field_landmarks.gd").new()
 		add_child(landmarks)
 		landmarks.build(world,course)
+		var surface_details = preload("res://scripts/field_surface_view.gd").new()
+		add_child(surface_details)
+		surface_details.build(course,world.sector_config)
 		return
 	var rng = RandomNumberGenerator.new()
 	rng.seed = int(world.sector_config.seed)+19
