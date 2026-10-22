@@ -108,7 +108,7 @@ func _draw():
 	icon("cargo",Rect2(16,10,30,30))
 	draw_string(font,Vector2(56,33),str(state.items.size()),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
 	icon("play" if state.editable else "lock",Rect2(288,12,26,26))
-	icon("erase",Rect2(344,16,24,24))
+	icon("close",Rect2(344,16,24,24))
 	for i in range(tabs.size()):
 		var id: String = GENRE_ICONS.keys()[i]
 		icon(GENRE_ICONS[id],Rect2(tabs[i].position+Vector2(14,6),Vector2(26,26)),Style.GOLD if genre == id else Style.MUTED)

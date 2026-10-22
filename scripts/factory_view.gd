@@ -67,6 +67,7 @@ var inventory_panel
 var dragging_item = -1
 var suppress_item_paint = false
 var inventory_button: Button
+var loot_feed
 var movement_keys: Dictionary = {}
 var tool_page = 0
 const TOOL_TABS = [
@@ -120,7 +121,7 @@ func _ready():
 	world.layout_version = factory.layout_version
 	viewport.add_child(world)
 	start_button = icon_button("play",Rect2(944,862,288,52),toggle_running,"Space")
-	icon_button("battle",Rect2(740,862,180,52),toggle_battle,"B")
+	icon_button("battle",Rect2(764,862,156,52),toggle_battle,"B")
 	icon_button("menu",Rect2(1274,862,134,52),func(): open_menu(false),"Esc")
 	battle_retry = add_button("",Rect2(614,862,212,52),reset_battle)
 	battle_retry.visible = false
@@ -135,7 +136,7 @@ func _ready():
 		button.tooltip_text = TOOL_TABS[i].name
 		icon_buttons.back().tab_index = i
 		tool_tabs.append(button)
-	inventory_button = icon_button("cargo",Rect2(690,862,40,52),toggle_inventory,"I")
+	inventory_button = icon_button("cargo",Rect2(690,862,60,52),toggle_inventory,"I")
 	inventory_button.tooltip_text = "装備一覧 / 解体（I）"
 	var logistics_layer = CanvasLayer.new()
 	logistics_layer.layer = 2
@@ -143,6 +144,10 @@ func _ready():
 	logistics = preload("res://scripts/logistics_overlay.gd").new()
 	logistics.game = self
 	logistics_layer.add_child(logistics)
+	loot_feed = preload("res://scripts/equipment_loot_feed.gd").new()
+	loot_feed.icons = pixel_icons
+	loot_feed.font = font
+	logistics_layer.add_child(loot_feed)
 	field_map = preload("res://scripts/field_map.gd").new()
 	field_map.icons = pixel_icons
 	field_map.state_provider = func(): return {"battle":battlefield,"visible":battle_mode and not menu.visible}
@@ -306,6 +311,7 @@ func reset_battle(seed_value: int = -1):
 	new_blueprints.clear()
 	choice_popup.craft_page = 0
 	inventory_panel.reset_view()
+	loot_feed.clear()
 	release_battle()
 	battle_mode = false
 	started = false
@@ -398,6 +404,7 @@ func set_difficulty(mode: String) -> bool:
 	if started or mode not in RunState.Content.DIFFICULTIES or not can_manage_layout() or expedition.sector != 1: return false
 	if mode == expedition.difficulty: return true
 	inventory_panel.reset_view()
+	loot_feed.clear()
 	expedition = RunState.new(expedition.run_seed,mode)
 	if factory.layout_version == 2: expedition.enable_items()
 	factory.remove_auxiliary()
@@ -557,6 +564,7 @@ func _process(delta):
 	choice_popup.refresh()
 	shop_panel.refresh()
 	inventory_panel.refresh()
+	loot_feed.advance(delta if not menu.visible and (factory.running or expedition.phase == "prepare") else 0.0,not menu.visible and expedition.phase in ["prepare","travel"])
 	queue_redraw()
 
 func present_feedback(delta: float):
@@ -778,6 +786,12 @@ func draw_control(entry: Dictionary):
 	if entry.has("tab_index"): picked = tool_page == entry.tab_index
 	var primary = entry.icon == "play"
 	panel(rect,Color("51563b") if picked else SURFACE,GOLD if picked or primary else EDGE)
+	if entry.icon == "cargo":
+		symbol("cargo",rect.position+Vector2(16,18),0.5)
+		keycap("I",rect.position+Vector2(33,5))
+		var count = str(expedition.gear_items.size())
+		text_at(count,rect.position+Vector2((rect.size.x-font.get_string_size(count,HORIZONTAL_ALIGNMENT_LEFT,-1,16).x)/2,45),16,INK)
+		return
 	if picked: panel(Rect2(rect.position+Vector2(12,rect.size.y-5),Vector2(rect.size.x-24,3)),GOLD)
 	var icon = entry.icon
 	if icon == "play": icon = "pause" if factory.running else "play"
@@ -965,6 +979,7 @@ func choose_run_option(index: int):
 				factory.grant_blocks(kind,RunState.Content.block_bundle(kind))
 			elif reward.begins_with("gear:"):
 				var gear = reward.trim_prefix("gear:")
+				if expedition.item_mode: loot_feed.push_item(expedition.gear_items.back())
 				if not expedition.item_mode and Factory.AUXILIARY.has(gear): factory.install_auxiliary(gear)
 				sync_equipment()
 			match reward:
@@ -1128,7 +1143,9 @@ func buy_shop_item(index: int) -> bool:
 	var id: String = expedition.current.shop_offers[index]
 	if id.begins_with("gear:"):
 		var gear = id.trim_prefix("gear:")
-		if expedition.item_mode: expedition.add_item({"kind":gear,"rarity":"uncommon"})
+		if expedition.item_mode:
+			expedition.add_item({"kind":gear,"rarity":"uncommon"})
+			loot_feed.push_item(expedition.gear_items.back())
 		else:
 			if Factory.AUXILIARY.has(gear) and not factory.install_auxiliary(gear): return false
 			if gear not in expedition.recipes: expedition.recipes.append(gear)
@@ -1149,6 +1166,7 @@ func leave_shop():
 
 func receive_item(item: Dictionary):
 	expedition.add_item(item)
+	loot_feed.push_item(item)
 	factory.message = Inventory.Catalog.RARITIES[item.rarity].name+"："+RunState.EQUIPMENT[item.kind].name+"を回収（Iで一覧・解体）"
 
 func toggle_inventory():

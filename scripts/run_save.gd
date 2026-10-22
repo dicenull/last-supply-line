@@ -134,6 +134,7 @@ func apply(game, data: Dictionary) -> bool:
 		error = "invalid_state"
 		return false
 	game.sound.stop_all()
+	if game.loot_feed != null: game.loot_feed.clear()
 	if game.world.feedback != null: game.world.feedback.clear()
 	var restored_factory = Factory.new(data.factory.get("layout_version",1))
 	restored_factory.equipment_mounts = data.factory.get("equipment_mounts",{}).duplicate()
