@@ -1,5 +1,20 @@
 # 検証手順
 
+## 通常の回帰試験をまとめて実行
+
+Python 3.9以降とGodotを使います。次のランナーは初回リソースのインポートを行い、画面不要の試験を最大2プロセス、描画・音声・実入力の試験を1つずつ実行します。新しいテストが分類されていなければ停止するため、追加した試験の実行漏れを検出できます。
+
+```sh
+python3 tools/run_tests.py --godot /Applications/Godot.app/Contents/MacOS/Godot
+python3 tools/run_tests.py --headless-only
+python3 tools/run_tests.py --suite equipment_ui --suite equipment_bulk
+python3 tools/run_tests.py --list
+```
+
+`GODOT`環境変数でも実行ファイルを指定できます。ログ・集計・ソースのSHA-256を `build/test-results` へ保存し、`--output` で別の保存先を指定できます。終了コード・全項目の結果・エラー／解放警告を検査し、実行中にソースが変更された場合も失敗として知らせます。1試験の制限は既定180秒、`--timeout` で変更可能です。画面試験はログイン済みデスクトップが必要です。
+
+通常の56スイートを対象にします。長時間試験、実終了→別プロセス再開、配布PCK、Web版はそれぞれ下記の専用手順で実行します。`crafting_test.gd` は既存試験への別名なので重複実行しません。
+
 ## Web版（2026-10-22）
 
 `npm run dev:web`で起動し、別ターミナルから`WEB_URL=http://127.0.0.1:8791 npm run test:web`を実行する。Chromiumは`npx playwright install chromium`で用意。Godotが標準パスにない場合は`GODOT`環境変数で指定する。
