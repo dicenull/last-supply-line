@@ -45,7 +45,11 @@ func build(world, kind: String, index: int, shells: int):
 	signal_lamp = world.box(self,Vector3(-3,2.6,-1.75),Vector3(0.42,0.55,0.25),"goal_signal")
 	for i in range(index+1):
 		world.box(self,Vector3(-2.5+i*0.28,0.48,-2.01),Vector3(0.12,0.2,0.04),"edge")
-	# Every stop carries both raw materials, matching its actual recovery bundle.
+	if world.get("item_mode") == true:
+		build_equipment_cargo(world,kind)
+		set_taken(false)
+		return
+	# Legacy stops carry both raw materials, matching their recovery bundle.
 	world.box(self,Vector3(1.8,0.7,0.8),Vector3(1.8,0.55,1.6),"machine_iron")
 	for i in range(4):
 		world.cylinder(cargo,Vector3(1.4+(i%2)*0.65,1.12+(i/2)*0.12,0.5+(i/2)*0.55),0.45,0.5,"coal",5,0.25)
@@ -112,3 +116,12 @@ func crossed_by(poses: Array) -> bool:
 		var nearest = Geometry2D.get_closest_point_to_segment(center,Vector2(before.x,before.z),Vector2(at.x,at.z))
 		if center.distance_squared_to(nearest) <= COLLECTION_RADIUS*COLLECTION_RADIUS: return true
 	return false
+
+func build_equipment_cargo(world, kind: String):
+	# New expeditions recover equipment crates; raw stock comes from dismantling.
+	if kind == "arsenal": build_magazine(world)
+	else: build_hoist(world)
+	for x in [-1.8,0,1.8]:
+		world.box(cargo,Vector3(x,0.9,0.8),Vector3(1.4,0.9,1.2),"wood")
+		for z in [0.22,1.38]: world.box(cargo,Vector3(x,0.9,z),Vector3(1.45,1.0,0.07),"pipe_joint")
+		world.box(cargo,Vector3(x,1.4,0.8),Vector3(1.5,0.1,1.3),"machine_iron")

@@ -7,6 +7,9 @@ const SupplyPoint = preload("res://scripts/supply_point.gd")
 const CourseObstacles = preload("res://scripts/course_obstacles.gd")
 const SUPPLY_DISTANCES = [18.0,52.0,86.0]
 signal enemy_destroyed(role: int)
+signal item_dropped(item: Dictionary)
+var item_mode = false
+const Gear = preload("res://scripts/equipment_catalog.gd")
 var reload_multiplier = 1.0
 var combat_modifiers: Dictionary = {}
 const ROUTE_LENGTH = 100.0
@@ -486,11 +489,11 @@ func drive_step(at: Vector3, yaw_value: float, travel: float, turn: float) -> Di
 
 func move_player(factory, delta: float) -> float:
 	var surface = RunState.condition(sector_config)
-	var engine_speed = combat_modifiers.get("speed",1.0)*(1.2 if "supercharger" in installed_equipment else 1.0)
+	var engine_speed = combat_modifiers.get("speed",1.0)*(1.0+0.2*equipment_power("supercharger") if "supercharger" in installed_equipment else 1.0)
 	var road_factor = 0.65 if field_course != null and field_course.road_distance(player.position) > FieldCourse.ROAD_HALF_WIDTH else 1.0
 	var travel = road_factor*clampf(movement_direction.x,-1,1)*delta*surface.speed*engine_speed
 	var turn = -clampf(movement_direction.z,-1,1)*delta*TURN_SPEED*engine_speed*surface.speed/3.3
-	var consumption = FUEL_PER_METER*fuel_multiplier*surface.fuel*(0.8 if "economizer" in installed_equipment else 1.0)*(1.1 if "supercharger" in installed_equipment else 1.0)
+	var consumption = FUEL_PER_METER*fuel_multiplier*surface.fuel*(1.0-0.2*equipment_power("economizer") if "economizer" in installed_equipment else 1.0)*(1.1 if "supercharger" in installed_equipment else 1.0)
 	var plan = drive_plan(travel,turn)
 	var fraction = minf(1.0,factory.fuel/(plan.effort*consumption)) if plan.effort > 0 else 1.0
 	travel *= fraction
@@ -533,7 +536,12 @@ func tick_battle(factory, delta: float):
 	for site in resource_sites:
 		if not site.taken and site.node.crossed_by(drive_poses):
 			site.taken = true
-			recover(factory,{"scrap":site.scrap,"coal":site.coal,"shell":site.shells})
+			if item_mode:
+				var count = 6 if sector_config.get("encounter","") == "rich" else 3
+				var role = {"scrapyard":0,"coalfield":9,"arsenal":2}.get(sector_config.kind,0)
+				for i in range(count): item_dropped.emit(Gear.roll(sector_config.seed,1000+resource_sites.find(site)*10+i,role))
+				feedback_effect("pickup",site.node.position,1.2)
+			else: recover(factory,{"scrap":site.scrap,"coal":site.coal,"shell":site.shells})
 			site.node.set_taken(true)
 	# Small pitch motion and tracks make actual world movement readable.
 	player.rotation.z = sin(elapsed*9)*0.006*minf(speed,1)
@@ -647,14 +655,14 @@ func update_gun(factory, delta: float):
 		target_marker.position = target.node.position+Vector3(0,0.12,0)
 		var offset: Vector3 = target.node.position-turret.global_position
 		target_angle = atan2(-offset.z,offset.x)-player.rotation.y
-		turret.rotation.y = rotate_toward(turret.rotation.y,target_angle,delta*2.4*(1.6 if "servo" in installed_equipment else 1.0))
+		turret.rotation.y = rotate_toward(turret.rotation.y,target_angle,delta*2.4*(1.0+0.6*equipment_power("servo") if "servo" in installed_equipment else 1.0))
 		if cooldown <= 0 and absf(angle_difference(turret.rotation.y,target_angle)) < 0.025 and factory.ammo > 0:
 			factory.fire_round()
 			fire_visual()
 			var shot: Dictionary = projectiles.back()
 			shot.target = target
 			shot.duration = shell_flight_time(shot.origin,target.node.position+Vector3(0,1.3,0))
-			cooldown = 60.0/factory.rate*reload_multiplier*(0.8 if "drum_loader" in installed_equipment else 1.0)
+			cooldown = 60.0/factory.rate*reload_multiplier*(1.0-0.2*equipment_power("drum_loader") if "drum_loader" in installed_equipment else 1.0)
 	muzzle.visible = shot_time > 0
 	update_auxiliary_guns(factory,delta)
 	for shot in flying_shots:
@@ -682,7 +690,11 @@ func kill_enemy(enemy: Dictionary, factory, at: Vector3, style: String = "heavy"
 	best_combo = maxi(best_combo,combo)
 	kills += 1
 	enemy_destroyed.emit(int(enemy.role))
-	if not sector_config.is_empty():
+	if item_mode:
+		var index = enemies.find(enemy)
+		item_dropped.emit(Gear.roll(sector_config.seed,index,int(enemy.role),sector_config.get("boss",false) and index == 5))
+		if "salvage_arm" in installed_equipment and kills % maxi(2,roundi(3/equipment_power("salvage_arm"))) == 0: item_dropped.emit(Gear.roll(sector_config.seed,2000+index,9))
+	elif not sector_config.is_empty():
 		var profile = RunState.Content.ENEMIES[enemy.role]
 		recover(factory,{"scrap":int(profile.get("loot",2))+int(combat_modifiers.get("salvage",0))+(2 if "salvage_arm" in installed_equipment else 0),"coal":int(profile.get("coal",0))})
 	enemy.mark.visible = false
@@ -714,10 +726,10 @@ func chain_hit(factory, origin: Vector3, count: int):
 		from = to
 
 func weapon_range(base: float) -> float:
-	return base+float(combat_modifiers.get("range",0.0))+(6.0 if "rangefinder" in installed_equipment else 0.0)
+	return base+float(combat_modifiers.get("range",0.0))+(6.0*equipment_power("rangefinder") if "rangefinder" in installed_equipment else 0.0)
 
 func hit_damage() -> int:
-	return ceili(float(sector_config.get("damage",10))*(0.75 if "armor" in installed_equipment else 1.0)*(0.8 if "skirts" in installed_equipment else 1.0)*float(combat_modifiers.get("damage",1.0)))
+	return ceili(float(sector_config.get("damage",10))*(1.0-0.25*equipment_power("armor") if "armor" in installed_equipment else 1.0)*(1.0-0.2*equipment_power("skirts") if "skirts" in installed_equipment else 1.0)*float(combat_modifiers.get("damage",1.0)))
 
 func update_auxiliary_guns(factory, delta: float):
 	for gun in auxiliary_guns:
@@ -729,7 +741,7 @@ func update_auxiliary_guns(factory, delta: float):
 		if target != null:
 			var offset: Vector3 = target.node.position-gun.pivot.global_position
 			var angle = atan2(-offset.z,offset.x)-player.rotation.y
-			gun.pivot.rotation.y = rotate_toward(gun.pivot.rotation.y,angle,delta*float(spec.get("turn",3.2))*(1.6 if "servo" in installed_equipment else 1.0))
+			gun.pivot.rotation.y = rotate_toward(gun.pivot.rotation.y,angle,delta*float(spec.get("turn",3.2))*(1.0+0.6*equipment_power("servo") if "servo" in installed_equipment else 1.0))
 			if gun.cooldown <= 0 and absf(angle_difference(gun.pivot.rotation.y,angle)) < 0.025 and factory.auxiliary_ammo(gun.id) >= int(spec.ammo):
 				for round_index in range(int(spec.ammo)): factory.fire_round(gun.id)
 				var origin: Vector3 = gun.muzzle.global_position
@@ -751,8 +763,8 @@ func update_auxiliary_guns(factory, delta: float):
 					shot.position = origin
 					var direction = (victim.node.position+Vector3(0,1.3,0)-origin).normalized()
 					build_shell(shot,direction,spec.ballistics)
-					projectiles.append({"node":shot,"origin":origin,"dir":direction,"age":0.0,"duration":shell_flight_time(origin,victim.node.position+Vector3(0,1.3,0),spec.ballistics),"style":spec.ballistics,"target":victim,"splash":float(spec.get("splash",0.0))+(4.0 if "blast_fuse" in installed_equipment else 0.0),"chain":int(spec.get("chain",0))})
-				gun.cooldown = float(spec.interval)*reload_multiplier*(0.8 if "drum_loader" in installed_equipment else 1.0)
+					projectiles.append({"node":shot,"origin":origin,"dir":direction,"age":0.0,"duration":shell_flight_time(origin,victim.node.position+Vector3(0,1.3,0),spec.ballistics),"style":spec.ballistics,"target":victim,"splash":float(spec.get("splash",0.0))+(4.0*equipment_power("blast_fuse") if "blast_fuse" in installed_equipment else 0.0),"chain":int(spec.get("chain",0))})
+				gun.cooldown = float(spec.interval)/float(combat_modifiers.get("equipment_power",{}).get(gun.id,1.0))*reload_multiplier*(1.0-0.2*equipment_power("drum_loader") if "drum_loader" in installed_equipment else 1.0)
 				gun.flash = 0.14
 				gun.recoil = 0.2
 				feedback_effect("shot",origin,0.55 if spec.ballistics == "rapid" else 0.9)
@@ -767,7 +779,7 @@ func fire_visual():
 	add_child(shot)
 	shot.position = origin
 	build_shell(shot,heading)
-	projectiles.append({"node":shot,"origin":origin,"dir":heading,"age":0.0,"style":"heavy","splash":4.0 if "blast_fuse" in installed_equipment else 0.0})
+	projectiles.append({"node":shot,"origin":origin,"dir":heading,"age":0.0,"style":"heavy","splash":4.0*equipment_power("blast_fuse") if "blast_fuse" in installed_equipment else 0.0})
 	recoil = 0.65
 	barrel.position.x = BARREL_REST-recoil
 	shot_time = 0.1
@@ -786,3 +798,6 @@ func recover(factory, items: Dictionary):
 		else: accepted = factory.collect(kind,amount)
 		collection_events.append({"item":kind,"accepted":accepted,"lost":amount-accepted})
 	while collection_events.size() > 12: collection_events.pop_front()
+
+func equipment_power(id: String) -> float:
+	return float(combat_modifiers.get("equipment_power",{}).get(id,1.0))

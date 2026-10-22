@@ -44,6 +44,26 @@ var current: Dictionary = {}
 var recipes: Array = []
 var equipment: Array = []
 var stage_recipes: Array = []
+var item_mode = false
+var gear_items: Array = []
+var next_item_uid = 1
+const Gear = preload("res://scripts/equipment_catalog.gd")
+
+func enable_items():
+	if item_mode: return
+	item_mode = true
+	add_item({"kind":"left_gun","rarity":"normal"})
+	add_item({"kind":"armor","rarity":"normal"})
+	add_item({"kind":"economizer","rarity":"uncommon"})
+
+func add_item(definition: Dictionary) -> int:
+	if not Gear.valid(definition): return -1
+	var uid = next_item_uid
+	next_item_uid += 1
+	gear_items.append({"uid":uid,"kind":definition.kind,"rarity":definition.rarity,"position":Vector2i(-1,-1)})
+	if definition.kind not in recipes: recipes.append(definition.kind)
+	return uid
+
 var rng = RandomNumberGenerator.new()
 
 func _init(value: int = 1, mode: String = "normal"):
@@ -110,7 +130,7 @@ func craft_cost(id: String) -> Dictionary:
 	return {"scrap":ceili(EQUIPMENT[id].scrap*modifiers.get("craft",1.0)),"coal":ceili(EQUIPMENT[id].coal*modifiers.get("craft",1.0))}
 
 func can_craft(id: String, reserves: Dictionary) -> bool:
-	if phase != "craft" or id not in recipes or id in equipment or not EQUIPMENT.has(id): return false
+	if item_mode or phase != "craft" or id not in recipes or id in equipment or not EQUIPMENT.has(id): return false
 	var recipe: Dictionary = craft_cost(id)
 	return reserves.get("scrap",0) >= recipe.scrap and reserves.get("coal",0) >= recipe.coal
 
@@ -139,7 +159,7 @@ func finish_sector(won: bool, remaining_hull: int, inventory: Dictionary = {}, m
 func reward_pool(inventory: Dictionary = {}, mount_space: bool = true) -> Array:
 	var pool: Array = []
 	for id in EQUIPMENT:
-		if id not in equipment and (mount_space or id not in Content.GUNS): pool.append("gear:"+id)
+		if item_mode or (id not in equipment and (mount_space or id not in Content.GUNS)): pool.append("gear:"+id)
 	return pool
 
 func offer_rewards(inventory: Dictionary = {}, mount_space: bool = true):
@@ -160,9 +180,10 @@ func choose_reward(index: int) -> bool:
 	var id: String = reward_options[index]
 	if id.begins_with("gear:"):
 		var gear = id.trim_prefix("gear:")
-		if not EQUIPMENT.has(gear) or gear in equipment: return false
+		if not EQUIPMENT.has(gear) or (not item_mode and gear in equipment): return false
 		if gear not in recipes: recipes.append(gear)
-		equipment.append(gear)
+		if item_mode: add_item({"kind":gear,"rarity":"rare"})
+		else: equipment.append(gear)
 	elif id.begins_with("block:"):
 		if not Content.BLOCK_LIMITS.has(id.trim_prefix("block:")): return false
 	elif id not in REWARDS: return false
@@ -190,7 +211,7 @@ func advance_after_reward():
 		if site.get("encounter","") == "shop":
 			phase = "shop"
 			var pool = reward_pool()
-			current.shop_offers = ["coal","shell"]
+			current.shop_offers = ["gear:economizer","gear:armor"] if item_mode else ["coal","shell"]
 			if not pool.is_empty(): current.shop_offers.append(pool[rng.randi_range(0,pool.size()-1)])
 			current.shop_purchased = []
 			for offer in current.shop_offers: current.shop_purchased.append(false)
