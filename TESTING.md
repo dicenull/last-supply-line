@@ -309,3 +309,9 @@ Web書き出しとローカルブラウザ19項目も成功し、計1,611項目�
 ブラウザーでは初期装備をドラッグ配置し、未設置品の解体で素材が増えることをIndexedDBの保存内容から検証した。移動・生産・音声・再読み込み・タイトル復帰・最小画面も成功。新しい出撃へ一覧のジャンルが残る不具合、配置JSONの数値比較、旧テストの保存版固定値、時刻依存シードを修正して再検証した。
 
 採用ログは`build/equipment-audit/final/summary.json`、ソース指紋は`build/equipment-audit/source-hashes.json`、画像とブラウザー証跡は`build/equipment-audit`と同ディレクトリの`web`。全体の採用ログにSCRIPT ERROR／ERRORはなく、Web書き出しも成功した。公開先へのデプロイは行っていない。
+
+### 副砲の全外周給弾
+
+2×2副砲を車内の隅へ置いた場合にも給弾経路を作れるよう、外周8か所を同じ弾薬在庫へ接続した。新規`equipment_feed_test.gd`の44項目は全8系統・全入口、連続競合の公平性、満杯時の保存則、異種素材の拒否、隅からの給弾、非アンカー位置への搬送表示、保存復帰と仲裁値の検証を確認する。
+
+モデル形状・生産・既存接続・保存・キャンペーン・実UIを含む12回の関連実行、計443項目が成功。給弾専用試験はheadlessと実描画の両方で実行した。結果は`build/equipment-audit/feed-regression/summary.json`、画面は`build/equipment-audit/equipment-feed.png`。

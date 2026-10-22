@@ -92,7 +92,7 @@ func refresh():
 		var materials = Catalog.salvage(item)
 		row_buttons[i].tooltip_text = "%s · %s\n%s / %d×%d\n%s\n%s" % [rarity.name,Catalog.Content.EQUIPMENT[item.kind].name,Catalog.GENRES[definition.genre],definition.size.x,definition.size.y,Catalog.description(item),"D&Dで配置（同型は1基まで）" if state.editable else "出撃中：装備変更不可"]
 		if item.kind in Catalog.Content.GUNS:
-			row_buttons[i].tooltip_text += "\n主砲の旋回範囲外に設置 / 給弾口のマスへ砲弾を搬送"
+			row_buttons[i].tooltip_text += "\n主砲の旋回範囲外に設置 / 2×2枠の外周から給弾"
 			if item.get("ammo",0) > 0: row_buttons[i].tooltip_text += "\n保管弾 %d発" % item.ammo
 		stow_buttons[i].disabled = not mounted or not state.editable
 		salvage_buttons[i].disabled = mounted or state.phase in ["lost","won","retreated"]

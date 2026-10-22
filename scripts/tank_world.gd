@@ -934,9 +934,10 @@ func item_frames(factory) -> Array:
 			if c.kind in ["depot","fuel_depot","overflow_gate"]: offset += Vector3(-0.21+int(i/4)*0.42,0,-0.29+(i%4)*0.19)
 			frames.append({"kind":c.items[i],"pos":cell_position(p)+offset,"dir":c.dir})
 	for move in factory.moves:
-		if not factory.cells.has(move.from) or not factory.cells.has(move.to): continue
+		var receiver = factory.receiving_cell(move.to)
+		if not factory.cells.has(move.from) or receiver.is_empty(): continue
 		var a = cell_position(move.from)+Vector3(0,good_height(factory.cells[move.from].kind),0)
-		var b = cell_position(move.to)+Vector3(0,good_height(factory.cells[move.to].kind),0)
+		var b = cell_position(move.to)+Vector3(0,good_height(receiver.kind),0)
 		frames.append({"kind":move.item,"pos":a.lerp(b,clampf(factory.clock/F.TICK,0,1)),"dir":factory.cells[move.from].dir})
 	return frames
 
@@ -1057,6 +1058,12 @@ func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: f
 			if factory.layout_version == 2 and c.kind in ["gun","engine"]:
 				machines[p] = fixed_fitting(c.kind,n,topology.display_inputs,p)
 			else: machines[p] = machine(c.kind,n,topology.display_inputs)
+			if factory.equipment_mounts.has(c.kind) and F.AUXILIARY.has(c.kind):
+				for offset in [Vector2i(1,0),Vector2i(0,1),Vector2i(1,1)]:
+					var socket = Node3D.new()
+					n.add_child(socket)
+					socket.position = Vector3(offset.x,0,offset.y)
+					flow_ports(c.kind,socket,factory.connection_sides(p+offset).display_inputs)
 			machines[p].connections = topology.connected
 			machines[p].inputs = topology.inputs
 	for p in machines:

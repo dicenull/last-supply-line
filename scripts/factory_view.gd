@@ -834,7 +834,7 @@ func destination_text() -> String:
 
 func draw_header():
 	metal_panel(HEADER_RECT)
-	if not battle_mode and (factory.cells.has(hover) or factory.wrecks.has(hover)):
+	if not battle_mode and (not factory.receiving_cell(hover).is_empty() or factory.wrecks.has(hover)):
 		draw_inspector()
 	else:
 		if not new_blueprints.is_empty() and expedition.phase == "lost":
@@ -867,7 +867,7 @@ func draw_inspector():
 		symbol("defeat",Vector2(47,42),0.65)
 		text_at("部位破壊",Vector2(68,49),17,DANGER)
 		return
-	var c: Dictionary = factory.cells[hover]
+	var c: Dictionary = factory.receiving_cell(hover)
 	var kind: String = c.kind
 	symbol(kind,Vector2(47,42),0.65)
 	if Factory.AUXILIARY.has(kind):

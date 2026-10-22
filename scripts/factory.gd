@@ -132,6 +132,17 @@ func auxiliary_positions() -> Dictionary:
 	for id in auxiliary_ids: result[id] = auxiliary_position(id)
 	return result
 
+func receiving_cell(p: Vector2i) -> Dictionary:
+	# Every edge of a mounted weapon's footprint feeds its one ammunition store.
+	# Keep only the anchor in cells so saves, firing and removal cannot duplicate it.
+	if cells.has(p): return cells[p]
+	var id = mounted_at(p)
+	if AUXILIARY.has(id): return cells.get(equipment_mounts[id],{})
+	return {}
+
+func feed_side(anchor: Vector2i, source: Vector2i) -> int:
+	return [Vector2i(-1,0),Vector2i(-1,1),Vector2i(0,2),Vector2i(1,2),Vector2i(2,1),Vector2i(2,0),Vector2i(1,-1),Vector2i(0,-1)].find(source-anchor)
+
 func install_position(id: String) -> Vector2i:
 	if not AUXILIARY.has(id) or id in auxiliary_ids: return Vector2i(-1,-1)
 	if not cells.has(AUXILIARY[id]) and AUXILIARY[id] not in blocks and mounted_at(AUXILIARY[id]) == "": return AUXILIARY[id]
@@ -511,7 +522,7 @@ func can_link(source: Dictionary, target: Dictionary, direction: int) -> bool:
 	return false
 
 func connection_sides(p: Vector2i, candidate: Dictionary = {}) -> Dictionary:
-	var cell: Dictionary = candidate if not candidate.is_empty() else cells.get(p,{})
+	var cell: Dictionary = candidate if not candidate.is_empty() else receiving_cell(p)
 	var info = {"inputs":[],"outputs":[],"connected":[],"display_inputs":[]}
 	if cell.is_empty(): return info
 	if cell.kind == "armor_block": return info
@@ -520,7 +531,7 @@ func connection_sides(p: Vector2i, candidate: Dictionary = {}) -> Dictionary:
 		if cell.kind in ["splitter","smart_splitter","priority_splitter","router"]: info.outputs.append(1)
 		if cell.kind == "router": info.outputs.append(3)
 	for side in range(4):
-		var neighbor = cells.get(p+DIRS[side],{})
+		var neighbor = receiving_cell(p+DIRS[side])
 		if neighbor.is_empty(): continue
 		var local_side = posmod(side-cell.dir,4)
 		if can_link(neighbor,cell,(side+2)%4): info.inputs.append(local_side)
@@ -528,9 +539,14 @@ func connection_sides(p: Vector2i, candidate: Dictionary = {}) -> Dictionary:
 	info.inputs.sort()
 	info.connected.sort()
 	info.display_inputs = info.inputs.duplicate()
+	if equipment_mounts.has(cell.kind):
+		info.display_inputs.clear()
+		for side in range(4):
+			if mounted_at(p+DIRS[side]) != cell.kind: info.display_inputs.append(posmod(side-cell.dir,4))
+		return info
 	# An isolated module has a rear socket, but a wrong-facing/incompatible
 	# occupied neighbor must not look like a working input connection.
-	if info.inputs.is_empty() and cell.kind not in ["source","coal_source"] and not cells.has(p+DIRS[(cell.dir+2)%4]): info.display_inputs.append(2)
+	if info.inputs.is_empty() and cell.kind not in ["source","coal_source"] and receiving_cell(p+DIRS[(cell.dir+2)%4]).is_empty(): info.display_inputs.append(2)
 	return info
 
 func start_processing(c: Dictionary):
@@ -557,19 +573,23 @@ func simulate_tick():
 		var directions = output_directions(c,item)
 		for d in directions:
 			var dest: Vector2i = p + DIRS[d]
-			if cells.has(dest) and can_receive(cells[dest], item):
-				if not proposals.has(dest): proposals[dest] = []
-				proposals[dest].append({"from":p, "item":item, "dir":d})
+			var receiver = receiving_cell(dest)
+			if not receiver.is_empty() and can_receive(receiver, item):
+				var target: Vector2i = equipment_mounts.get(receiver.kind,dest)
+				if not proposals.has(target): proposals[target] = []
+				proposals[target].append({"from":p, "to":dest, "item":item, "dir":d})
 				break
 	# Fair arbitration at merges: rotate input-side priority after a successful move.
 	for dest in proposals:
 		var candidates: Array = proposals[dest]
-		var target: Dictionary = cells[dest]
+		var target: Dictionary = receiving_cell(dest)
 		var winner: Dictionary = candidates[0]
-		var best = 5
+		var shared_weapon = equipment_mounts.has(target.kind) and AUXILIARY.has(target.kind)
+		var best = 9
 		for candidate in candidates:
 			var side = DIRS.find(candidate.from - dest)
 			var priority = posmod(side - int(target.incoming), 4)
+			if shared_weapon: priority = posmod(feed_side(dest,candidate.from)-int(target.get("feed_cursor",0)),8)
 			if priority < best:
 				best = priority
 				winner = candidate
@@ -581,20 +601,21 @@ func simulate_tick():
 		if source.kind == "router": source.turn = ([source.dir,(source.dir+1)%4,(source.dir+3)%4].find(winner.dir)+1)%3
 		if source.kind == "overflow_gate" and source.items.is_empty(): source.turn = 0
 		target.incoming = (DIRS.find(winner.from - dest) + 1) % 4
+		if shared_weapon: target.feed_cursor = (feed_side(dest,winner.from)+1)%8
 		if target.kind == "gun":
 			ammo += 1
 			supplied += 1
-			feedback_event("load",dest)
+			feedback_event("load",winner.to)
 		elif target.kind == "engine":
 			fuel += 1.0
-			feedback_event("fuel",dest)
+			feedback_event("fuel",winner.to)
 		else:
 			target.items.append(winner.item)
 			if AUXILIARY.has(target.kind):
 				supplied += 1
-				feedback_event("load",dest)
+				feedback_event("load",winner.to)
 			start_processing(target)
-		moves.append({"from":winner.from,"to":dest,"item":winner.item})
+		moves.append({"from":winner.from,"to":winner.to,"item":winner.item})
 	for p in cells:
 		var c: Dictionary = cells[p]
 		if c.kind == "overflow_gate" and c.items.size() >= 4: c.turn = 1
@@ -656,8 +677,8 @@ func availability() -> int:
 
 func cell_status(p: Vector2i) -> String:
 	if wrecks.has(p): return "部位破壊：修復ボタンで一括修復"
-	if not cells.has(p): return "空き区画"
-	var c: Dictionary = cells[p]
+	var c = receiving_cell(p)
+	if c.is_empty(): return "空き区画"
 	if c.kind == "armor_block": return "防御 %d/%d回 / 周囲8マスを防護・車体被害半減" % [c.armor_hp,ARMOR_HITS]
 	if c.kind == "source": return "廃材を最大60個/分供給"
 	if c.kind == "gun": return "砲弾専用入力 → 試射用在庫"
@@ -667,7 +688,8 @@ func cell_status(p: Vector2i) -> String:
 	var item = output_item(c)
 	for d in output_directions(c,item):
 		var dest: Vector2i = p + DIRS[d]
-		if cells.has(dest) and can_receive(cells[dest],item): return "搬送可能"
+		var receiver = receiving_cell(dest)
+		if not receiver.is_empty() and can_receive(receiver,item): return "搬送可能"
 	return "出口待ち：向き・接続・素材・満杯を確認"
 
 func example(pay: bool = true):
@@ -714,8 +736,8 @@ func accepts_kind(c: Dictionary, item: String) -> bool:
 
 func diagnostic(p: Vector2i) -> Dictionary:
 	if wrecks.has(p): return {"code":"defeat","item":""}
-	if not cells.has(p): return {"code":"idle","item":""}
-	var c: Dictionary = cells[p]
+	var c = receiving_cell(p)
+	if c.is_empty(): return {"code":"idle","item":""}
 	if c.kind == "armor_block": return {"code":"shield","item":""}
 	if AUXILIARY.has(c.kind): return {"code":"empty" if c.items.is_empty() else "full" if c.items.size() >= ammo_capacity else "ready","item":"shell"}
 	if c.kind in ["gun","engine"]:
@@ -738,9 +760,10 @@ func diagnostic(p: Vector2i) -> Dictionary:
 	var compatible = false
 	for d in output_directions(c,item):
 		var dest: Vector2i = p+DIRS[d]
-		if not cells.has(dest): continue
+		var receiver = receiving_cell(dest)
+		if receiver.is_empty(): continue
 		connected = true
-		if not accepts_kind(cells[dest],item): continue
+		if not accepts_kind(receiver,item): continue
 		compatible = true
-		if can_receive(cells[dest],item): return {"code":"ready","item":item}
+		if can_receive(receiver,item): return {"code":"ready","item":item}
 	return {"code":"disconnected" if not connected else "incompatible" if not compatible else "full" if c.kind in ["depot","fuel_depot","overflow_gate"] and c.items.size() >= storage_capacity(c.kind) else "blocked","item":item}

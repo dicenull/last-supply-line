@@ -172,6 +172,7 @@ func validate(data) -> bool:
 		if not c.items is Array or not numeric(c.dir,0,3) or not numeric(c.work,0,8) or not numeric(c.turn,0,2 if c.kind == "router" else 1) or not numeric(c.incoming,0,3) or not numeric(c.made,0,1e9) or not numeric(c.busy,0,1e9): return invalid("validation_27")
 		for key in ["dir","work","turn","incoming","made","busy"]:
 			if not c[key] is int: return invalid("cell_integer")
+		if c.has("feed_cursor") and (layout_version != 2 or not Factory.AUXILIARY.has(c.kind) or not c.feed_cursor is int or not numeric(c.feed_cursor,0,7)): return invalid("equipment_feed_cursor")
 		if c.kind == "armor_block":
 			if not c.get("armor_hp") is int or not numeric(c.armor_hp,1,Factory.ARMOR_HITS) or not c.items.is_empty() or c.work != 0: return invalid("armor_state")
 		if c.items.size() > (f.ammo_capacity if Factory.AUXILIARY.has(c.kind) else 8 if c.kind in ["depot","fuel_depot"] else 4 if c.kind == "overflow_gate" else 1): return invalid("validation_28")
