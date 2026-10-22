@@ -38,7 +38,7 @@ func snapshot():
 	state.unlocked_blueprints = game.history.unlocked.duplicate()
 	var layout = game.factory.layout()
 	for id in Blueprints.IDS:
-		if Blueprints.matches(layout,id): state.selected_blueprints.append(id)
+		if Blueprints.matches(layout,id,game.factory.layout_version): state.selected_blueprints.append(id)
 	state.entries = game.history.entries.slice(0,2).duplicate(true)
 	return state
 

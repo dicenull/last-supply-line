@@ -4,8 +4,9 @@ const Factory = preload("res://scripts/factory.gd")
 const IDS = ["standard","parallel","buffered"]
 const REQUIREMENTS = {"standard":0,"parallel":1,"buffered":3}
 
-static func layout(id: String) -> Array:
+static func layout(id: String, version: int = 1) -> Array:
 	if id not in IDS: return []
+	if version == 2: return Factory.Layout.rows(id)
 	var factory = Factory.new()
 	factory.example(false)
 	if id == "parallel":
@@ -19,8 +20,8 @@ static func layout(id: String) -> Array:
 		factory.cells[Vector2i(8,2)] = factory.make_cell("depot",0)
 	return factory.layout()
 
-static func matches(rows: Array, id: String) -> bool:
-	var target = layout(id)
+static func matches(rows: Array, id: String, version: int = 1) -> bool:
+	var target = layout(id,version)
 	if rows.size() != target.size(): return false
 	for row in target:
 		if not rows.has(row): return false

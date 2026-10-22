@@ -4,6 +4,8 @@ const F = preload("res://scripts/factory.gd")
 const DECK_Y = 2.72
 const TURRET_CENTER = Vector3(2.6,4.08,0)
 const BARREL_REST = 2.4
+var layout_version = 1
+var turret_base: MeshInstance3D
 var camera: Camera3D
 var equipment: Node3D
 var roof: Node3D
@@ -40,7 +42,12 @@ var old_shots = 0
 var playback_only = false
 var shot_time = 0.0
 var installed_equipment: Array = []
+var configured_layout_version = -1
 var upgrade_mount: Node3D
+var mounted_positions: Dictionary = {}
+var mounted_models: Dictionary = {}
+var equipment_preview: Node3D
+var equipment_preview_key = ""
 var auxiliary_guns: Array = []
 var feedback: Node3D
 
@@ -54,15 +61,19 @@ func feedback_effect(kind: String, at: Vector3, strength: float = 1.0):
 func tick_feedback(delta: float):
 	if feedback != null: feedback.tick(delta)
 
-func configure_equipment(ids: Array, positions: Dictionary = {}):
-	if installed_equipment == ids:
+func configure_equipment(ids: Array, positions: Dictionary = {}, mounts: Dictionary = {}):
+	mounted_positions = mounts.duplicate()
+	if installed_equipment == ids and configured_layout_version == layout_version:
 		position_auxiliary_guns(positions)
+		position_mounted_models()
 		return
+	configured_layout_version = layout_version
 	installed_equipment = ids.duplicate()
 	if upgrade_mount != null:
 		upgrade_mount.get_parent().remove_child(upgrade_mount)
 		upgrade_mount.queue_free()
 	auxiliary_guns.clear()
+	mounted_models.clear()
 	upgrade_mount = Node3D.new()
 	turret.get_parent().add_child(upgrade_mount)
 	for id in F.Content.GUNS:
@@ -97,7 +108,20 @@ func configure_equipment(ids: Array, positions: Dictionary = {}):
 		if id == "scatter_gun":
 			for z in [-0.36,0.36]: box(flash,Vector3(-0.3,0,z),Vector3(0.55,0.27,0.27),"fire")
 		flash.visible = false
+		if layout_version == 2: solid_mounted_materials(pivot)
 		auxiliary_guns.append({"id":id,"pivot":pivot,"barrel":gun_barrel,"muzzle":flash,"cooldown":0.0,"flash":0.0,"recoil":0.0})
+	if layout_version == 2:
+		for id in ids:
+			if id in F.Content.GUNS: continue
+			var model = Node3D.new()
+			model.name = "Mounted_"+id
+			upgrade_mount.add_child(model)
+			mounted_models[id] = model
+			build_mounted_model(model,id)
+			solid_mounted_materials(model)
+		position_auxiliary_guns(positions)
+		position_mounted_models()
+		return
 	if "armor" in ids:
 		for side in [-1,1]:
 			for x in [-4,-1,2]:
@@ -129,6 +153,11 @@ func position_auxiliary_guns(positions: Dictionary):
 		if positions.has(gun.id):
 			var at = cell_position(positions[gun.id])
 			gun.pivot.position = Vector3(at.x,3.2,at.z)
+			if layout_version == 2:
+				gun.pivot.position = at+Vector3(0.5,0.28,0.5)
+				# The entire rotating barrel and muzzle fit inside the 2×2 reservation.
+				gun.pivot.scale = Vector3(0.8,0.65,0.8)
+				gun.barrel.scale = Vector3(0.15,0.65,0.65)
 
 func material(name: String, color: String, metal: float = 0.0, glow: float = 0.0) -> StandardMaterial3D:
 	var m = StandardMaterial3D.new()
@@ -566,11 +595,18 @@ func track_housing(side: int, profile: PackedVector2Array):
 		var brace = box(self,Vector3(x,1.28,side*5.75),Vector3(0.17,1.35,0.16),"armor")
 		brace.rotation.z = -0.22
 
+func set_layout_version(version: int):
+	layout_version = version
+	var center = Vector3(3,4.08,0) if version == 2 else TURRET_CENTER
+	if turret != null: turret.position = center
+	if turret_base != null: turret_base.position = center-Vector3(0,0.04,0)
+
 func build_turret():
-	cylinder(self,TURRET_CENTER-Vector3(0,0.04,0),3.55,0.32,"turret_dark",32)
+	turret_base = cylinder(self,TURRET_CENTER-Vector3(0,0.04,0),3.55,0.32,"turret_dark",32)
 	turret = Node3D.new()
 	turret.position = TURRET_CENTER
 	add_child(turret)
+	set_layout_version(layout_version)
 	cylinder(turret,Vector3(0,0.9,0),3.4,1.8,"turret_armor",24,3.15)
 	cylinder(turret,Vector3(0,0.12,0),3.42,0.16,"turret_edge",24,3.38)
 	cylinder(turret,Vector3(0,1.82,0),3.2,0.16,"turret_edge",24,3.1)
@@ -962,15 +998,48 @@ func sync_placement_preview(factory, hovered: Vector2i, selected: String, direct
 	placement_preview.position = cell_position(hovered)+Vector3(0,0.035,0)
 	placement_preview.rotation.y = -posmod(direction,4)*PI/2
 
+func fixed_fitting(kind: String, parent: Node3D, inputs: Array, cell: Vector2i) -> Dictionary:
+	flow_ports(kind,parent,inputs)
+	if kind == "engine":
+		# This inlet joins the rear engine housing, without a second tiny engine.
+		var conduit = Node3D.new()
+		parent.add_child(conduit)
+		conduit.position = Vector3(-0.25,0,0)
+		square_pipe(conduit,0.95)
+		box(parent,Vector3(-0.55,0.34,0),Vector3(0.18,0.55,0.65),"machine_fuel")
+	elif cell == F.Layout.AMMO_ANCHOR:
+		var magazine = Node3D.new()
+		parent.add_child(magazine)
+		magazine.name = "MainMagazine2x2"
+		magazine.position = Vector3(0.5,0,0.5)
+		box(magazine,Vector3(0,0.2,0),Vector3(1.9,0.4,1.9),"dark")
+		for z in [-0.88,0.88]: box(magazine,Vector3(0,0.54,z),Vector3(1.9,0.4,0.12),"machine_bronze")
+		for x in [-0.6,0,0.6]:
+			for z in [-0.45,0.45]:
+				var round_node = make_good("shell")
+				magazine.add_child(round_node)
+				round_node.position = Vector3(x,0.48,z)
+				round_node.scale = Vector3.ONE*1.5
+		cylinder(magazine,Vector3(0,0.85,0),0.24,0.8,"machine_bronze",12)
+	return {"root":parent}
+
 func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: float, preview_enabled: bool = true):
+	set_layout_version(factory.layout_version)
 	sync_damage(factory)
-	var signature = str(factory.layout())
+	var signature = str(factory.layout_version)+str(factory.equipment_mounts)+str(factory.layout())
 	if signature != rendered_layout:
 		rendered_layout = signature
 		for child in equipment.get_children():
 			equipment.remove_child(child)
 			child.queue_free()
 		machines.clear()
+		for p in factory.blocks:
+			var wall = Node3D.new()
+			equipment.add_child(wall)
+			wall.position = cell_position(p)
+			wall.name = "MaterialWall_"+str(p.x)+"_"+str(p.y)
+			box(wall,Vector3(0,0.45,0),Vector3(0.94,0.9,0.94),"armor")
+			box(wall,Vector3(0,0.94,0),Vector3(0.98,0.08,0.98),"edge")
 		for p in factory.cells:
 			var c: Dictionary = factory.cells[p]
 			var n = Node3D.new()
@@ -978,7 +1047,9 @@ func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: f
 			n.position = cell_position(p)
 			n.rotation.y = -c.dir*PI/2
 			var topology = factory.connection_sides(p)
-			machines[p] = machine(c.kind,n,topology.display_inputs)
+			if factory.layout_version == 2 and c.kind in ["gun","engine"]:
+				machines[p] = fixed_fitting(c.kind,n,topology.display_inputs,p)
+			else: machines[p] = machine(c.kind,n,topology.display_inputs)
 			machines[p].connections = topology.connected
 			machines[p].inputs = topology.inputs
 	for p in machines:
@@ -1008,6 +1079,56 @@ func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: f
 	if marker.visible:
 		marker.position = cell_position(hovered)+Vector3(0,0.015,0)
 		var unavailable = F.LIMITS.has(selected) and not factory.can_place(hovered,selected)
-		marker.material_override = mats.red if hovered in F.BLOCKS or F.PORTS.has(hovered) or unavailable else mats.green
+		marker.material_override = mats.red if hovered in factory.blocks or factory.ports.has(hovered) or unavailable else mats.green
 	sync_placement_preview(factory,hovered,selected,direction,preview_enabled)
 	update_gun(factory,delta)
+
+func position_mounted_models():
+	for id in mounted_models:
+		if not mounted_positions.has(id): continue
+		var size: Vector2i = F.Gear.DEFINITIONS[id].size
+		mounted_models[id].position = cell_position(mounted_positions[id])+Vector3((size.x-1)*0.5,0,(size.y-1)*0.5)
+
+func build_mounted_model(parent: Node3D, id: String):
+	var size: Vector2i = F.Gear.DEFINITIONS[id].size
+	box(parent,Vector3(0,0.09,0),Vector3(size.x-0.12,0.18,size.y-0.12),"dark")
+	match F.Gear.DEFINITIONS[id].genre:
+		"protection":
+			armor_block(parent,Vector3(0,0.37,0),Vector3(size.x-0.24,0.46,size.y-0.24),0.1,"turret_armor")
+			for x in [-0.5,0.5]: box(parent,Vector3(x,0.62,0),Vector3(0.12,0.04,0.5),"edge")
+		"engine":
+			for x in [-0.5,0,0.5]: cylinder(parent,Vector3(x,0.43,0),0.23,0.5,"machine_fuel",12)
+			box(parent,Vector3(0,0.72,0),Vector3(1.6,0.08,0.55),"edge")
+		_:
+			cylinder(parent,Vector3(0,0.38,0),0.32,0.4,"machine_bronze",16)
+			if id == "salvage_arm":
+				beam(parent,Vector3(0,0.5,0),Vector3(0,1.2,0),0.12,"edge",12)
+				beam(parent,Vector3(0,1.2,0),Vector3(0.7,1.2,0.6),0.1,"edge",12)
+			elif id == "rangefinder": beam(parent,Vector3(-0.7,0.8,0),Vector3(0.7,0.8,0),0.12,"edge",12)
+			else: box(parent,Vector3(0,0.65,0),Vector3(0.6,0.14,0.6),"machine_fuel")
+
+func preview_equipment(factory, item: Dictionary, at: Vector2i):
+	if item.is_empty() or roof_closed or not factory.inside(at):
+		if equipment_preview != null: equipment_preview.hide()
+		return
+	var valid = factory.can_place_equipment(item.kind,at)
+	var key = item.kind+str(valid)
+	if equipment_preview == null:
+		equipment_preview = Node3D.new()
+		add_child(equipment_preview)
+	if equipment_preview_key != key:
+		equipment_preview_key = key
+		for child in equipment_preview.get_children():
+			equipment_preview.remove_child(child)
+			child.queue_free()
+		var size: Vector2i = F.Gear.DEFINITIONS[item.kind].size
+		for y in range(size.y):
+			for x in range(size.x): box(equipment_preview,Vector3(x,0.06,y),Vector3(0.94,0.035,0.94),"green" if valid else "red")
+	equipment_preview.position = cell_position(at)
+	equipment_preview.show()
+
+func solid_mounted_materials(node: Node):
+	if node is MeshInstance3D:
+		for pair in [["turret_armor","machine_iron"],["turret_edge","machine_bronze"],["turret_dark","dark"]]:
+			if node.material_override == mats[pair[0]]: node.material_override = mats[pair[1]]
+	for child in node.get_children(): solid_mounted_materials(child)

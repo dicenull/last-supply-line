@@ -1,5 +1,7 @@
 extends RefCounted
 const Content = preload("res://scripts/content.gd")
+const Layout = preload("res://scripts/factory_layout.gd")
+const Gear = preload("res://scripts/equipment_catalog.gd")
 ## Deterministic, fixed-step production and local equipment damage.
 const W = 14
 const H = 8
@@ -15,6 +17,11 @@ const ARMOR_DAMAGE_MULTIPLIER = 0.5
 const RECIPES = {"furnace":["scrap","steel",6],"press":["steel","shell",8],"refinery":["coal","fuel",8],"blast_furnace":["scrap","steel",3],"auto_press":["steel","shell",4]}
 const FILTERS = {"scrap_filter":"scrap","shell_filter":"shell","fuel_filter":"fuel"}
 const AUXILIARY = {"left_gun":Vector2i(11,1),"right_gun":Vector2i(11,6),"rapid_gun":Vector2i(8,0),"long_gun":Vector2i(12,4),"mortar_gun":Vector2i(6,6),"rear_gun":Vector2i(2,0),"scatter_gun":Vector2i(10,6),"arc_gun":Vector2i(10,0)}
+var layout_version = 1
+var ports: Dictionary = PORTS.duplicate()
+var blocks: Array = []
+var equipment_mounts: Dictionary = {}
+var loadout_locked = false
 var auxiliary_ids: Array = []
 var cells: Dictionary = {}
 # Destroyed buildable cells; no salvage value or functioning inventory remains.
@@ -59,7 +66,10 @@ func feedback_event(kind: String, cell: Vector2i):
 	feedback_events.append({"kind":kind,"cell":cell})
 	while feedback_events.size() > 64: feedback_events.pop_front()
 
-func _init():
+func _init(version: int = 1):
+	layout_version = version
+	ports = Layout.PORTS.duplicate() if version == 2 else PORTS.duplicate()
+	blocks = Layout.WALLS.duplicate() if version == 2 else []
 	for kind in LIMITS: inventory[kind] = Content.STARTING_BLOCKS.get(kind,0)
 	clear_layout(false)
 	message = "空の車内です。入口から精錬炉・砲弾機・試射口をつないでください。"
@@ -71,6 +81,44 @@ func make_cell(kind: String, direction: int) -> Dictionary:
 
 func inside(p: Vector2i) -> bool:
 	return p.x >= 0 and p.x < W and p.y >= 0 and p.y < H
+
+func mounted_at(p: Vector2i, except_id: String = "") -> String:
+	for id in equipment_mounts:
+		if id != except_id and Rect2i(equipment_mounts[id],Gear.DEFINITIONS[id].size).has_point(p): return id
+	return ""
+
+func can_place_equipment(id: String, at: Vector2i) -> bool:
+	if loadout_locked or layout_locked or id not in Gear.DEFINITIONS: return false
+	var size: Vector2i = Gear.DEFINITIONS[id].size
+	for y in range(at.y,at.y+size.y):
+		for x in range(at.x,at.x+size.x):
+			var p = Vector2i(x,y)
+			if not inside(p) or p in blocks or ports.has(p) or mounted_at(p,id) != "" or wrecks.has(p): return false
+			if cells.has(p) and not (id in auxiliary_ids and cells[p].kind == id): return false
+	return true
+
+func place_equipment(id: String, at: Vector2i) -> bool:
+	if not can_place_equipment(id,at): return false
+	if AUXILIARY.has(id):
+		var old = auxiliary_position(id)
+		var cell = cells[old] if cells.has(old) else make_cell(id,0)
+		cells.erase(old)
+		cells[at] = cell
+		if id not in auxiliary_ids: auxiliary_ids.append(id)
+	equipment_mounts[id] = at
+	undo_stack.clear()
+	moves.clear()
+	return true
+
+func remove_equipment(id: String) -> bool:
+	if loadout_locked or layout_locked or not equipment_mounts.has(id): return false
+	equipment_mounts.erase(id)
+	if id in auxiliary_ids:
+		cells.erase(auxiliary_position(id))
+		auxiliary_ids.erase(id)
+	undo_stack.clear()
+	moves.clear()
+	return true
 
 func auxiliary_position(id: String) -> Vector2i:
 	for p in cells:
@@ -84,14 +132,15 @@ func auxiliary_positions() -> Dictionary:
 
 func install_position(id: String) -> Vector2i:
 	if not AUXILIARY.has(id) or id in auxiliary_ids: return Vector2i(-1,-1)
-	if not cells.has(AUXILIARY[id]): return AUXILIARY[id]
+	if not cells.has(AUXILIARY[id]) and AUXILIARY[id] not in blocks and mounted_at(AUXILIARY[id]) == "": return AUXILIARY[id]
 	for y in range(H):
 		for x in range(W):
 			var p = Vector2i(x,y)
-			if not cells.has(p) and p not in BLOCKS: return p
+			if not cells.has(p) and p not in blocks and mounted_at(p) == "": return p
 	return Vector2i(-1,-1)
 
 func install_auxiliary(id: String) -> bool:
+	if layout_version == 2: return false
 	if layout_locked: return false
 	var p = install_position(id)
 	if not inside(p): return false
@@ -104,16 +153,19 @@ func install_auxiliary(id: String) -> bool:
 	return true
 
 func remove_auxiliary():
-	if layout_locked: return
+	if layout_locked or (layout_version == 2 and loadout_locked): return
+	equipment_mounts.clear()
 	for p in cells.keys():
 		if AUXILIARY.has(cells[p].kind): cells.erase(p)
 	auxiliary_ids.clear()
 	undo_stack.clear()
 
 func can_move_auxiliary(id: String, destination: Vector2i) -> bool:
-	return not layout_locked and id in auxiliary_ids and inside(destination) and destination not in BLOCKS and not cells.has(destination)
+	if equipment_mounts.has(id): return can_place_equipment(id,destination)
+	return not layout_locked and id in auxiliary_ids and inside(destination) and destination not in blocks and not cells.has(destination) and mounted_at(destination) == ""
 
 func move_auxiliary(id: String, destination: Vector2i) -> bool:
+	if equipment_mounts.has(id): return place_equipment(id,destination)
 	var source = auxiliary_position(id)
 	if not inside(source) or not can_move_auxiliary(id,destination): return false
 	remember()
@@ -179,7 +231,7 @@ func pay_construction(pending: Dictionary) -> bool:
 	return true
 
 func can_place(p: Vector2i, kind: String) -> bool:
-	if layout_locked or not inside(p) or PORTS.has(p) or p in BLOCKS: return false
+	if layout_locked or not inside(p) or ports.has(p) or p in blocks or mounted_at(p) != "": return false
 	if cells.has(p) and AUXILIARY.has(cells[p].kind): return false
 	if kind == "erase": return cells.has(p)
 	if not LIMITS.has(kind): return false
@@ -271,7 +323,7 @@ func reset_inventory():
 func layout() -> Array:
 	var result: Array = []
 	for p in cells:
-		if not PORTS.has(p): result.append([p.x,p.y,cells[p].kind,cells[p].dir])
+		if not ports.has(p): result.append([p.x,p.y,cells[p].kind,cells[p].dir])
 	return result
 
 func remember():
@@ -326,7 +378,9 @@ func restore(rows: Array, pay: bool = true) -> bool:
 		var p = Vector2i(int(row[0]),int(row[1]))
 		var kind: String = row[2]
 		var direction = int(row[3])
-		if not inside(p) or PORTS.has(p) or p in BLOCKS or pending.has(p) or (not LIMITS.has(kind) and kind not in auxiliary_ids) or direction < 0 or direction > 3: return false
+		if not inside(p) or ports.has(p) or p in blocks or pending.has(p) or (not LIMITS.has(kind) and kind not in auxiliary_ids) or direction < 0 or direction > 3: return false
+		if layout_version == 2 and kind in auxiliary_ids and equipment_mounts.get(kind,Vector2i(-1,-1)) != p: return false
+		if mounted_at(p) != "" and not (kind in auxiliary_ids and mounted_at(p) == kind and equipment_mounts[kind] == p): return false
 		counts[kind] = counts.get(kind, 0) + 1
 		if counts[kind] > LIMITS.get(kind,1): return false
 		pending[p] = make_cell(kind, direction)
@@ -350,13 +404,13 @@ func restore(rows: Array, pay: bool = true) -> bool:
 			if AUXILIARY.has(pending[p].kind): pending[p] = cells[auxiliary_position(pending[p].kind)]
 			elif cells.has(p) and cells[p].kind == pending[p].kind and cells[p].dir == pending[p].dir: pending[p] = cells[p]
 			elif cells.has(p) and cells[p].kind == "armor_block" and pending[p].kind == "armor_block": pending[p].armor_hp = cells[p].armor_hp
-		for p in PORTS: pending[p] = cells[p]
+		for p in ports: pending[p] = cells[p]
 	cells = pending
 	for p in cells:
 		wrecks.erase(p)
 		wreck_directions.erase(p)
-	for p in PORTS:
-		if not cells.has(p): cells[p] = make_cell(PORTS[p],0)
+	for p in ports:
+		if not cells.has(p): cells[p] = make_cell(ports[p],Layout.DIRECTIONS.get(p,0) if layout_version == 2 else 0)
 	if combat_editing:
 		moves.clear()
 		completed.clear()
@@ -375,7 +429,7 @@ func undo():
 
 func edit(p: Vector2i, kind: String, direction: int):
 	if layout_locked: return
-	if not inside(p) or PORTS.has(p) or p in BLOCKS: return
+	if not inside(p) or ports.has(p) or p in blocks: return
 	if cells.has(p) and AUXILIARY.has(cells[p].kind): return
 	if kind == "erase":
 		if not cells.has(p): return
@@ -407,7 +461,7 @@ func edit(p: Vector2i, kind: String, direction: int):
 	message = "配置を変更しました。変更したマスの物資は破棄。"
 
 func rotate(p: Vector2i):
-	if cells.has(p) and not PORTS.has(p): edit(p, cells[p].kind, (cells[p].dir + 1) % 4)
+	if cells.has(p) and not ports.has(p): edit(p, cells[p].kind, (cells[p].dir + 1) % 4)
 
 func can_receive(c: Dictionary, item: String) -> bool:
 	if not accepts_kind(c,item): return false
@@ -518,6 +572,8 @@ func simulate_tick():
 				best = priority
 				winner = candidate
 		var source: Dictionary = cells[winner.from]
+		# All four magazine cells share one capacity. Recheck after earlier winners.
+		if not can_receive(target,winner.item): continue
 		source.items.pop_front()
 		if source.kind == "splitter": source.turn = 1 if winner.dir == source.dir else 0
 		if source.kind == "router": source.turn = ([source.dir,(source.dir+1)%4,(source.dir+3)%4].find(winner.dir)+1)%3
@@ -623,6 +679,7 @@ func example(pay: bool = true):
 	rows.append([1,7,"belt",0])
 	rows.append([2,7,"refinery",0])
 	rows.append([3,7,"belt",0])
+	if layout_version == 2: rows = Layout.rows()
 	var before = layout()
 	if not restore(rows,pay):
 		message = "見本配置に必要な設備や空き区画がありません。"
