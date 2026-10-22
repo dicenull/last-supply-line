@@ -12,28 +12,39 @@ func check(ok: bool, label: String):
 		failures += 1
 		push_error(label)
 func run():
+	for sample in [
+		{"seed":1333,"sector":5,"kind":"coalfield","encounter":"rich","route_seed":872583036,"at":Vector3(26.97793,0,14.86048),"yaw":0.005510688,"taken":1,"variant":76},
+		{"seed":2251,"sector":3,"kind":"arsenal","encounter":"hostile","route_seed":1660790971,"at":Vector3(76.91239,0,-25.97725),"yaw":-0.365832716,"taken":3,"variant":130}
+	]: await scenario(sample)
+	print("EQUIPMENT PILOT RESULT: ",checks," checks, ",failures," failures")
+	quit(1 if failures else 0)
+
+func scenario(sample: Dictionary):
+	print("PILOT SCENARIO: ",sample.seed)
 	var game = load("res://main.tscn").instantiate()
 	Fixture.assign(game,"equipment_pilot_test",2)
 	game.show_start_menu = false
-	game.expedition = preload("res://scripts/run_state.gd").new(1333,"easy")
-	game.expedition.sector = 5
-	game.expedition.current = game.expedition.make_route("coalfield",false,"rich")
-	game.expedition.current.seed = 872583036
+	game.expedition = preload("res://scripts/run_state.gd").new(sample.seed,"easy")
+	game.expedition.sector = sample.sector
+	game.expedition.current = game.expedition.make_route(sample.kind,false,sample.encounter)
+	game.expedition.current.seed = sample.route_seed
 	game.expedition.current.terrain = "mud"
 	root.add_child(game)
 	game.set_process(false)
 	await process_frame
 	game.factory.reserves = {"scrap":100,"coal":100}
-	Pilot.prepare(game,76)
+	Pilot.prepare(game,sample.variant)
 	game.toggle_running()
 	var b = game.battlefield
 	for enemy in b.enemies: enemy.hp = 0
 	b.kills = b.total
-	# Recorded pose from the 76th overnight run, immediately after supply 1.
-	b.player.position = Vector3(26.97793,0,14.86048)
-	b.player.rotation.y = 0.005510688
-	b.resource_sites[0].taken = true
-	b.resource_sites[0].node.set_taken(true)
+	# Recorded poses from overnight runs 76 and 130, after supply collection.
+	b.player.position = sample.at
+	b.player.rotation.y = sample.yaw
+	for i in range(sample.taken):
+		b.resource_sites[i].taken = true
+		b.resource_sites[i].node.set_taken(true)
+	var next_uid = game.expedition.next_item_uid
 	game.factory.fuel = 12
 	var at: Vector3 = b.player.position
 	for i in range(60): Fixture.drive(game,0.1,1)
@@ -45,7 +56,7 @@ func run():
 		if i%20 == 0: Pilot.maintain(game)
 		if game.expedition.phase != "travel": break
 	check(game.expedition.phase == "reward" and b.arrived_destination == 1 and b.hull == 100,"recovered pilot reaches the selected destination without removing scenery")
-	check(b.resource_sites.all(func(site): return site.taken),"recovery still enters both remaining supply areas")
+	check(b.resource_sites.all(func(site): return site.taken) and game.expedition.next_item_uid-next_uid == (3-sample.taken)*(6 if sample.encounter == "rich" else 3),"recovery collects remaining areas exactly once without replaying collected supplies")
 	check(game.factory.fuel_used > 0 and game.factory.injected > 0,"recovery consumes fuel supplied by real production")
 	game.reset_battle(1333)
 	game.toggle_running()
@@ -55,5 +66,3 @@ func run():
 	check(game.battlefield.player.position == at,"pilot cannot move the vehicle through a paused menu")
 	game.queue_free()
 	await process_frame
-	print("EQUIPMENT PILOT RESULT: ",checks," checks, ",failures," failures")
-	quit(1 if failures else 0)
