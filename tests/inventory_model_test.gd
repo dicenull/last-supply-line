@@ -72,5 +72,23 @@ func run():
 	f.combat_editing = true
 	f.edit(Vector2i(3,0),"belt",0)
 	check(f.cells.has(Vector2i(3,0)),"line construction remains available during travel")
+	var distinct_shops = true
+	var shops = 0
+	var extra_offers: Dictionary = {}
+	for seed_value in range(512):
+		var model = Run.new(seed_value)
+		model.enable_items()
+		var course = Run.FieldCourse.new(model.current)
+		for i in range(course.destinations.size()):
+			if course.destinations[i].encounter != "shop": continue
+			model.start_sector()
+			model.finish_sector(true,100,{},true,i)
+			model.choose_reward(0)
+			shops += 1
+			var offers: Array = model.current.shop_offers
+			distinct_shops = distinct_shops and model.phase == "shop" and offers.size() == 3 and offers[2] not in offers.slice(0,2)
+			extra_offers[offers[2]] = true
+	check(shops > 300 and distinct_shops,"modern shops offer three distinct equipment families")
+	check(extra_offers.size() == Gear.DEFINITIONS.size()-2,"every non-fixed equipment family remains available as the third shop offer")
 	print("INVENTORY MODEL RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)

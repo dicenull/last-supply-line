@@ -212,6 +212,7 @@ func advance_after_reward():
 			phase = "shop"
 			var pool = reward_pool()
 			current.shop_offers = ["gear:economizer","gear:armor"] if item_mode else ["coal","shell"]
+			pool = pool.filter(func(id): return id not in current.shop_offers)
 			if not pool.is_empty(): current.shop_offers.append(pool[rng.randi_range(0,pool.size()-1)])
 			current.shop_purchased = []
 			for offer in current.shop_offers: current.shop_purchased.append(false)
