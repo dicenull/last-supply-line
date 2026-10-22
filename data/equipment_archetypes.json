@@ -1,0 +1,274 @@
+{
+  "left_gun": {
+    "ballistics": "standard",
+    "name": "左舷副砲",
+    "icon": "gun",
+    "scrap": 16,
+    "coal": 4,
+    "effect": "独立給弾 / 標準副砲",
+    "interval": 1.5,
+    "range": 36.0,
+    "ammo": 1,
+    "genre": "secondary",
+    "size": [
+      2,
+      2
+    ],
+    "port": [
+      11,
+      1
+    ]
+  },
+  "right_gun": {
+    "ballistics": "standard",
+    "name": "右舷副砲",
+    "icon": "gun",
+    "scrap": 16,
+    "coal": 4,
+    "effect": "独立給弾 / 標準副砲",
+    "interval": 1.5,
+    "range": 36.0,
+    "ammo": 1,
+    "genre": "secondary",
+    "size": [
+      2,
+      2
+    ],
+    "port": [
+      11,
+      6
+    ]
+  },
+  "armor": {
+    "name": "追加装甲",
+    "icon": "shield",
+    "scrap": 20,
+    "coal": 6,
+    "effect": "被ダメージ −25%",
+    "genre": "protection",
+    "size": [
+      2,
+      1
+    ]
+  },
+  "rapid_gun": {
+    "ballistics": "rapid",
+    "name": "速射副砲",
+    "icon": "autoload",
+    "scrap": 24,
+    "coal": 5,
+    "effect": "0.65秒間隔 / 射程24m",
+    "interval": 0.65,
+    "range": 24.0,
+    "ammo": 1,
+    "genre": "secondary",
+    "size": [
+      2,
+      2
+    ],
+    "port": [
+      8,
+      0
+    ]
+  },
+  "long_gun": {
+    "ballistics": "sniper",
+    "name": "長砲身砲",
+    "icon": "battery",
+    "scrap": 26,
+    "coal": 6,
+    "effect": "射程48m / 2.4秒間隔",
+    "interval": 2.4,
+    "range": 48.0,
+    "ammo": 1,
+    "genre": "secondary",
+    "size": [
+      2,
+      2
+    ],
+    "port": [
+      12,
+      4
+    ]
+  },
+  "mortar_gun": {
+    "ballistics": "mortar",
+    "name": "迫撃砲",
+    "icon": "shell",
+    "scrap": 30,
+    "coal": 8,
+    "effect": "半径4mの範囲攻撃 / 砲弾2発",
+    "interval": 3.0,
+    "range": 36.0,
+    "ammo": 2,
+    "splash": 4.0,
+    "genre": "secondary",
+    "size": [
+      2,
+      2
+    ],
+    "port": [
+      6,
+      6
+    ]
+  },
+  "rear_gun": {
+    "ballistics": "demolition",
+    "name": "近接防御砲",
+    "icon": "raiders",
+    "scrap": 22,
+    "coal": 4,
+    "effect": "高速旋回 / 0.9秒間隔・射程20m",
+    "interval": 0.9,
+    "range": 20.0,
+    "ammo": 1,
+    "turn": 6.0,
+    "genre": "secondary",
+    "size": [
+      2,
+      2
+    ],
+    "port": [
+      2,
+      0
+    ]
+  },
+  "rangefinder": {
+    "name": "光学測距儀",
+    "icon": "camera",
+    "scrap": 18,
+    "coal": 3,
+    "effect": "全砲の射程 +6m",
+    "genre": "support",
+    "size": [
+      2,
+      1
+    ]
+  },
+  "servo": {
+    "name": "砲塔旋回機",
+    "icon": "rotate",
+    "scrap": 18,
+    "coal": 5,
+    "effect": "全砲の旋回速度 +60%",
+    "genre": "support",
+    "size": [
+      1,
+      1
+    ]
+  },
+  "supercharger": {
+    "name": "過給機",
+    "icon": "move",
+    "scrap": 20,
+    "coal": 7,
+    "effect": "走行速度 +20% / 燃料消費 +10%",
+    "genre": "engine",
+    "size": [
+      2,
+      1
+    ]
+  },
+  "economizer": {
+    "name": "排熱回収器",
+    "icon": "fuel",
+    "scrap": 22,
+    "coal": 4,
+    "effect": "走行燃料消費 −20%",
+    "genre": "engine",
+    "size": [
+      2,
+      1
+    ]
+  },
+  "salvage_arm": {
+    "name": "回収クレーン",
+    "icon": "scrap",
+    "scrap": 18,
+    "coal": 4,
+    "effect": "撃破回収の廃材 +2",
+    "genre": "support",
+    "size": [
+      2,
+      2
+    ]
+  },
+  "skirts": {
+    "name": "耐爆スカート",
+    "icon": "shield",
+    "scrap": 24,
+    "coal": 5,
+    "effect": "被ダメージ −20% / 追加装甲と併用可",
+    "genre": "protection",
+    "size": [
+      2,
+      1
+    ]
+  },
+  "scatter_gun": {
+    "ballistics": "standard",
+    "name": "三連散弾砲",
+    "icon": "scatter_gun",
+    "scrap": 28,
+    "coal": 6,
+    "effect": "前方3両へ同時射撃 / 砲弾2発",
+    "interval": 2.1,
+    "range": 27.0,
+    "ammo": 2,
+    "pellets": 3,
+    "genre": "secondary",
+    "size": [
+      2,
+      2
+    ],
+    "port": [
+      10,
+      6
+    ]
+  },
+  "arc_gun": {
+    "ballistics": "electric",
+    "name": "蓄電誘導砲",
+    "icon": "arc_gun",
+    "scrap": 30,
+    "coal": 8,
+    "effect": "着弾から9m以内へ2回連鎖 / 砲弾2発",
+    "interval": 2.6,
+    "range": 32.0,
+    "ammo": 2,
+    "chain": 2,
+    "genre": "secondary",
+    "size": [
+      2,
+      2
+    ],
+    "port": [
+      10,
+      0
+    ]
+  },
+  "blast_fuse": {
+    "name": "破砕信管",
+    "icon": "blast_fuse",
+    "scrap": 20,
+    "coal": 4,
+    "effect": "全砲の爆発範囲 +4m",
+    "genre": "support",
+    "size": [
+      1,
+      1
+    ]
+  },
+  "drum_loader": {
+    "name": "回転式装填機",
+    "icon": "drum_loader",
+    "scrap": 22,
+    "coal": 5,
+    "effect": "主砲・副砲の射撃間隔 −20%",
+    "genre": "support",
+    "size": [
+      2,
+      1
+    ]
+  }
+}
