@@ -16,6 +16,10 @@ var runs = 0
 var wins = 0
 var restores = 0
 var purchases = 0
+var bulk_batches = 0
+var bulk_items = 0
+var inventory_views = 0
+var exercise_inventory = false
 var weapons_fired: Dictionary = {}
 var steps = 0
 var peak_nodes = 0
@@ -33,10 +37,15 @@ func fail(label: String):
 	if failed: return
 	failed = true
 	push_error("OVERNIGHT: "+label)
+func record_bulk(count: int):
+	if count < 0: fail("reviewed equipment salvage rejected a valid pilot selection")
+	elif count > 0:
+		bulk_batches += 1
+		bulk_items += count
 func prepare():
 	var f = game.factory
 	if layout_version == 2:
-		EquipmentPilot.prepare(game,runs)
+		record_bulk(EquipmentPilot.prepare(game,runs))
 		game.toggle_running()
 		stuck_time = 0
 		return
@@ -77,7 +86,7 @@ func step():
 	if phase == "travel":
 		Fixture.drive(game,0.1,(runs+game.expedition.sector)%game.battlefield.goals.size())
 		steps += 1
-		if layout_version == 2 and steps%20 == 0: EquipmentPilot.maintain(game)
+		if layout_version == 2 and steps%20 == 0: record_bulk(EquipmentPilot.maintain(game))
 		var f = game.factory
 		var b = game.battlefield
 		for gun in b.auxiliary_guns:
@@ -99,7 +108,7 @@ func step():
 		game.choose_run_option(pick)
 	elif phase == "shop":
 		if layout_version == 2:
-			EquipmentPilot.maintain(game)
+			record_bulk(EquipmentPilot.maintain(game))
 			for index in range(game.expedition.current.shop_offers.size()):
 				if game.can_buy_shop(index):
 					if game.buy_shop_item(index): purchases += 1
@@ -125,6 +134,21 @@ func inspect(elapsed: float):
 			if game.factory.running: fail("restore must pause before resuming")
 			game.toggle_running()
 		last_restore = elapsed
+	if exercise_inventory and layout_version == 2:
+		game.battle_mode = inventory_views%2 == 0
+		game.refresh_view()
+		var panel = game.inventory_panel
+		panel.visible = true
+		panel.genre = panel.GENRE_ICONS.keys()[inventory_views%panel.GENRE_ICONS.size()]
+		panel.quality_order = inventory_views%2 == 0
+		panel.cancel_bulk()
+		panel.refresh()
+		if not panel.bulk_button.disabled:
+			panel.begin_bulk()
+			if not panel.next.disabled:
+				panel.page += 1
+				panel.refresh()
+		inventory_views += 1
 	# Replacement viewports are freed at the frame boundary. Include the
 	# transient overlap in the peak rather than reporting a lower peak.
 	peak_nodes = maxi(peak_nodes,get_node_count())
@@ -133,6 +157,9 @@ func inspect(elapsed: float):
 	var report = {"elapsed_seconds":elapsed,"target_seconds":duration,"layout_version":layout_version,"runs":runs,"wins":wins,"restores":restores,"steps":steps,"phase":game.expedition.phase,"sector":game.expedition.sector,"seed":game.expedition.run_seed,"peak_nodes":peak_nodes,"peak_objects":peak_objects,"peak_resources":peak_resources,"nodes":get_node_count(),"retired_resources":retired_resources,"failed":failed,"display":DisplayServer.get_name(),"pid":OS.get_process_id(),"fps":Engine.get_frames_per_second(),"window":str(root.size)}
 	report.weapons_fired = weapons_fired.keys()
 	report.purchases = purchases
+	report.bulk_batches = bulk_batches
+	report.bulk_items = bulk_items
+	report.inventory_views = inventory_views
 	print("OVERNIGHT HEARTBEAT ",JSON.stringify(report))
 	var file = FileAccess.open(result_file,FileAccess.WRITE)
 	if file != null:
@@ -146,6 +173,7 @@ func run():
 		if arg.begins_with("--report="): result_file = arg.trim_prefix("--report=")
 		if arg.begins_with("--suite="): suite = arg.trim_prefix("--suite=")
 		if arg.begins_with("--layout="): layout_version = clampi(int(arg.trim_prefix("--layout=")),1,2)
+		if arg == "--inventory-ui": exercise_inventory = true
 	save_path = "user://"+suite+".mfv"
 	Engine.max_fps = 30
 	start_ms = Time.get_ticks_msec()

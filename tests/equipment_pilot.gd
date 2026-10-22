@@ -5,7 +5,7 @@ const Gear = Inventory.Catalog
 const Blueprints = preload("res://scripts/blueprints.gd")
 const POSITIONS = {"armor":Vector2i(0,3),"economizer":Vector2i(2,3),"skirts":Vector2i(0,5),"drum_loader":Vector2i(2,5)}
 
-static func prepare(game, variant: int = 0):
+static func prepare(game, variant: int = 0) -> int:
 	if game.world.roof_closed: game.world.toggle_roof()
 	var chosen: Array = []
 	var slots: Dictionary = {}
@@ -20,8 +20,7 @@ static func prepare(game, variant: int = 0):
 		slots[gun.uid] = Vector2i(0,0)
 	for item in game.expedition.gear_items:
 		if item.position != Inventory.STOWED: game.stow_item(item.uid)
-	for item in game.expedition.gear_items.duplicate():
-		if item.uid not in chosen: game.dismantle_item(item.uid)
+	var bulk_items = salvage_unused(game,chosen)
 	game.factory.restore(Blueprints.layout("parallel",2))
 	for uid in chosen: game.place_item(uid,slots[uid])
 	if not gun.is_empty():
@@ -30,6 +29,7 @@ static func prepare(game, variant: int = 0):
 		game.factory.edit(Vector2i(2,1),"belt",2)
 	for p in [Vector2i(5,1),Vector2i(10,1),Vector2i(4,3),Vector2i(6,6),Vector2i(9,7)]:
 		if not game.factory.cells.has(p): game.factory.edit(p,"armor_block",0)
+	return bulk_items
 
 static func best_item(items: Array, kinds: Array, variant: int) -> Dictionary:
 	var best: Dictionary = {}
@@ -42,13 +42,21 @@ static func best_item(items: Array, kinds: Array, variant: int) -> Dictionary:
 			score = value
 	return best
 
-static func maintain(game):
+static func salvage_unused(game, retained: Array) -> int:
+	var normals = Inventory.normal_candidates(game.expedition.gear_items).filter(func(uid): return uid not in retained)
+	if not normals.is_empty() and not game.dismantle_normal_items(normals): return -1
+	for item in game.expedition.gear_items.duplicate():
+		if item.position == Inventory.STOWED and item.uid not in retained:
+			if not game.dismantle_item(item.uid): return -1
+	return normals.size()
+
+static func maintain(game) -> int:
 	# Keep the best copy of each useful family for the next preparation.
 	# Dismantle duplicates and other support gear to supply current production.
 	var retained: Array = []
 	for kind in Gear.Content.GUNS+POSITIONS.keys():
 		var best = best_item(game.expedition.gear_items,[kind],0)
 		if not best.is_empty(): retained.append(best.uid)
-	for item in game.expedition.gear_items.duplicate():
-		if item.position == Inventory.STOWED and item.uid not in retained: game.dismantle_item(item.uid)
+	var bulk_items = salvage_unused(game,retained)
 	if not game.factory.wrecks.is_empty() or game.battlefield.hull < 70: game.repair_vehicle()
+	return bulk_items
