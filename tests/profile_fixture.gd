@@ -51,7 +51,11 @@ static func clean(suite: String):
 		if FileAccess.file_exists(audio_path): DirAccess.remove_absolute(audio_path)
 		var layout_path = "user://"+suite+"_layout_fixture.json"+suffix
 		if FileAccess.file_exists(layout_path): DirAccess.remove_absolute(layout_path)
-static func assign(game, suite: String):
+static func assign(game, suite: String, layout_version: int = 1):
+	# Existing fixed-coordinate regression fixtures also exercise legacy saves.
+	# New hull/inventory suites pass 2 and cover the current player layout.
+	game.new_layout_version = layout_version
+	game.factory = preload("res://scripts/factory.gd").new(layout_version)
 	clean(suite)
 	game.history_path = path_for(suite)
 	game.audio_enabled = false

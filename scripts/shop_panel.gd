@@ -2,6 +2,8 @@ extends Control
 ## Purchases are commands to the owner; all eligibility comes from current models.
 signal purchase_requested(index: int)
 signal finished
+signal inventory_requested
+var inventory_button: Button
 var state_provider: Callable
 var icons
 var font: Font
@@ -34,11 +36,20 @@ func _ready():
 	close_button.add_theme_stylebox_override("normal",Style.style(Color.TRANSPARENT,Color("e6bd73")))
 	close_button.pressed.connect(func(): finished.emit())
 	add_child(close_button)
+	inventory_button = Button.new()
+	inventory_button.position = Vector2(880,604)
+	inventory_button.size = Vector2(64,64)
+	inventory_button.focus_mode = Control.FOCUS_NONE
+	inventory_button.tooltip_text = "装備一覧 / 解体（I）"
+	inventory_button.add_theme_stylebox_override("normal",Style.style(Color.TRANSPARENT,Style.EDGE))
+	inventory_button.pressed.connect(func(): inventory_requested.emit())
+	add_child(inventory_button)
 	refresh()
 
 func refresh():
 	state = state_provider.call()
 	visible = state.get("visible",false)
+	inventory_button.visible = state.get("item_mode",false)
 	var offers: Array = state.get("offers",[])
 	for i in range(buttons.size()):
 		buttons[i].visible = visible and i < offers.size()
@@ -47,6 +58,8 @@ func refresh():
 			var id: String = offers[i]
 			var label = "石炭 +24" if id == "coal" else "主砲弾 +12（装填上限まで）" if id == "shell" else Content.reward_info(id).name
 			buttons[i].tooltip_text = label+" / 廃材 "+str(Services.price(id))
+			if state.get("item_mode",false) and id.begins_with("gear:"):
+				buttons[i].tooltip_text = "アンコモン · "+buttons[i].tooltip_text+"\n"+preload("res://scripts/equipment_catalog.gd").description({"kind":id.trim_prefix("gear:"),"rarity":"uncommon"})
 	queue_redraw()
 
 func _draw():
@@ -67,3 +80,4 @@ func _draw():
 		draw_string(font,at+Vector2(80,184),str(Services.price(id)),HORIZONTAL_ALIGNMENT_LEFT,-1,22,Style.INK if state.allowed[i] else Style.MUTED)
 		if state.purchased[i]: draw_texture_rect(icons.texture("victory"),Rect2(at+Vector2(126,8),Vector2(30,30)),false)
 	draw_texture_rect(icons.texture("play"),Rect2(698,614,44,44),false)
+	if inventory_button.visible: draw_texture_rect(icons.texture("cargo"),Rect2(890,614,44,44),false)

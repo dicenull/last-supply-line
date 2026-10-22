@@ -154,7 +154,9 @@ func _draw():
 			if id in expedition.stage_recipes and not installed: label("NEW",at+Vector2(360,29),15,ui.GOLD)
 		elif reward_phase:
 			var reward = expedition.reward_options[i]
-			var info = RunState.Content.reward_info(reward)
+			var info = RunState.Content.reward_info(reward).duplicate()
+			if expedition.item_mode and reward.begins_with("gear:"):
+				info.effect = RunState.Gear.description({"kind":reward.trim_prefix("gear:"),"rarity":"rare"})
 			icon(info.icon,at+Vector2(20,24),48)
 			var title: String = info.name
 			if reward.begins_with("block:"):
@@ -163,7 +165,7 @@ func _draw():
 				title += " ×%d" % count
 				label("所持 %d" % factory.inventory[kind],at+Vector2(510,37),17,ui.MUTED)
 			elif reward.begins_with("gear:"):
-				label("装備",at+Vector2(550,37),17,ui.MUTED)
+				label("レア" if expedition.item_mode else "装備",at+Vector2(550,37),17,Color("7dadd2") if expedition.item_mode else ui.MUTED)
 			label(title,at+Vector2(88,37),22,ui.INK)
 			label(info.effect,at+Vector2(88,68),17,ui.GOLD)
 		else:
