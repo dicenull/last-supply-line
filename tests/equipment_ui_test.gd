@@ -82,6 +82,7 @@ func run():
 		var stock = game.factory.reserves.duplicate()
 		await click(game.inventory_panel.salvage_buttons[2])
 		check(game.expedition.gear_items.size() == 2 and game.factory.reserves.scrap > stock.scrap and game.factory.reserves.coal > stock.coal,"real salvage button grants materials")
+		check(game.logistics.notices.scrap.accepted == game.factory.reserves.scrap-stock.scrap and game.logistics.notices.coal.accepted == game.factory.reserves.coal-stock.coal,"dismantling reports both material gains in the header")
 		await click(game.inventory_panel.stow_buttons[0])
 		check(game.factory.equipment_mounts.is_empty() and game.expedition.equipment.is_empty(),"real stow button removes mounted effects")
 		await drag(game.inventory_panel.row_buttons[0],Vector2i(0,0))

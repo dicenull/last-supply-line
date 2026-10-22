@@ -76,6 +76,7 @@ func run():
 	game._process(0)
 	await process_frame
 	check(game.factory.diagnostic(game.hover).item == "shell" and game.factory.receiving_cell(game.hover).items.size() == 1,"every quadrant exposes the shared ammunition inspector")
+	check(game.logistics.badges().filter(func(entry): return entry.pos in F.Layout.AMMO_CELLS).size() == 1,"shared main magazine displays only one empty-stock warning")
 	if DisplayServer.get_name() != "headless":
 		DirAccess.make_dir_recursive_absolute("res://build/equipment-audit")
 		await RenderingServer.frame_post_draw

@@ -1192,7 +1192,9 @@ func stow_item(uid: int) -> bool:
 	return true
 
 func dismantle_item(uid: int) -> bool:
+	var before = factory.reserves.duplicate()
 	if menu.visible or not Inventory.dismantle(expedition,factory,uid): return false
+	for raw in before: logistics.add_receipt(raw,factory.reserves[raw]-before[raw])
 	factory.message = "装備を解体してスクラップと石炭を回収しました。"
 	inventory_panel.refresh()
 	return true
