@@ -5,3 +5,6 @@
 /preview-*.png.import
 
 /build/
+/.wrangler/
+/.cloudflare/
+/node_modules/

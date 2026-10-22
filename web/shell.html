@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M.F.V. 03 — 自走工廠 / 1918</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #171c18; color: #f2eddf; overflow: hidden; }
+    body { font-family: system-ui, sans-serif; }
+    #canvas { display: block; outline: none; touch-action: none; }
+    #loading { position: fixed; inset: 0; display: grid; place-content: center; gap: 18px; text-align: center; background: #171c18; }
+    h1 { font-size: 30px; letter-spacing: .15em; margin: 0; }
+    .year { color: #e6bd73; letter-spacing: .3em; }
+    progress { width: min(320px, 80vw); height: 5px; accent-color: #e6bd73; }
+    #notice { max-width: 560px; padding: 0 20px; white-space: pre-wrap; line-height: 1.7; }
+  </style>
+  $GODOT_HEAD_INCLUDE
+</head>
+<body>
+  <canvas id="canvas" tabindex="0" aria-label="M.F.V. 03 ゲーム画面"></canvas>
+  <div id="loading" role="status">
+    <h1>M.F.V. 03</h1><div class="year">1918</div>
+    <progress id="progress" aria-label="読み込み中"></progress>
+    <div id="notice"></div>
+  </div>
+  <noscript>このゲームにはJavaScriptが必要です。</noscript>
+  <script src="$GODOT_URL"></script>
+  <script>
+    const config = $GODOT_CONFIG;
+    const engine = new Engine(config);
+    const loading = document.getElementById('loading');
+    const progress = document.getElementById('progress');
+    const notice = document.getElementById('notice');
+    function fail(error) {
+      console.error(error);
+      progress.hidden = true;
+      notice.textContent = '起動できませんでした。ページを再読み込みしてください。\n' + String(error.message || error);
+    }
+    const missing = Engine.getMissingFeatures({threads: $GODOT_THREADS_ENABLED});
+    if (missing.length) {
+      fail('このブラウザでは必要な機能が使えません: ' + missing.join(', '));
+    } else {
+      engine.startGame({
+        onProgress(current, total) {
+          if (total > 0) { progress.max = total; progress.value = current; }
+          else { progress.removeAttribute('value'); }
+        }
+      }).then(() => { loading.remove(); document.getElementById('canvas').focus(); }).catch(fail);
+    }
+  </script>
+</body>
+</html>

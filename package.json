@@ -1,0 +1,20 @@
+{
+  "name": "last-supply-line-web",
+  "private": true,
+  "scripts": {
+    "dev:web": "cf dev",
+    "deploy:web": "cf deploy",
+    "check:deploy": "cf deploy --dry-run",
+    "postinstall": "node -e \"require('node:fs').writeFileSync('node_modules/.gdignore', '')\"",
+    "test:web": "node tests/web_smoke_test.cjs"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "cf": "1.0.0-beta.20",
+    "playwright": "1.61.1",
+    "wrangler": "4.151.3"
+  },
+  "type": "module"
+}
