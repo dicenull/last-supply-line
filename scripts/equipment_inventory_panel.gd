@@ -32,6 +32,7 @@ var quality_order = false
 var bulk_uids: Array = []
 var bulk_quote: Dictionary = {}
 var filtered_items: Array = []
+var display_items: Array = []
 var list_signature = -1
 
 func button(rect: Rect2, hint: String, callback: Callable) -> Button:
@@ -70,7 +71,7 @@ func _ready():
 		var index = i
 		var row = button(Rect2(16,108+i*82,230,72),"",func(): pass)
 		row.gui_input.connect(func(event):
-			if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and index < rows.size():
+			if bulk_quote.is_empty() and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and index < rows.size():
 				pending_uid = rows[index].uid
 				drag_origin = row.get_global_transform()*event.position)
 		row_buttons.append(row)
@@ -90,6 +91,7 @@ func _ready():
 
 func begin_bulk():
 	bulk_uids = Inventory.normal_candidates(state.items,genre)
+	page = 0
 	refresh()
 
 func cancel_bulk():
@@ -122,15 +124,20 @@ func refresh():
 				var a_power: float = Catalog.RARITIES[a.rarity].power
 				var b_power: float = Catalog.RARITIES[b.rarity].power
 				return a_power > b_power if a_power != b_power else a.uid < b.uid)
-	page = clampi(page,0,maxi(0,ceili(filtered_items.size()/6.0)-1))
-	rows = filtered_items.slice(page*6,page*6+6)
-	previous.disabled = page == 0
-	next.disabled = (page+1)*6 >= filtered_items.size()
-	sort_button.tooltip_text = "入手順に戻す" if quality_order else "品質の高い順に並べる"
 	bulk_quote = Inventory.quote_normals(state.items,bulk_uids)
 	if bulk_quote.is_empty() or state.phase in ["lost","won","retreated"]: cancel_bulk()
 	var previewing = not bulk_quote.is_empty()
-	for b in [previous,next,bulk_button]: b.visible = not previewing
+	display_items = filtered_items.filter(func(item): return item.uid in bulk_uids) if previewing else filtered_items
+	page = clampi(page,0,maxi(0,ceili(display_items.size()/6.0)-1))
+	rows = display_items.slice(page*6,page*6+6)
+	previous.disabled = page == 0
+	next.disabled = (page+1)*6 >= display_items.size()
+	previous.position = Vector2(148,10) if previewing else Vector2(16,660)
+	next.position = Vector2(192,10) if previewing else Vector2(296,660)
+	previous.size = Vector2(40,36) if previewing else Vector2(80,40)
+	next.size = previous.size
+	sort_button.tooltip_text = "入手順に戻す" if quality_order else "品質の高い順に並べる"
+	bulk_button.visible = not previewing
 	for b in [cancel_button,confirm_button]: b.visible = previewing
 	var candidates = Inventory.normal_candidates(state.items,genre)
 	bulk_button.disabled = candidates.is_empty() or state.phase in ["lost","won","retreated"]
@@ -148,8 +155,8 @@ func refresh():
 		if item.kind in Catalog.Content.GUNS:
 			row_buttons[i].tooltip_text += "\n主砲の旋回範囲外に設置 / 2×2枠の外周から給弾"
 			if item.get("ammo",0) > 0: row_buttons[i].tooltip_text += "\n保管弾 %d発" % item.ammo
-		stow_buttons[i].disabled = not mounted or not state.editable
-		salvage_buttons[i].disabled = mounted or state.phase in ["lost","won","retreated"]
+		stow_buttons[i].disabled = previewing or not mounted or not state.editable
+		salvage_buttons[i].disabled = previewing or mounted or state.phase in ["lost","won","retreated"]
 		salvage_buttons[i].tooltip_text = "解体：スクラップ +%d / 石炭 +%d（元に戻せません）" % [materials.scrap,materials.coal]
 		if item.get("ammo",0) > 0: salvage_buttons[i].tooltip_text += "\n保管弾 %d発も失います" % item.ammo
 	queue_redraw()
@@ -186,9 +193,12 @@ func _draw():
 	draw_string(font,Vector2(48,633),"+"+str(bulk_quote.scrap) if not bulk_quote.is_empty() else str(state.reserves.scrap),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
 	icon("coal",Rect2(162,612,24,24))
 	draw_string(font,Vector2(194,633),"+"+str(bulk_quote.coal) if not bulk_quote.is_empty() else str(state.reserves.coal),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
-	draw_string(font,Vector2(310,633),"%d/%d" % [page+1,maxi(1,ceili(filtered_items.size()/6.0))],HORIZONTAL_ALIGNMENT_LEFT,-1,16,Style.MUTED)
+	draw_string(font,Vector2(310,633),"%d/%d" % [page+1,maxi(1,ceili(display_items.size()/6.0))],HORIZONTAL_ALIGNMENT_LEFT,-1,16,Style.MUTED)
+	if not bulk_quote.is_empty():
+		icon("rotate",Rect2(previous.position+Vector2(8,6),Vector2(24,24)),Style.MUTED if previous.disabled else Style.INK)
+		icon("play",Rect2(next.position+Vector2(8,6),Vector2(24,24)),Style.MUTED if next.disabled else Style.INK)
 	icon("close" if not bulk_quote.is_empty() else "rotate",Rect2(44,668,24,24))
-	icon("victory" if not bulk_quote.is_empty() else "play",Rect2(324,668,24,24))
+	icon("ready" if not bulk_quote.is_empty() else "play",Rect2(324,668,24,24))
 	icon("scrap",Rect2(126,668,24,24),Style.MUTED if bulk_button.disabled else Style.GOLD)
 	var count = bulk_quote.count if not bulk_quote.is_empty() else Inventory.normal_candidates(state.items,genre).size()
 	draw_string(font,Vector2(166,688),"×"+str(count),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
@@ -204,6 +214,7 @@ func reset_view():
 	quality_order = false
 	list_signature = -1
 	filtered_items.clear()
+	display_items.clear()
 	cancel_bulk()
 	rows.clear()
 	hide()
