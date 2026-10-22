@@ -60,7 +60,7 @@ func add_item(definition: Dictionary) -> int:
 	if not Gear.valid(definition): return -1
 	var uid = next_item_uid
 	next_item_uid += 1
-	gear_items.append({"uid":uid,"kind":definition.kind,"rarity":definition.rarity,"position":Vector2i(-1,-1)})
+	gear_items.append({"uid":uid,"kind":definition.kind,"rarity":definition.rarity,"position":Vector2i(-1,-1),"ammo":0})
 	if definition.kind not in recipes: recipes.append(definition.kind)
 	return uid
 

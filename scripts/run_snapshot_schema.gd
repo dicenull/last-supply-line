@@ -90,12 +90,14 @@ func validate(data) -> bool:
 	var item_mode = r.get("item_mode",false)
 	var items = r.get("gear_items",[])
 	var next_uid = r.get("next_item_uid",1)
-	if not item_mode is bool or not items is Array or items.size() > 10000 or not next_uid is int or next_uid < 1: return invalid("item_inventory")
+	if not item_mode is bool or not items is Array or items.size() > 2000 or not next_uid is int or next_uid < 1: return invalid("item_inventory")
 	if item_mode != (layout_version == 2) or (not item_mode and not items.is_empty()): return invalid("item_layout")
 	var seen_uids = []
 	var installed = {}
 	for item in items:
 		if not Factory.Gear.valid(item) or not item.get("uid") is int or item.uid < 1 or item.uid >= next_uid or item.uid in seen_uids or not item.get("position") is Vector2i: return invalid("item_instance")
+		var rounds = item.get("ammo",0)
+		if not rounds is int or rounds < 0 or rounds > 28 or (rounds > 0 and (item.kind not in Factory.AUXILIARY or item.position != Vector2i(-1,-1))): return invalid("stored_equipment_ammo")
 		seen_uids.append(item.uid)
 		if item.kind not in r.get("recipes",[]): return invalid("item_recipe")
 		if item.position == Vector2i(-1,-1): continue
@@ -148,6 +150,8 @@ func validate(data) -> bool:
 		if not f.reserves.get(raw) is int or f.reserves[raw] < 0 or not f.collected.get(raw) is int or f.collected[raw] < 0: return invalid("validation_18")
 	if not numeric(f.work_multiplier,0.4,1) or f.ammo_capacity != r.modifiers.magazine or not is_equal_approx(float(f.work_multiplier),float(r.modifiers.work)): return invalid("validation_19")
 	if not numeric(f.ammo,0,f.ammo_capacity) or not numeric(f.fuel,0,12.001) or f.rate not in [30,60,90] or f.reserve_capacity != r.modifiers.get("cargo",100): return invalid("validation_20")
+	for item in items:
+		if item.get("ammo",0) > f.ammo_capacity: return invalid("stored_equipment_capacity")
 	for key in ["clock","elapsed","ticks","fuel_used","fire_clock","shots","supplied","injected","manufactured","missed"]:
 		if not numeric(f[key],0,1e9): return invalid("validation_22")
 	if data.version >= 6 and not f.has("wrecks"): return invalid("missing_wrecks")

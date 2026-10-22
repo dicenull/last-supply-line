@@ -58,6 +58,11 @@ func run():
 	var materials = Gear.salvage(Inventory.find_item(r,duplicate))
 	check(Inventory.dismantle(r,f,duplicate) and f.reserves.scrap == before.scrap+materials.scrap and f.reserves.coal == before.coal+materials.coal,"dismantling grants precisely the rarity-adjusted materials")
 	check(not Inventory.dismantle(r,f,duplicate),"dismantle is one-shot")
+	f.ammo = f.ammo_capacity
+	f.cells[f.auxiliary_position("left_gun")].items = ["shell","shell"]
+	check(Inventory.stow(r,f,uid) and Inventory.find_item(r,uid).ammo == 2 and f.ammo == f.ammo_capacity,"stowing into a full main magazine preserves rounds inside the item")
+	check(Inventory.place(r,f,uid,Vector2i(0,0)) and f.auxiliary_ammo("left_gun") == 2 and Inventory.find_item(r,uid).ammo == 0,"reinstalling transfers stored rounds exactly once")
+	check(Inventory.place(r,f,uid,Vector2i(1,0)) and f.auxiliary_ammo("left_gun") == 2,"moving an installed item never resets or duplicates ammunition")
 	r.start_sector()
 	f.loadout_locked = true
 	var footprint = f.equipment_mounts.duplicate()

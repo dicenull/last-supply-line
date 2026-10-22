@@ -11,11 +11,21 @@ static func find_item(run, uid: int) -> Dictionary:
 static func editable(run, factory) -> bool:
 	return run.item_mode and run.phase == "prepare" and not factory.loadout_locked and not factory.layout_locked
 
-static func place(run, factory, uid: int, at: Vector2i) -> bool:
+static func can_place(run, factory, uid: int, at: Vector2i) -> bool:
 	var item = find_item(run,uid)
 	if item.is_empty() or not editable(run,factory): return false
 	if item.position == STOWED and item.kind in run.equipment: return false
+	return factory.can_place_equipment(item.kind,at)
+
+static func place(run, factory, uid: int, at: Vector2i) -> bool:
+	if not can_place(run,factory,uid,at): return false
+	var item = find_item(run,uid)
+	var was_stowed: bool = item.position == STOWED
 	if not factory.place_equipment(item.kind,at): return false
+	if was_stowed and item.kind in factory.AUXILIARY:
+		factory.cells[at].items.resize(int(item.get("ammo",0)))
+		factory.cells[at].items.fill("shell")
+		item.ammo = 0
 	item.position = at
 	if item.kind not in run.equipment: run.equipment.append(item.kind)
 	return true
@@ -23,12 +33,11 @@ static func place(run, factory, uid: int, at: Vector2i) -> bool:
 static func stow(run, factory, uid: int) -> bool:
 	var item = find_item(run,uid)
 	if item.is_empty() or not editable(run,factory) or item.position == STOWED: return false
-	# Return loaded ammunition to the main magazine only when it all fits.
-	# Otherwise keep the installation intact; silently losing ammunition is unsafe.
+	# Loaded rounds stay with the removed weapon, so a full main magazine never
+	# prevents changing the loadout between departures or discards ammunition.
 	var rounds = factory.auxiliary_ammo(item.kind) if item.kind in factory.auxiliary_ids else 0
-	if rounds+factory.ammo > factory.ammo_capacity: return false
 	if not factory.remove_equipment(item.kind): return false
-	factory.ammo += rounds
+	item.ammo = rounds
 	item.position = STOWED
 	run.equipment.erase(item.kind)
 	return true
