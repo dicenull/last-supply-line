@@ -13,7 +13,16 @@ python3 tools/run_tests.py --list
 
 `GODOT`環境変数でも実行ファイルを指定できます。ログ・集計・ソースのSHA-256を `build/test-results` へ保存し、`--output` で別の保存先を指定できます。終了コード・全項目の結果・エラー／解放警告を検査し、実行中にソースが変更された場合も失敗として知らせます。1試験の制限は既定180秒、`--timeout` で変更可能です。画面試験はログイン済みデスクトップが必要です。
 
-通常の58スイートを対象にします。長時間試験、実終了→別プロセス再開、配布PCK、Web版はそれぞれ下記の専用手順で実行します。`crafting_test.gd` は既存試験への別名なので重複実行しません。
+通常の61スイートを対象にします。長時間試験、実終了→別プロセス再開、配布PCK、Web版はそれぞれ下記の専用手順で実行します。`crafting_test.gd` は既存試験への別名なので重複実行しません。
+
+### 装備300型式の調整
+
+```sh
+python3 tools/generate_equipment.py --check
+python3 tools/run_tests.py --suite equipment_design --suite equipment_progression --suite equipment_runtime --suite equipment_geometry
+```
+
+`equipment_design` は300種類の性能の一意性・レベル上昇・特性の代償を検査します。`equipment_progression` は全5区間のドロップ上限、全300型式の到達性、品質分布、報酬・価格を確認。`equipment_runtime` は300型式×4品質を実際に装着して射撃・旋回・移動・燃料・解体を検査し、1,200通りを含む保存を往復します。`equipment_geometry` は全300型式の実メッシュと副砲の全周旋回を占有枠と照合します。生成元・調整式・性能一覧は[装備レベルと特性](docs/EQUIPMENT_LEVELS.md)にまとめています。
 
 ## Web版
 
