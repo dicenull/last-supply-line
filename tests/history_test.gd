@@ -47,6 +47,7 @@ func run():
 	game.history.record(PATH,123,"won",5,240)
 	game.history.record(PATH,456,"lost",3,150)
 	game.open_menu()
+	game.menu.show_page("history")
 	await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png("res://preview-history.png")

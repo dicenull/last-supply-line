@@ -522,9 +522,8 @@ func move_auxiliary(id: String, destination: Vector2i) -> bool:
 
 func _unhandled_input(event):
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-		if menu.visible and menu.difficulty_popup.visible:
-			menu.difficulty_popup.hide()
-			return
+		if menu.visible and menu.go_back(): return
+		if menu.visible and menu_title: return
 		if menu.visible: close_menu()
 		else: open_menu(false)
 		return
@@ -892,6 +891,7 @@ func open_menu(title: bool = false):
 	factory.running = false
 	menu_status = ""
 	menu.visible = true
+	menu.show_home()
 	world.placement_preview.visible = false
 	menu.refresh()
 

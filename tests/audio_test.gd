@@ -43,6 +43,7 @@ func run():
 	for kind in sound.KINDS:
 		var stream = sound.streams[kind]
 		check(stream.get_length() > 0.1 and stream.get_length() <= 1.01,"bounded nonempty sound asset: "+kind)
+	await click_at(game.menu.navigation.settings.get_rect().get_center())
 	await click_at(game.menu.mute_button.get_rect().get_center())
 	check(sound.volume == 0 and silent(),"speaker button mutes immediately")
 	await click_at(game.menu.mute_button.get_rect().get_center())

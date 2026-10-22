@@ -77,6 +77,9 @@ func run():
 	root.add_child(game)
 	await process_frame
 	game.set_process(false)
+	game.close_menu()
+	game.open_menu()
+	await click_at(game.menu.navigation.workshop.get_rect().get_center())
 	check(game.menu.blueprint_buttons[1].disabled and game.menu.blueprint_buttons[2].disabled,"unearned designs are visibly disabled")
 	var before = game.factory.layout()
 	await click_at(game.menu.blueprint_buttons[1].get_rect().get_center())

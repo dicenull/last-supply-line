@@ -97,11 +97,11 @@ async function openGame(page) {
     check(wasm.headers()['content-type'] === 'application/wasm', 'WASM MIME type');
     check((await wasm.body()).subarray(0,4).equals(Buffer.from([0,97,115,109])), 'WASM decodes once');
     check((await page.request.get(base + '/missing-asset.wasm')).status() === 404, 'missing asset returns 404');
-    await page.mouse.click(650,120); // 準備へ
+    await page.mouse.click(650,382); // 準備へ
     await page.waitForTimeout(400);
     await page.screenshot({path:path.join(out,'construction.png')});
     await page.keyboard.press('Escape');
-    await page.mouse.click(650,184); // ランを保存
+    await page.mouse.click(650,308); // ランを保存
     await page.waitForTimeout(1500);
     const prepared = await readSave(page, 'prepared');
     check(!prepared.state.started && prepared.state.phase === 'prepare', 'preparation saves before departure');
@@ -109,7 +109,7 @@ async function openGame(page) {
     await page.keyboard.press('Space');
     await page.waitForTimeout(16000);
     await page.keyboard.press('Escape');
-    await page.mouse.click(650,184);
+    await page.mouse.click(650,308);
     await page.waitForTimeout(1500);
     const stationary = await readSave(page, 'stationary');
     check(stationary.state.started && stationary.state.phase === 'travel', 'Space starts combat');
@@ -133,27 +133,27 @@ async function openGame(page) {
     await page.keyboard.up('w');
     await page.screenshot({path:path.join(out,'combat.png')});
     await page.keyboard.press('Escape');
-    await page.mouse.click(650,184);
+    await page.mouse.click(650,308);
     await page.waitForTimeout(1500);
     const moved = await readSave(page, 'moved');
     check(Math.hypot(...moved.state.player.map((v,i)=>v-stationary.state.player[i])) > 0.2, 'W moves the tank');
     await openGame(page); // True browser reload, reconstructing IndexedDB user://.
     check(Buffer.from(await savedBytes(page)).equals(Buffer.from(moved.bytes)), 'browser reload retains exact save');
-    await page.mouse.click(650,152); // 続きから
+    await page.mouse.click(650,438); // 続きから
     await page.waitForTimeout(1800);
     await page.screenshot({path:path.join(out,'restored.png')});
     await page.keyboard.press('Escape');
-    await page.mouse.click(650,184);
+    await page.mouse.click(650,308);
     await page.waitForTimeout(1500);
     const restored = await readSave(page, 'restored');
     check(restored.state.seed === moved.state.seed && restored.state.ticks === moved.state.ticks &&
       JSON.stringify(restored.state.player) === JSON.stringify(moved.state.player), 'continue restores position and production, paused');
-    await page.mouse.click(650,248); // 保存してタイトルへ
+    await page.mouse.click(650,700); // 保存してタイトルへ
     await page.waitForTimeout(2500);
-    await page.mouse.click(650,152); // 続きから still works after scene reload.
+    await page.mouse.click(650,438); // 続きから still works after scene reload.
     await page.waitForTimeout(1500);
     await page.keyboard.press('Escape');
-    await page.mouse.click(650,184);
+    await page.mouse.click(650,308);
     await page.waitForTimeout(1500);
     const returned = await readSave(page, 'returned');
     check(returned.state.seed === moved.state.seed && returned.state.started, 'save-to-title allows continuing without engine shutdown');

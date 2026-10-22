@@ -50,6 +50,7 @@ func run():
 	await click_at(game.menu.actions[0].get_rect().get_center())
 	check(not game.menu.visible and not game.started,"play in title enters preparation")
 	await key(KEY_ESCAPE)
+	await click_at(game.menu.navigation.workshop.get_rect().get_center())
 	check(game.menu.layout_buttons.load.disabled and game.menu.layout_buttons.undo.disabled,"missing layout and empty undo are disabled")
 	await click_at(game.menu.layout_buttons.save.get_rect().get_center())
 	check(FileAccess.file_exists(game.layout_path) and game.menu_status == "victory" and not game.menu.layout_buttons.load.disabled,"layout save writes isolated file and enables load")
@@ -72,16 +73,19 @@ func run():
 	check(game.world.roof_closed,"menu armor control closes cutaway")
 	await click_at(game.menu.utility_buttons.roof.get_rect().get_center())
 	await key(KEY_ESCAPE)
+	await key(KEY_ESCAPE)
 	await key(KEY_SPACE)
 	check(game.factory.running and game.started,"Space starts expedition after title")
 	await key(KEY_ESCAPE)
 	check(game.menu.visible and not game.factory.running,"Escape pauses active expedition")
+	await click_at(game.menu.navigation.workshop.get_rect().get_center())
 	var editable = true
 	for button in game.menu.layout_buttons.values(): editable = editable and not button.disabled
 	var cargo_before = game.factory.ammo
 	await click_at(game.menu.layout_buttons.erase.get_rect().get_center())
 	game.menu.layout_action("erase")
 	check(editable and game.factory.layout() != layout and game.factory.ammo == cargo_before,"paused travel allows layout management and preserves cargo")
+	await click_at(game.menu.back_button.get_rect().get_center())
 	await click_at(game.menu.actions[2].get_rect().get_center())
 	check(FileAccess.file_exists(PATH) and game.menu_status == "victory","save button writes checkpoint and shows success icon")
 	await key(KEY_ESCAPE)

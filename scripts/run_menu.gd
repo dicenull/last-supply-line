@@ -18,10 +18,13 @@ var actions: Array = []
 var blueprint_buttons: Array = []
 var layout_buttons: Dictionary = {}
 var utility_buttons: Dictionary = {}
-const ROW_X = 540
-const ROW_WIDTH = 360
-const ROW_HEIGHT = 32
-const PADDING = 4
+const ROW_X = 520
+const ROW_WIDTH = 400
+const ROW_HEIGHT = 44
+const PADDING = 10
+var page = "start"
+var navigation: Dictionary = {}
+var back_button: Button
 var volume_slider: HSlider
 var mute_button: Button
 var previous_volume = 0.35
@@ -54,8 +57,14 @@ func _ready():
 	for i in range(3):
 		var kind: String = ["camera","roof","retreat"][i]
 		utility_buttons[kind] = small_button(row_rect(414+i*ROW_HEIGHT),func(): utility_action(kind))
+	for target in ["settings","workshop","history"]:
+		navigation[target] = small_button(row_rect(0),func(): show_page(target))
+	back_button = small_button(Rect2(808,140,112,40),func(): show_home())
+	back_button.text = "← 戻る"
+	back_button.add_theme_font_override("font",ui.font)
+	back_button.add_theme_font_size_override("font_size",18)
 	volume_slider = HSlider.new()
-	volume_slider.position = Vector2(612,718)
+	volume_slider.position = Vector2(612,344)
 	volume_slider.size = Vector2(218,32)
 	volume_slider.min_value = 0
 	volume_slider.max_value = 100
@@ -86,8 +95,9 @@ func _ready():
 		else: volume_changed.emit(previous_volume)
 		refresh())
 	difficulty_select = Button.new()
-	difficulty_select.position = Vector2(ROW_X,846)
-	difficulty_select.size = Vector2(ROW_WIDTH,32)
+	difficulty_select.position = Vector2(ROW_X,480)
+	difficulty_select.size = Vector2(ROW_WIDTH,44)
+	difficulty_select.focus_mode = Control.FOCUS_NONE
 	difficulty_select.add_theme_font_override("font",ui.font)
 	difficulty_select.add_theme_font_size_override("font_size",18)
 	difficulty_select.pressed.connect(func(): difficulty_popup.show())
@@ -129,7 +139,49 @@ func _ready():
 		difficulty_popup.add_child(button)
 		difficulty_buttons.append(button)
 	difficulty_popup.hide()
+	show_home()
 	visible = false
+
+func show_home():
+	read_state()
+	show_page("start" if state.title else "pause")
+
+func show_page(target: String):
+	if target not in ["start","pause","settings","workshop","history"]: return
+	page = target
+	difficulty_popup.hide()
+	refresh()
+
+func go_back() -> bool:
+	if difficulty_popup.visible:
+		difficulty_popup.hide()
+		return true
+	if page in ["start","pause"]: return false
+	show_home()
+	return true
+
+func arrange():
+	for button in actions+blueprint_buttons+layout_buttons.values()+utility_buttons.values()+navigation.values(): button.hide()
+	volume_slider.visible = page == "settings"
+	mute_button.visible = page == "settings"
+	difficulty_select.visible = page == "settings"
+	back_button.visible = page not in ["start","pause"]
+	match page:
+		"start":
+			place_rows([actions[0],actions[1],navigation.settings,navigation.history,actions[4]],360,56)
+			if OS.has_feature("web"): actions[4].hide()
+		"pause":
+			place_rows([actions[0],actions[2],actions[1],navigation.workshop,navigation.settings,navigation.history,actions[3],utility_buttons.retreat,actions[4]],230,56)
+		"workshop":
+			place_rows(layout_buttons.values(),244,44)
+			place_rows(blueprint_buttons,464,44)
+			place_rows([utility_buttons.camera,utility_buttons.roof],646,44)
+		"settings": mute_button.position = Vector2(ROW_X,274)
+
+func place_rows(buttons: Array, y: float, gap: float):
+	for i in range(buttons.size()):
+		buttons[i].position = Vector2(ROW_X,y+i*gap)
+		buttons[i].show()
 
 func row_rect(y: float) -> Rect2:
 	return Rect2(ROW_X,y,ROW_WIDTH,ROW_HEIGHT)
@@ -154,6 +206,7 @@ func utility_action(kind: String):
 
 func refresh():
 	read_state()
+	arrange()
 	difficulty_select.text = "難易度："+Content.DIFFICULTIES[state.difficulty].name
 	difficulty_select.disabled = state.difficulty_locked
 	actions[1].disabled = not state.can_continue
@@ -175,7 +228,7 @@ func plate(rect: Rect2, fill: Color, border: Color = Color.TRANSPARENT):
 	draw_style_box(ui.style(fill,border),rect)
 
 func action_labels() -> Array:
-	return ["準備へ" if state.title else "ゲームに戻る","続きから","ランを保存","新しいラン","保存してタイトルへ" if OS.has_feature("web") else "終了"]
+	return ["はじめる" if state.title else "ゲームに戻る","続きから" if state.title else "保存したランを読込","ランを保存","新しいラン","保存してタイトルへ" if OS.has_feature("web") else "終了"]
 
 func layout_label(kind: String) -> String:
 	return {"save":"配置保存","load":"配置読込","erase":"全撤去","undo":"取り消し"}[kind]
@@ -188,13 +241,14 @@ func line_text(value: String, rect: Rect2, font_size: int, color: Color, alignme
 	draw_string(ui.font,Vector2(rect.position.x,baseline),value,alignment,rect.size.x,font_size,color)
 
 func draw_row(button: Button, icon: String, label: String, accent: bool = false, destructive: bool = false, detail: String = ""):
+	if not button.visible: return
 	var rect = button.get_rect()
 	if accent: plate(rect,Color("51563b"),ui.GOLD)
 	var tint = Color(1,1,1,0.3) if button.disabled else Color.WHITE
 	var color = ui.MUTED.darkened(0.25) if button.disabled else ui.DANGER if destructive else ui.INK
 	draw_texture_rect(ui.pixel_icons.texture(icon),Rect2(rect.position+Vector2(PADDING,PADDING),Vector2(24,24)),false,tint)
-	line_text(label,Rect2(rect.position+Vector2(32,PADDING),Vector2(ROW_WIDTH-36,24)),18,color)
-	if detail != "": line_text(detail,Rect2(rect.position+Vector2(176,PADDING),Vector2(180,24)),14,ui.MUTED,HORIZONTAL_ALIGNMENT_RIGHT)
+	line_text(label,Rect2(rect.position+Vector2(44,PADDING),Vector2(ROW_WIDTH-52,24)),18,color)
+	if detail != "": line_text(detail,Rect2(rect.position+Vector2(204,PADDING),Vector2(184,24)),14,ui.MUTED,HORIZONTAL_ALIGNMENT_RIGHT)
 
 func section(label: String, y: float):
 	line_text(label,Rect2(ROW_X+PADDING,y,ROW_WIDTH-8,22),14,ui.MUTED)
@@ -203,17 +257,36 @@ func section(label: String, y: float):
 
 func _draw():
 	draw_rect(Rect2(0,0,1440,940),Color(0.045,0.055,0.04,0.88))
-	plate(Rect2(528,48,384,864),ui.PANEL,ui.EDGE)
-	draw_rect(Rect2(528,48,384,3),ui.GOLD)
-	line_text("M.F.V. 03",Rect2(544,64,240,32),26,ui.INK)
-	line_text("1918 · Esc",Rect2(784,64,112,32),15,ui.GOLD,HORIZONTAL_ALIGNMENT_RIGHT)
+	var panel = Rect2(480,176,480,588) if page == "start" else Rect2(480,96,480,748)
+	plate(panel,ui.PANEL,ui.EDGE)
+	draw_rect(Rect2(panel.position,Vector2(panel.size.x,3)),ui.GOLD)
+	if page == "start":
+		line_text("M.F.V. 03",Rect2(520,222,400,56),42,ui.INK,HORIZONTAL_ALIGNMENT_CENTER)
+		line_text("自走工廠 · 1918",Rect2(520,282,400,32),20,ui.GOLD,HORIZONTAL_ALIGNMENT_CENTER)
+	else:
+		var heading = {"pause":"一時停止","settings":"設定","workshop":"配置・車両","history":"出撃履歴"}[page]
+		line_text(heading,Rect2(520,140,280,40),28,ui.INK)
+		if page == "pause": line_text("Esc で戻る",Rect2(800,146,120,30),15,ui.MUTED,HORIZONTAL_ALIGNMENT_RIGHT)
 	var kinds = ["play","load","save","reset","exit"]
-	for i in range(actions.size()): draw_row(actions[i],kinds[i],action_labels()[i],i == 0)
-	section("配置・車両",264)
-	for kind in layout_buttons: draw_row(layout_buttons[kind],kind,layout_label(kind),false,kind == "erase")
+	for i in range(actions.size()): draw_row(actions[i],kinds[i],action_labels()[i],i == 0,false)
+	for target in navigation:
+		var icon = {"settings":"settings","workshop":"belt","history":"clock"}[target]
+		var label = {"settings":"設定","workshop":"配置・車両","history":"出撃履歴"}[target]
+		draw_row(navigation[target],icon,label)
 	for kind in utility_buttons:
 		draw_row(utility_buttons[kind],"roof_open" if kind == "roof" and not state.roof_closed else kind,utility_label(kind),false,kind == "retreat")
-	section("配置テンプレート · 設備設計図 %d/10" % state.researched_count,526)
+	if page == "workshop": draw_workshop()
+	elif page == "settings": draw_settings()
+	elif page == "history": draw_history()
+	var status = "完了" if state.status == "victory" else "操作失敗" if state.status != "" else ""
+	if state.audio_error: status += " 音量保存失敗"
+	if state.history_error: status += " 履歴保存失敗"
+	line_text(status,Rect2(520,panel.end.y-44,400,24),14,ui.GOLD if state.status == "victory" else ui.DANGER)
+
+func draw_workshop():
+	section("ライン配置",210)
+	for kind in layout_buttons: draw_row(layout_buttons[kind],kind,layout_label(kind),false,kind == "erase")
+	section("配置テンプレート · 設備設計図 %d/10" % state.researched_count,432)
 	for i in range(blueprint_buttons.size()):
 		var id = Blueprints.IDS[i]
 		var unlocked = id in state.unlocked_blueprints
@@ -221,20 +294,23 @@ func _draw():
 		var detail = "選択中" if selected else ""
 		if not unlocked: detail = "%d戦クリアで開放" % Blueprints.REQUIREMENTS[id]
 		draw_row(blueprint_buttons[i],"example" if unlocked else "lock",{"standard":"標準配置","parallel":"弾薬並列","buffered":"弾薬備蓄"}[id],selected,false,detail)
-	section("音声",662)
+	section("車両表示",614)
+
+func draw_settings():
+	section("音声",236)
 	draw_row(mute_button,"mute" if state.volume == 0 else "sound","音を戻す" if state.volume == 0 else "消音")
-	line_text("音量",Rect2(544,722,64,24),18,ui.INK)
-	line_text(str(roundi(state.volume*100))+"%",Rect2(842,722,54,24),18,ui.INK,HORIZONTAL_ALIGNMENT_RIGHT)
-	section("直近の出撃",758)
-	if state.entries.is_empty(): line_text("履歴なし",row_rect(782).grow(-PADDING),14,ui.MUTED)
+	line_text("音量",Rect2(530,348,72,24),18,ui.INK)
+	line_text(str(roundi(state.volume*100))+"%",Rect2(850,348,60,24),18,ui.INK,HORIZONTAL_ALIGNMENT_RIGHT)
+	section("ゲーム",438)
+	line_text("難易度は第1戦の出撃前に変更できます。" if state.difficulty_locked else "次の出撃に向けて難易度を選べます。",Rect2(530,540,380,28),15,ui.MUTED)
+
+func draw_history():
+	section("直近の出撃",226)
+	if state.entries.is_empty(): line_text("まだ出撃履歴がありません。",row_rect(280),18,ui.MUTED)
 	for i in range(mini(2,state.entries.size())):
 		var entry = state.entries[i]
-		var at = Vector2(544,786+i*30)
+		var at = Vector2(530,280+i*100)
 		var icon = "victory" if entry.phase == "won" else "retreat" if entry.phase == "retreated" else "defeat"
-		draw_texture_rect(ui.pixel_icons.texture(icon),Rect2(at,Vector2(24,24)),false)
-		line_text("#"+entry.seed,Rect2(at+Vector2(28,0),Vector2(184,24)),12,ui.MUTED)
-		line_text("%d/5戦 · %d発" % [entry.cleared,int(entry.shells)],Rect2(at+Vector2(212,0),Vector2(140,24)),14,ui.INK,HORIZONTAL_ALIGNMENT_RIGHT)
-	var status = "完了" if state.status == "victory" else "操作失敗" if state.status != "" else ""
-	if state.audio_error: status += " 音量保存失敗"
-	if state.history_error: status += " 履歴保存失敗"
-	line_text(status,Rect2(544,882,352,22),14,ui.GOLD if state.status == "victory" else ui.DANGER)
+		draw_texture_rect(ui.pixel_icons.texture(icon),Rect2(at,Vector2(32,32)),false)
+		line_text("#"+entry.seed,Rect2(at+Vector2(48,0),Vector2(330,28)),16,ui.MUTED)
+		line_text("%d/5戦 · %d発製造" % [entry.cleared,int(entry.shells)],Rect2(at+Vector2(48,36),Vector2(330,28)),20,ui.INK)

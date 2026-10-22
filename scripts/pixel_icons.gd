@@ -8,7 +8,7 @@ const P = {
 	"rust":"905238", "rust_hi":"cb8651", "red":"a94735", "fire":"f39d3c", "yellow":"ffe88a",
 	"steel":"7f9e9f", "steel_hi":"c3dcce", "steel_dark":"466469", "inlet":"70d4cc", "wood":"80613e", "wood_hi":"b38d55"
 }
-const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo","disconnected","incompatible","empty","full","blocked","waiting","processing","ready","idle","sound","mute","volume_knob","menu","rich_site","hostile_site","shop","repair"]
+const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo","disconnected","incompatible","empty","full","blocked","waiting","processing","ready","idle","sound","mute","volume_knob","menu","rich_site","hostile_site","shop","repair","settings"]
 var cache: Dictionary = {}
 var canvas: Image
 
@@ -354,6 +354,11 @@ func texture(kind: String) -> ImageTexture:
 			line(Vector2i(7,15),Vector2i(13,21),"inlet",3)
 			line(Vector2i(13,21),Vector2i(24,8),"inlet",3)
 		"idle": disk(16,16,4,"shade")
+		"settings":
+			for y in [7,15,23]: rect(4,y,24,3,"steel_dark")
+			for p in [Vector2i(11,8),Vector2i(22,16),Vector2i(9,24)]:
+				disk(p.x,p.y,5,"ink")
+				disk(p.x,p.y,3,"gold_hi")
 		"volume_knob":
 			disk(16,16,11,"ink")
 			disk(16,15,10,"bronze")

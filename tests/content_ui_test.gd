@@ -36,6 +36,7 @@ func run():
 	root.add_child(game)
 	await process_frame
 	game.set_process(false)
+	await click_at(game.menu.navigation.settings.get_rect().get_center())
 	for index in range(3):
 		await click_at(game.menu.difficulty_select.get_rect().get_center())
 		await click_at(game.menu.difficulty_buttons[index].get_rect().get_center())

@@ -50,7 +50,8 @@ func run():
 	await click_at(Vector2(200,300))
 	check(game.expedition.phase == phase_before and not game.factory.running,"modal blocks footer and background clicks")
 	game.open_menu()
-	await click_at(game.choice_rect(0).get_center())
+	# Click the covered reward card outside the pause menu's own buttons.
+	await click_at(Vector2(game.choice_rect(0).position.x+4,game.choice_rect(0).get_center().y))
 	check(game.menu.visible and game.expedition.phase == "reward","Esc menu overlays and blocks pending reward choices")
 	game.close_menu()
 	var saved = game.checkpoint.snapshot(game)
