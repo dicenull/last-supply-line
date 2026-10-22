@@ -163,7 +163,7 @@ func run():
 	invalid = saved.duplicate(true)
 	invalid.factory.cells[Vector2i(8,0)] = invalid.factory.cells[Vector2i(7,6)].duplicate(true)
 	check(not codec.validate(invalid),"save rejects duplicate outputs for the same weapon")
-	game.reset_battle()
+	game.reset_battle(42)
 	check(game.factory.auxiliary_ids.is_empty() and game.factory.count_kind("left_gun") == 0,"new run removes output cells with their equipment")
 	game.toggle_running()
 	for tick in range(1800):
