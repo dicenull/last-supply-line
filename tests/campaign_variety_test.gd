@@ -25,6 +25,13 @@ func second_fuel(f):
 	f.edit(Vector2i(1,6),"refinery",0)
 	f.edit(Vector2i(2,6),"belt",0)
 	f.edit(Vector2i(3,6),"belt",1)
+func protect_and_connect(f):
+	if not f.auxiliary_ids.is_empty():
+		if f.count_kind("furnace") < 2: second_ammo(f)
+		f.move_auxiliary(f.auxiliary_ids[0],Vector2i(9,5))
+		f.edit(Vector2i(8,5),"splitter",3)
+	for p in [Vector2i(2,6),Vector2i(4,1),Vector2i(7,1),Vector2i(4,6),Vector2i(0,6),Vector2i(2,1),Vector2i(7,4),Vector2i(9,1)]:
+		if not f.cells.has(p): f.edit(p,"armor_block",0)
 func run():
 	for build in ["parallel","buffered"]:
 		var wins = 0
@@ -40,22 +47,35 @@ func run():
 			for sector in range(1,6):
 				if sector == 2: second_fuel(game.factory)
 				if sector == 3 and build == "buffered": second_ammo(game.factory)
+				protect_and_connect(game.factory)
 				terrain_seen[game.expedition.current.get("terrain","road")] = true
 				formation_seen[game.expedition.current.get("formation","patrol")] = true
 				game.toggle_running()
+				var stranded_time = 0.0
 				for tick in range(2400):
-					game._process(0.1)
+					preload("res://tests/profile_fixture.gd").drive(game,0.1)
 					if tick%200 == 199: await process_frame
 					if game.expedition.phase != "travel": break
+					# Either a destroyed line or exhausted coal can strand a
+					# tank. Give queued production 30 seconds before retreat.
+					stranded_time = stranded_time+0.1 if game.factory.fuel < 0.000001 else 0.0
+					if stranded_time >= 30:
+						game.retreat_run()
+						break
 				if game.expedition.phase == "travel":
 					stalls = true
 					break
-				if game.expedition.phase in ["won","lost"]: break
-				var priority = ["production","economy","autoload","magazine","cargo"] if game.factory.work_multiplier > 0.65 else ["economy","autoload","production","cargo","magazine"]
+				game.finish_crafting()
+				if game.expedition.phase in ["won","lost","retreated"]: break
+				# Current clear rewards are actual equipment, not the retired
+				# production/economy modifier pool.
+				var priority = ["gear:armor","gear:skirts","gear:economizer","gear:drum_loader","gear:blast_fuse","gear:arc_gun","gear:scatter_gun","gear:left_gun","gear:right_gun"]
 				for id in priority:
 					if id in game.expedition.reward_options:
 						game.choose_run_option(game.expedition.reward_options.find(id))
 						break
+				if game.expedition.phase == "reward": game.choose_run_option(0)
+				if game.expedition.phase == "won": break
 				var best = 0
 				var best_cost = -INF if dangerous_routes else INF
 				for i in range(2):

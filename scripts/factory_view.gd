@@ -13,7 +13,6 @@ const DANGER = Color("f29c84")
 const HEADER_RECT = Rect2(16,12,1408,60)
 const WORLD_RECT = Rect2(16,84,1408,752)
 const FOOTER_RECT = Rect2(16,848,1408,80)
-const CHOICE_FOOTER_RECT = Rect2(16,800,1408,128)
 const TankWorld = preload("res://scripts/tank_world.gd")
 var world
 const BattleWorld = preload("res://scripts/battle_world.gd")
@@ -40,6 +39,7 @@ var menu_was_running = false
 const RunState = preload("res://scripts/run_state.gd")
 var expedition = RunState.new(int(Time.get_unix_time_from_system()*1000000))
 var choice_buttons: Array = []
+var choice_popup
 var battle_retry: Button
 const PixelIcons = preload("res://scripts/pixel_icons.gd")
 var pixel_icons = PixelIcons.new()
@@ -52,11 +52,14 @@ var viewport: SubViewport
 const NAMES = {"belt":"搬送", "furnace":"精錬炉", "press":"砲弾機", "splitter":"分配器", "depot":"弾薬庫", "erase":"撤去", "source":"廃材口", "gun":"試射口"}
 const ITEMS = {"scrap":"廃材", "steel":"鋼材", "shell":"砲弾"}
 var factory = Factory.new()
-var font: SystemFont
+var font: Font
 var selected = "belt"
 var direction = 0
 var hover = Vector2i(-1,-1)
 var last_paint = Vector2i(-1,-1)
+var dragging_auxiliary = ""
+var movement_keys: Dictionary = {}
+var tool_page = 0
 var start_button: Button
 var tool_buttons: Dictionary = {}
 var shot_glow = 0.0
@@ -72,12 +75,20 @@ func _ready():
 	get_tree().auto_accept_quit = false
 	factory.finite_resources = true
 	factory.auto_fire = false
-	factory.example()
+	factory.unlocked_blocks = RunState.Content.STARTING_BLOCKS.keys()+history.researched_blocks
+	factory.example(false)
 	factory.undo_stack.clear()
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	font = SystemFont.new()
-	font.font_names = PackedStringArray(["Helvetica Neue","Hiragino Sans","sans-serif"])
-	font.font_weight = 600
+	if OS.has_feature("web"):
+		var web_font = FontVariation.new()
+		web_font.base_font = load("res://assets/fonts/NotoSansJP.ttf")
+		web_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("weight"):600}
+		font = web_font
+	else:
+		var system_font = SystemFont.new()
+		system_font.font_names = PackedStringArray(["Helvetica Neue","Hiragino Sans","sans-serif"])
+		system_font.font_weight = 600
+		font = system_font
 	var container = SubViewportContainer.new()
 	factory_container = container
 	container.position = WORLD_RECT.position
@@ -98,15 +109,12 @@ func _ready():
 	icon_button("menu",Rect2(1274,862,134,52),func(): open_menu(false),"Esc")
 	battle_retry = add_button("",Rect2(614,862,212,52),reset_battle)
 	battle_retry.visible = false
-	for i in range(3):
-		var index = i
-		choice_buttons.append(add_button("",choice_rect(i),func(): choose_run_option(index)))
-		choice_buttons.back().visible = false
 	var kinds = ["belt","furnace","press","splitter","depot","erase","refinery"]
 	for i in kinds.size():
 		var kind: String = kinds[i]
 		tool_buttons[kind] = icon_button(kind,Rect2(32+i*82,862,72,52),func(): selected = kind,str(i+1))
 	icon_button("rotate",Rect2(610,862,74,52),func(): direction = (direction+1)%4,"R")
+	icon_button("example",Rect2(688,862,40,52),cycle_tools)
 	var logistics_layer = CanvasLayer.new()
 	logistics_layer.layer = 2
 	add_child(logistics_layer)
@@ -118,6 +126,13 @@ func _ready():
 	sound.enabled = audio_enabled
 	sound.settings_path = audio_settings_path
 	add_child(sound)
+	var choice_layer = CanvasLayer.new()
+	choice_layer.layer = 6
+	add_child(choice_layer)
+	choice_popup = preload("res://scripts/run_choice_popup.gd").new()
+	choice_popup.game = self
+	choice_layer.add_child(choice_popup)
+	choice_buttons = choice_popup.buttons
 	var menu_layer = CanvasLayer.new()
 	menu_layer.layer = 10
 	add_child(menu_layer)
@@ -134,9 +149,11 @@ func toggle_running():
 	if not started:
 		expedition.start_sector()
 		started = true
+		factory.layout_locked = true
 		world.playback_only = true
 		battle_mode = true
 	factory.running = not factory.running
+	clear_movement()
 	if not factory.running: sound.stop_all()
 	refresh_view()
 
@@ -165,11 +182,39 @@ func ensure_battle():
 		battlefield.fuel_multiplier = expedition.modifiers.fuel
 		battlefield.reload_multiplier = expedition.modifiers.get("reload",1.0)
 		battle_viewport.add_child(battlefield)
+	sync_equipment()
+
+func sync_equipment():
+	var positions = factory.auxiliary_positions()
+	world.configure_equipment(expedition.equipment,positions)
+	world.sync_damage(factory)
+	if battlefield != null:
+		battlefield.configure_equipment(expedition.equipment,positions)
+		battlefield.sync_damage(factory)
+		battlefield.combat_modifiers = expedition.modifiers.duplicate()
+
+func recover_recipe(role: int):
+	var id = expedition.recover_recipe(role)
+	if id != "": factory.message = "レシピ獲得："+RunState.EQUIPMENT[id].name
+
+func craft_equipment(id: String) -> bool:
+	if Factory.AUXILIARY.has(id) and not factory.inside(factory.install_position(id)): return false
+	if menu.visible or not expedition.craft(id,factory.reserves): return false
+	if Factory.AUXILIARY.has(id): factory.install_auxiliary(id)
+	sync_equipment()
+	refresh_view()
+	return true
+
+func finish_crafting():
+	if menu.visible or not expedition.finish_crafting(factory.reserves,factory.inventory,has_mount_space()): return
+	record_result()
+	refresh_view()
 
 func footer_rect() -> Rect2:
-	return CHOICE_FOOTER_RECT if expedition.phase in ["reward","route"] else FOOTER_RECT
+	return FOOTER_RECT
 
 func refresh_view():
+	dragging_auxiliary = ""
 	var scene_size = Vector2(WORLD_RECT.size.x,footer_rect().position.y-12-WORLD_RECT.position.y)
 	factory_container.size = scene_size
 	if battle_container != null:
@@ -177,35 +222,94 @@ func refresh_view():
 	factory_container.visible = not battle_mode
 	if battle_container != null: battle_container.visible = battle_mode
 	hover = Vector2i(-1,-1)
+	world.placement_preview.visible = false
 	for entry in icon_buttons:
-		entry.button.visible = entry.icon == "menu" or ((expedition.phase in ["prepare","travel"]) and ((not battle_mode and (not started or live_control(entry.icon,entry.rect))) or entry.icon in ["battle","play"]))
+		entry.button.visible = entry.icon == "menu" or ((expedition.phase in ["prepare","travel"]) and ((not battle_mode and can_manage_layout()) or entry.icon in ["battle","play"]))
+	start_button.tooltip_text = "出撃：このステージのラインを固定" if can_manage_layout() else "一時停止 / 再開（ラインは固定）"
+	if choice_popup != null: choice_popup.refresh()
 	queue_redraw()
 
 func reset_battle():
 	if quitting: return
 	sound.stop_all()
+	if world.feedback != null: world.feedback.clear()
 	if battlefield == null: return
 	new_blueprints.clear()
+	choice_popup.craft_page = 0
 	battle_container.queue_free()
 	battlefield = null
 	battle_mode = false
 	started = false
+	clear_movement()
+	factory.layout_locked = false
 	world.playback_only = false
-	expedition = RunState.new(int(Time.get_unix_time_from_system()*1000000))
+	expedition = RunState.new(int(Time.get_unix_time_from_system()*1000000),expedition.difficulty)
 	factory.work_multiplier = 1.0
 	factory.ammo_capacity = 12
 	factory.reserve_capacity = 100
-	factory.reserves = {"scrap":48,"coal":32}
+	var settings = RunState.Content.DIFFICULTIES[expedition.difficulty]
+	factory.reserves = {"scrap":settings.scrap,"coal":settings.coal}
 	factory.collected = {"scrap":0,"coal":0}
+	factory.remove_auxiliary()
+	factory.unlocked_blocks = RunState.Content.STARTING_BLOCKS.keys()+history.researched_blocks
+	factory.clear_layout(false,false)
+	factory.example(false)
+	factory.undo_stack.clear()
 	factory.reset_trial()
 	ensure_battle()
 	refresh_view()
 
 func live_control(icon: String, _rect: Rect2) -> bool:
-	return icon in ["belt","furnace","press","splitter","depot","refinery","erase","rotate","play","battle","menu"]
+	return icon in ["play","battle","menu"]
+
+func tool_kinds() -> Array:
+	return ["belt","furnace","press","splitter","depot","erase","refinery"] if tool_page == 0 else ["smart_splitter","priority_splitter","router","overflow_gate","scrap_filter","shell_filter","fuel_filter"] if tool_page == 1 else ["blast_furnace","auto_press","fuel_depot","armor_block","splitter","erase","refinery"]
+
+func cycle_tools():
+	tool_page = (tool_page+1)%3
+	var kinds = tool_kinds()
+	tool_buttons.clear()
+	for i in range(7):
+		var entry = icon_buttons[3+i]
+		entry.icon = kinds[i]
+		for connection in entry.button.pressed.get_connections(): entry.button.pressed.disconnect(connection.callable)
+		var kind: String = kinds[i]
+		entry.button.pressed.connect(func(): selected = kind)
+		entry.button.tooltip_text = Factory.Content.BLOCKS[kind].name+"："+Factory.Content.BLOCKS[kind].effect if Factory.Content.BLOCKS.has(kind) else NAMES.get(kind,kind)
+		tool_buttons[kind] = entry.button
+	selected = kinds[0]
+	queue_redraw()
+
+func set_difficulty(mode: String) -> bool:
+	if mode not in RunState.Content.DIFFICULTIES or not can_manage_layout() or expedition.sector != 1: return false
+	if mode == expedition.difficulty: return true
+	expedition = RunState.new(expedition.run_seed,mode)
+	factory.remove_auxiliary()
+	factory.clear_layout(false,false)
+	factory.example(false)
+	factory.undo_stack.clear()
+	factory.collected = {"scrap":0,"coal":0}
+	var settings = RunState.Content.DIFFICULTIES[mode]
+	factory.reserves = {"scrap":settings.scrap,"coal":settings.coal}
+	if battlefield != null:
+		battle_container.queue_free()
+		battlefield = null
+		ensure_battle()
+	return true
 
 func can_manage_layout() -> bool:
 	return not started and expedition.phase == "prepare"
+
+func clear_movement():
+	movement_keys.clear()
+	if battlefield != null: battlefield.movement_direction = Vector3.ZERO
+
+func update_movement():
+	if battlefield == null: return
+	var horizontal = int(movement_keys.has(KEY_D) or movement_keys.has(KEY_RIGHT))-int(movement_keys.has(KEY_A) or movement_keys.has(KEY_LEFT))
+	var vertical = int(movement_keys.has(KEY_S) or movement_keys.has(KEY_DOWN))-int(movement_keys.has(KEY_W) or movement_keys.has(KEY_UP))
+	# Independent throttle and steering; the battle applies the current hull heading.
+	battlefield.movement_direction = Vector3(-vertical,0,horizontal)
 
 func reset_camera():
 	world.yaw = 0.65
@@ -278,6 +382,7 @@ func load_layout() -> bool:
 
 func _process(delta):
 	if quitting: return
+	sync_equipment()
 	factory.step(minf(delta,0.1))
 	notice_time = maxf(0,notice_time-delta)
 	if factory.message != last_message:
@@ -290,26 +395,71 @@ func _process(delta):
 	start_button.text = ""
 	for kind in tool_buttons:
 		tool_buttons[kind].add_theme_color_override("font_color",GOLD if selected == kind else MUTED)
+		if Factory.LIMITS.has(kind):
+			tool_buttons[kind].disabled = kind not in factory.unlocked_blocks
+			var cost = RunState.Content.BUILD_COSTS[kind]
+			tool_buttons[kind].tooltip_text = "%s　スクラップ %d / 石炭 %d%s" % [RunState.Content.reward_info("block:"+kind).name,cost.scrap,cost.coal,"" if kind in factory.unlocked_blocks else "　未解放：死亡時に設計図を獲得"]
+			if kind == "armor_block": tool_buttons[kind].tooltip_text += "\n"+RunState.Content.BASIC_BLOCKS[kind].effect
 	if started: battlefield.tick_battle(factory,minf(delta,0.1))
 	if started and battlefield.result != 0 and expedition.phase == "travel":
-		expedition.finish_sector(battlefield.result == 1,battlefield.hull)
+		# Restore occupied cells before drafting equipment so wrecks cannot
+		# masquerade as spare mounting space.
+		if battlefield.result == 1 and battlefield.hull > 0:
+			factory.repair_line()
+		expedition.finish_sector(battlefield.result == 1,battlefield.hull,factory.inventory,has_mount_space())
+		clear_movement()
+		if battlefield.result == 1 and expedition.phase != "lost":
+			factory.layout_locked = false
+			battlefield.hull = expedition.hull
+			world.sync_damage(factory)
+			battlefield.sync_damage(factory)
+			factory.message = "コースクリア。車体とラインを一括修復しました。"
+			battlefield.feedback_effect("reward",battlefield.player.position+Vector3(0,5,0),2.0)
+			sound.play_effect("reward")
 		record_result()
 		battle_mode = true
 		refresh_view()
 	if not battle_mode:
-		world.sync(factory,hover,selected,direction,delta)
+		world.sync(factory,hover,selected,direction,delta,can_manage_layout() and not menu.visible and not choice_popup.visible and dragging_auxiliary == "")
+		if dragging_auxiliary != "" and world.marker.visible:
+			world.marker.material_override = world.mats.green if factory.can_move_auxiliary(dragging_auxiliary,hover) else world.mats.red
 		if started:
 			world.turret.rotation.y = battlefield.turret.rotation.y
 			world.barrel.position.x = battlefield.barrel.position.x
 			world.muzzle.visible = battlefield.muzzle.visible
+			for i in range(world.auxiliary_guns.size()):
+				var gun = world.auxiliary_guns[i]
+				var source = battlefield.auxiliary_guns[i]
+				gun.pivot.rotation.y = source.pivot.rotation.y
+				gun.barrel.position.x = source.barrel.position.x
+				gun.muzzle.visible = source.muzzle.visible
 	sound.sync()
+	present_feedback(delta)
 	logistics.sync(delta)
 	battle_retry.visible = battle_mode and expedition.phase in ["won","lost","retreated"]
-	for i in range(choice_buttons.size()):
-		choice_buttons[i].position = choice_rect(i).position
-		choice_buttons[i].size = choice_rect(i).size
-		choice_buttons[i].visible = expedition.phase == "reward" or (expedition.phase == "route" and i < 2)
+	choice_popup.refresh()
 	queue_redraw()
+
+func present_feedback(delta: float):
+	var animate = not menu.visible and (factory.running or not factory.layout_locked)
+	world.tick_feedback(delta if animate else 0.0)
+	# Battle particles are driven here too so end-of-course fireworks can finish.
+	if battlefield != null: battlefield.tick_feedback(delta if animate or (not menu.visible and expedition.phase in ["reward","route","won"]) else 0.0)
+	if menu.visible: return
+	var sounds: Dictionary = {}
+	for event in factory.feedback_events:
+		var target_world = battlefield if battle_mode and battlefield != null else world
+		var at: Vector3 = target_world.cell_position(event.cell)+Vector3(0,0.55,0)
+		if target_world == battlefield:
+			if event.kind in ["place","connect","production"]: continue
+			var turret_offset = Vector2(at.x-battlefield.TURRET_CENTER.x,at.z-battlefield.TURRET_CENTER.z)
+			var surface_height = battlefield.TURRET_CENTER.y+2.7 if turret_offset.length() < 3.7 else 4.5
+			at.y = maxf(at.y,surface_height)
+			at = battlefield.player.to_global(at)
+		target_world.feedback_effect(event.kind,at,1.4 if event.kind == "armor" else 1.0)
+		if event.kind in ["place","connect","armor"]: sounds[event.kind] = true
+	for kind in sounds: sound.play_effect(kind)
+	factory.feedback_events.clear()
 
 func cell_at(pos: Vector2) -> Vector2i:
 	if battle_mode: return Vector2i(-1,-1)
@@ -318,7 +468,7 @@ func cell_at(pos: Vector2) -> Vector2i:
 	return world.screen_cell(canvas_pos-WORLD_RECT.position)
 
 func paint(p: Vector2i, erase: bool):
-	if expedition.phase not in ["prepare","travel"]: return
+	if menu.visible or battle_mode or world.roof_closed or not can_manage_layout(): return
 	if p == last_paint: return
 	last_paint = p
 	var was_running = factory.running
@@ -326,11 +476,31 @@ func paint(p: Vector2i, erase: bool):
 	if started: factory.running = was_running
 
 func _input(event):
+	if event is InputEventKey:
+		var key = event.physical_keycode if event.physical_keycode != 0 else event.keycode
+		if key in [KEY_W,KEY_A,KEY_S,KEY_D,KEY_UP,KEY_DOWN,KEY_LEFT,KEY_RIGHT]:
+			if not event.pressed: movement_keys.erase(key)
+			elif expedition.phase == "travel" and factory.running and not menu.visible and not event.echo: movement_keys[key] = true
+			update_movement()
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
 		hover = cell_at(event.position)
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed and dragging_auxiliary != "":
+		move_auxiliary(dragging_auxiliary,hover)
+		dragging_auxiliary = ""
+		last_paint = Vector2i(-1,-1)
+
+func move_auxiliary(id: String, destination: Vector2i) -> bool:
+	if menu.visible or battle_mode or world.roof_closed or not can_manage_layout(): return false
+	if not factory.move_auxiliary(id,destination): return false
+	sync_equipment()
+	world.rendered_layout = ""
+	return true
 
 func _unhandled_input(event):
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		if menu.visible and menu.difficulty_popup.visible:
+			menu.difficulty_popup.hide()
+			return
 		if menu.visible: close_menu()
 		else: open_menu(false)
 		return
@@ -340,6 +510,11 @@ func _unhandled_input(event):
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_B:
 		toggle_battle()
+		return
+	if expedition.phase == "travel":
+		if event is InputEventKey and event.pressed and not event.echo:
+			if event.keycode == KEY_SPACE: toggle_running()
+			if event.keycode == KEY_TAB and not battle_mode: world.toggle_roof()
 		return
 	if battle_mode:
 		if event is InputEventKey and event.pressed and not event.echo:
@@ -377,12 +552,18 @@ func _unhandled_input(event):
 			KEY_5: selected = "depot"
 			KEY_6: selected = "erase"
 			KEY_7: selected = "refinery"
+			KEY_8: cycle_tools()
+			KEY_9:
+				while tool_page != 2: cycle_tools()
+				selected = "armor_block"
+		if event.keycode >= KEY_1 and event.keycode <= KEY_7: selected = tool_kinds()[event.keycode-KEY_1]
 	if event is InputEventMouseMotion:
 		if event.button_mask & MOUSE_BUTTON_MASK_MIDDLE:
 			world.yaw -= event.relative.x*0.007
 			world.pitch = clampf(world.pitch+event.relative.y*0.005,0.65,1.35)
 			world.update_camera()
 		hover = cell_at(event.position)
+		if dragging_auxiliary != "": return
 		if event.button_mask & MOUSE_BUTTON_MASK_LEFT: paint(hover,false)
 		elif event.button_mask & MOUSE_BUTTON_MASK_RIGHT: paint(hover,true)
 	if event is InputEventMouseButton:
@@ -392,6 +573,9 @@ func _unhandled_input(event):
 		hover = cell_at(event.position)
 		if event.pressed and event.button_index in [MOUSE_BUTTON_LEFT,MOUSE_BUTTON_RIGHT]:
 			last_paint = Vector2i(-1,-1)
+			if event.button_index == MOUSE_BUTTON_LEFT and factory.cells.has(hover) and Factory.AUXILIARY.has(factory.cells[hover].kind):
+				dragging_auxiliary = factory.cells[hover].kind
+				return
 			paint(hover,event.button_index == MOUSE_BUTTON_RIGHT)
 		elif not event.pressed: last_paint = Vector2i(-1,-1)
 
@@ -454,9 +638,15 @@ func draw_control(entry: Dictionary):
 	if icon == "battle": icon = "example" if battle_mode else "battle"
 	if icon == "roof": icon = "roof" if world.roof_closed else "roof_open"
 	var center = rect.get_center()
+	if primary: center.x = rect.position.x+104
 	if entry.key != "": center.x += 10
 	symbol(icon,center,minf(1.05 if entry.icon in tool_buttons else 0.82,(rect.size.y-4)/44.0))
+	if primary: text_at("出撃" if can_manage_layout() else "停止" if factory.running else "再開",rect.position+Vector2(160,34),20,INK)
 	if entry.key != "": keycap(entry.key,rect.position+Vector2(5,5))
+	if Factory.LIMITS.has(entry.icon):
+		var remaining = factory.available(entry.icon)
+		panel(Rect2(rect.position+Vector2(rect.size.x-27,rect.size.y-21),Vector2(25,19)),SURFACE)
+		text_at(str(remaining) if entry.icon in factory.unlocked_blocks else "—",rect.position+Vector2(rect.size.x-24,rect.size.y-6),14,GOLD if remaining > 0 else MUTED)
 
 func _draw():
 	draw_rect(Rect2(0,0,1440,940),BG)
@@ -464,10 +654,13 @@ func _draw():
 	metal_panel(footer_rect())
 	for entry in icon_buttons:
 		if entry.button.visible: draw_control(entry)
+	if expedition.phase == "travel":
+		text_at("W 前進   S 後退   A/D 旋回",Vector2(40,895),20,INK)
+		symbol("lock",Vector2(445,888),0.65)
+		text_at("ライン固定",Vector2(470,895),20,MUTED)
 	if battle_retry.visible:
 		symbol("reset",battle_retry.get_rect().get_center()+Vector2(12,0),1.0)
 		keycap("R",battle_retry.position+Vector2(12,12))
-	draw_expedition()
 
 func meter(rect: Rect2, fraction: float, color: Color):
 	panel(rect,BG)
@@ -487,19 +680,27 @@ func stock_text(item: String, amount: int, capacity: int) -> String:
 	if logistics != null and logistics.notices.has(item):
 		var receipt = logistics.notices[item]
 		return "%d +%d" % [amount,receipt.accepted]+(" −%d" % receipt.lost if receipt.lost > 0 else "")
+	if item in ["scrap","coal"]: return str(amount)
 	return "%d/%d" % [amount,capacity]
+
+func destination_text() -> String:
+	var remaining = battlefield.remaining_distance() if battlefield != null else float(expedition.current.length)
+	return "あと%dm" % ceili(remaining)
 
 func draw_header():
 	metal_panel(HEADER_RECT)
-	if not battle_mode and factory.cells.has(hover):
+	if not battle_mode and (factory.cells.has(hover) or factory.wrecks.has(hover)):
 		draw_inspector()
 	else:
-		if not new_blueprints.is_empty() and expedition.phase in ["reward","route","won"]:
+		if not new_blueprints.is_empty() and expedition.phase == "lost":
+			var id = new_blueprints.back()
+			text_at(RunState.Content.reward_info("block:"+id).name+" 解放",Vector2(24,49),14,GOLD)
+		elif not new_blueprints.is_empty() and expedition.phase in ["reward","route","won"]:
 			symbol("example",Vector2(48,42),0.7)
 			text_at("+"+str(new_blueprints.size()),Vector2(73,49),20,GOLD)
 		elif expedition.phase in ["won","lost","retreated"]:
 			symbol("victory" if expedition.phase == "won" else "retreat" if expedition.phase == "retreated" else "defeat",Vector2(48,42),0.75)
-		else: text_at("M.F.V. 03",Vector2(32,49),19,INK)
+		else: text_at("ライン構築" if expedition.phase == "prepare" else "戦闘" if expedition.phase == "travel" else "M.F.V. 03",Vector2(32,49),19,INK)
 		text_at("%d/5" % expedition.sector,Vector2(157,49),19,MUTED)
 		symbol(expedition.current.get("terrain","road"),Vector2(218,42),0.55)
 		symbol(expedition.current.get("formation","patrol"),Vector2(250,42),0.55)
@@ -509,19 +710,26 @@ func draw_header():
 	header_stat(Rect2(522,22,138,40),"fuel","%.1f/12" % factory.fuel,DANGER if factory.fuel < 0.01 else INK,factory.fuel/12.0)
 	for i in range(2):
 		var raw = "scrap" if i == 0 else "coal"
-		header_stat(Rect2(670+i*142,22,132,40),raw,stock_text(raw,factory.reserves[raw],factory.reserve_capacity),DANGER if factory.reserves[raw] == 0 else GOLD if factory.reserves[raw] == factory.reserve_capacity else INK)
+		header_stat(Rect2(670+i*142,22,132,40),raw,stock_text(raw,factory.reserves[raw],factory.reserve_capacity),DANGER if factory.reserves[raw] == 0 else INK)
 	header_stat(Rect2(954,22,64,40),"steel",str(material_counts().steel))
-	var distance = battlefield.distance if battlefield != null else 0.0
 	var length = float(expedition.current.length)
-	header_stat(Rect2(1028,22,158,40),"move","%.0f/%.0f" % [minf(distance,length),length],INK,distance/length)
-	header_stat(Rect2(1196,22,92,40),"battle","%d/6" % (battlefield.kills if battlefield != null else 0))
-	inset(Rect2(1298,22,110,40))
-	text_at("%.1f m/s" % (battlefield.speed if battlefield != null else 0.0),Vector2(1308,48),18,MUTED)
+	var remaining = battlefield.remaining_distance() if battlefield != null else length
+	header_stat(Rect2(1028,22,270,40),"move",destination_text(),INK,clampf(1.0-remaining/length,0,1))
+	header_stat(Rect2(1308,22,100,40),"battle","%d/%d" % [battlefield.kills if battlefield != null else 0,RunState.enemy_count(expedition.current)])
 
 func draw_inspector():
+	if factory.wrecks.has(hover):
+		symbol("defeat",Vector2(47,42),0.65)
+		text_at("部位破壊",Vector2(68,49),17,DANGER)
+		return
 	var c: Dictionary = factory.cells[hover]
 	var kind: String = c.kind
 	symbol(kind,Vector2(47,42),0.65)
+	if Factory.AUXILIARY.has(kind):
+		text_at(RunState.EQUIPMENT[kind].name,Vector2(68,49),16,INK)
+		text_at("%d/%d" % [c.items.size(),factory.ammo_capacity],Vector2(166,49),17,GOLD)
+		symbol(factory.diagnostic(hover).code,Vector2(240,42),0.6)
+		return
 	if Factory.LIMITS.has(kind):
 		text_at("%d/%d" % [factory.count_kind(kind),Factory.LIMITS[kind]],Vector2(68,49),17,INK)
 	if Factory.RECIPES.has(kind):
@@ -541,8 +749,10 @@ func can_apply_blueprint() -> bool:
 
 func apply_blueprint(id: String) -> bool:
 	if not can_apply_blueprint() or id not in history.unlocked or id not in Blueprints.IDS: return false
-	factory.remember()
+	var before = factory.layout()
 	if not factory.restore(Blueprints.layout(id)): return false
+	factory.undo_stack.append(before)
+	if factory.undo_stack.size() > 50: factory.undo_stack.pop_front()
 	menu.refresh()
 	return true
 
@@ -552,7 +762,12 @@ func record_result() -> bool:
 	for id in history.unlocked:
 		if id not in previous and id not in new_blueprints: new_blueprints.append(id)
 	if expedition.phase not in ["won","lost","retreated"]: return true
-	return history.record(history_path,expedition.run_seed,expedition.phase,expedition.cleared,int(factory.manufactured))
+	var previous_research = history.researched_blocks.duplicate()
+	if not history.record(history_path,expedition.run_seed,expedition.phase,expedition.cleared,int(factory.manufactured)): return false
+	factory.unlocked_blocks = RunState.Content.STARTING_BLOCKS.keys()+history.researched_blocks
+	for id in history.researched_blocks:
+		if id not in previous_research: new_blueprints.append(id)
+	return true
 
 func retreat_run():
 	if quitting: return
@@ -565,59 +780,72 @@ func retreat_run():
 	refresh_view()
 
 func choice_rect(index: int) -> Rect2:
-	return Rect2(32+index*(620 if expedition.phase == "route" else 412),812,608 if expedition.phase == "route" else 400,104)
+	return choice_popup.option_rect(index)
+
+func has_mount_space() -> bool:
+	for id in Factory.AUXILIARY:
+		if id not in factory.auxiliary_ids: return factory.inside(factory.install_position(id))
+	return false
+
+func can_claim_reward(id: String) -> bool:
+	if id.begins_with("gear:"):
+		var gear = id.trim_prefix("gear:")
+		return gear not in expedition.equipment and (not Factory.AUXILIARY.has(gear) or factory.inside(factory.install_position(gear)))
+	if id.begins_with("block:"):
+		var kind = id.trim_prefix("block:")
+		return factory.inventory.get(kind,0) < Factory.LIMITS.get(kind,0)
+	return id in RunState.REWARDS
 
 func choose_run_option(index: int):
-	if expedition.phase == "reward":
+	if menu.visible: return
+	if expedition.phase == "craft":
+		if index >= 0 and index < 3: craft_equipment(choice_popup.craft_id(index))
+	elif expedition.phase == "reward":
+		if index < 0 or index >= expedition.reward_options.size(): return
+		var reward: String = expedition.reward_options[index]
+		if not can_claim_reward(reward): return
 		if expedition.choose_reward(index):
+			world.feedback_effect("reward",Vector3(0,4,0),1.3)
+			if battlefield != null: battlefield.feedback_effect("reward",battlefield.player.position+Vector3(0,5,0),1.3)
+			sound.play_effect("reward")
+			if reward.begins_with("block:"):
+				var kind = reward.trim_prefix("block:")
+				factory.grant_blocks(kind,RunState.Content.block_bundle(kind))
+			elif reward.begins_with("gear:"):
+				var gear = reward.trim_prefix("gear:")
+				if Factory.AUXILIARY.has(gear): factory.install_auxiliary(gear)
+				sync_equipment()
+			match reward:
+				"scrap_cache": factory.collect("scrap",24)
+				"coal_cache": factory.collect("coal",18)
+				"shell_cache":
+					factory.ammo = mini(factory.ammo_capacity,factory.ammo+8)
+					for id in factory.auxiliary_ids:
+						var cell = factory.cells[factory.auxiliary_position(id)]
+						for i in range(mini(2,factory.ammo_capacity-cell.items.size())): cell.items.append("shell")
+			if battlefield != null: battlefield.hull = expedition.hull
 			factory.work_multiplier = expedition.modifiers.work
 			factory.ammo_capacity = expedition.modifiers.magazine
 			factory.reserve_capacity = expedition.modifiers.get("cargo",100)
 			if battlefield != null: battlefield.reload_multiplier = expedition.modifiers.get("reload",1.0)
+			record_result()
 	elif expedition.phase == "route":
 		if expedition.choose_route(index):
 			new_blueprints.clear()
 			battle_container.queue_free()
 			battlefield = null
 			started = false
+			factory.layout_locked = false
+			world.playback_only = false
+			clear_movement()
 			factory.running = false
 			ensure_battle()
 			battle_mode = false
 	refresh_view()
 
-func draw_expedition():
-	if expedition.phase not in ["reward","route"]: return
-	var count = 3 if expedition.phase == "reward" else 2
-	for i in range(count):
-		var rect = choice_rect(i)
-		var at = rect.position
-		panel(rect,SURFACE,EDGE)
-		panel(Rect2(at+Vector2(0,12),Vector2(4,88)),GOLD)
-		if expedition.phase == "reward":
-			var reward = expedition.reward_options[i]
-			symbol({"production":"press","economy":"fuel","magazine":"depot","autoload":"autoload","cargo":"cargo"}[reward],at+Vector2(65,54),1.4)
-			text_at({"production":"×0.85","economy":"×0.80","magazine":"+4","autoload":"×0.80","cargo":"+25"}[reward],at+Vector2(130,65),29,GOLD)
-		else:
-			for divider in [93,218,385]:
-				draw_line(at+Vector2(divider,18),at+Vector2(divider,94),EDGE,1)
-			var route: Dictionary = expedition.route_options[i]
-			symbol({"scrapyard":"scrap","coalfield":"coal","arsenal":"gun"}[route.kind],at+Vector2(45,44),1.2)
-			if route.shells > 0: text_at("+"+str(route.shells),at+Vector2(28,92),19,GOLD)
-			item_at("scrap",at+Vector2(125,35),0.7)
-			text_at(str(route.scrap),at+Vector2(150,43),22,INK)
-			item_at("coal",at+Vector2(125,78),0.7)
-			text_at(str(route.coal),at+Vector2(150,86),22,INK)
-			symbol(route.get("formation","patrol"),at+Vector2(260,35),0.9)
-			text_at(str(RunState.total_health(route)),at+Vector2(290,43),22,INK)
-			symbol("move",at+Vector2(260,78),0.65)
-			text_at(str(int(route.length)),at+Vector2(290,86),22,INK)
-			var surface = RunState.condition(route)
-			symbol(route.get("terrain","road"),at+Vector2(420,35),0.9)
-			text_at("%.1f m/s" % surface.speed,at+Vector2(455,43),22,INK)
-			symbol("fuel",at+Vector2(420,78),0.7)
-			text_at("×%.2f" % surface.fuel,at+Vector2(455,86),22,INK)
-
 func open_menu(title: bool = false):
+	dragging_auxiliary = ""
+	clear_movement()
 	if quitting: return
 	sound.stop_all()
 	menu_title = title
@@ -625,9 +853,11 @@ func open_menu(title: bool = false):
 	factory.running = false
 	menu_status = ""
 	menu.visible = true
+	world.placement_preview.visible = false
 	menu.refresh()
 
 func close_menu():
+	menu.difficulty_popup.hide()
 	menu.visible = false
 	if not menu_title and expedition.phase == "travel": factory.running = menu_was_running
 	menu_title = false
@@ -671,6 +901,8 @@ func menu_action(index: int):
 
 func _notification(what: int):
 	if quitting: return
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		clear_movement()
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		if menu_title or save_checkpoint():
 			finish_quit()
@@ -684,6 +916,11 @@ func finish_quit():
 	quitting = true
 	factory.running = false
 	sound.stop_all()
+	if OS.has_feature("web"):
+		# A browser tab cannot be closed by the game. Keep the saved run and
+		# return to a fresh title scene without shutting down the WebAssembly engine.
+		get_tree().reload_current_scene()
+		return
 	menu.hide()
 	sound.queue_free()
 	# Release playback nodes while the audio thread still runs, before engine shutdown.

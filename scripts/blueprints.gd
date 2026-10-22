@@ -7,7 +7,7 @@ const REQUIREMENTS = {"standard":0,"parallel":1,"buffered":3}
 static func layout(id: String) -> Array:
 	if id not in IDS: return []
 	var factory = Factory.new()
-	factory.example()
+	factory.example(false)
 	if id == "parallel":
 		for x in [1,3,5,6,7]: factory.cells[Vector2i(x,5)] = factory.make_cell("belt",0)
 		factory.cells[Vector2i(2,5)] = factory.make_cell("furnace",0)

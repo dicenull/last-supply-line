@@ -61,6 +61,17 @@ func bullet(x: int, y: int, vertical: bool = false):
 		px(x-1,y+2,"gold_hi")
 
 func texture(kind: String) -> ImageTexture:
+	var catalog = preload("res://scripts/content.gd")
+	if kind == "armor_block": kind = "shield"
+	if kind in catalog.GUNS and kind not in ["scatter_gun","arc_gun"]: kind = "gun"
+	if catalog.BLOCKS.has(kind):
+		if cache.has(kind): return cache[kind]
+		var base = texture(catalog.BLOCKS[kind].icon).get_image()
+		var index = catalog.BLOCKS.keys().find(kind)
+		for x in range(4+(index%5)*4):
+			for y in range(28,31): base.set_pixel(x+2,y,Color("70d4cc") if index < 5 else Color("e6bd73"))
+		cache[kind] = ImageTexture.create_from_image(base)
+		return cache[kind]
 	if cache.has(kind): return cache[kind]
 	canvas = Image.create(32,32,false,Image.FORMAT_RGBA8)
 	match kind:
@@ -141,6 +152,43 @@ func texture(kind: String) -> ImageTexture:
 			rect(19,14,10,1,"steel_hi")
 			plate(10,6,9,3,"light")
 			rivet(10,21)
+		"scatter_gun":
+			plate(3,22,26,7,"shade")
+			plate(5,10,14,14,"olive")
+			for y in [8,15,22]:
+				plate(15,y,15,5,"steel_dark")
+				rect(17,y,10,1,"steel_hi")
+				rect(28,y+1,2,3,"ink")
+			rivet(8,13)
+			rivet(8,20)
+		"arc_gun":
+			plate(3,23,26,6,"shade")
+			plate(5,12,13,12,"olive")
+			rect(15,14,15,5,"steel_dark")
+			for x in [16,21,26]:
+				plate(x,10,3,13,"bronze")
+				rect(x,12,2,9,"steel_hi")
+			for x in [5,11]:
+				plate(x,5,4,9,"steel_dark")
+				rect(x+1,5,2,2,"gold_hi")
+		"blast_fuse":
+			bullet(13,7,true)
+			for pair in [[[5,7],[10,11]],[[4,17],[9,17]],[[5,27],[10,23]],[[24,7],[28,3]],[[24,18],[29,18]]]:
+				line(Vector2i(pair[0][0],pair[0][1]),Vector2i(pair[1][0],pair[1][1]),"steel_hi",2)
+			rect(12,8,8,3,"steel_dark")
+			rect(14,8,4,2,"light")
+		"drum_loader":
+			disk(16,16,13,"ink")
+			disk(16,16,12,"shade")
+			disk(16,16,9,"bronze")
+			for i in range(6):
+				var angle = TAU*i/6
+				var x = 15+int(cos(angle)*8)
+				var y = 15+int(sin(angle)*8)
+				disk(x,y,3,"gold")
+				disk(x,y,1,"cream")
+			disk(15,15,4,"steel_dark")
+			disk(15,15,2,"steel_hi")
 		"play":
 			poly([[8,4],[28,16],[8,29]],"bronze")
 			poly([[9,5],[26,16],[9,26]],"gold")

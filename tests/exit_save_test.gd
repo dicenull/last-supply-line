@@ -21,7 +21,7 @@ func run():
 	game.set_process(false)
 	game.menu_title = false
 	game.toggle_running()
-	for i in range(140): game._process(0.1)
+	for i in range(140): preload("res://tests/profile_fixture.gd").drive(game,0.1)
 	game._notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
 
 func _finalize():

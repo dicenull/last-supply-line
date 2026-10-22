@@ -33,7 +33,7 @@ func run():
 	root.add_child(game)
 	game.set_process(false)
 	game.toggle_running()
-	for i in range(120): game._process(0.1)
+	for i in range(120): preload("res://tests/profile_fixture.gd").drive(game,0.1)
 	var codec = Save.new()
 	var checkpoint = codec.snapshot(game)
 	check(codec.validate(checkpoint),"soak checkpoint contains valid active production")
@@ -54,7 +54,7 @@ func run():
 		else:
 			good = codec.apply(game,checkpoint) and good
 			game.toggle_running()
-		for i in range(60): game._process(0.1)
+		for i in range(60): preload("res://tests/profile_fixture.gd").drive(game,0.1)
 		game.toggle_battle()
 		game._process(0)
 		game.toggle_battle()
@@ -71,7 +71,7 @@ func run():
 	check(game.sound.get_child_count() == 9 and game.logistics.notices.size() <= 3,"feedback pools do not grow across runs")
 	var paused = codec.snapshot(game)
 	game.factory.running = false
-	for i in range(10000): game._process(0.1)
+	for i in range(10000): preload("res://tests/profile_fixture.gd").drive(game,0.1)
 	check(codec.snapshot(game) == paused,"one thousand paused simulated seconds do not advance saved game state")
 	game.queue_free()
 	await process_frame

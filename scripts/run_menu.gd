@@ -12,6 +12,9 @@ const PADDING = 4
 var volume_slider: HSlider
 var mute_button: Button
 var previous_volume = 0.35
+var difficulty_select: Button
+var difficulty_popup: Control
+var difficulty_buttons: Array = []
 func _ready():
 	position = Vector2.ZERO
 	size = Vector2(1440,940)
@@ -61,6 +64,50 @@ func _ready():
 		else: game.sound.set_volume(previous_volume)
 		volume_slider.set_value_no_signal(game.sound.volume*100)
 		queue_redraw())
+	difficulty_select = Button.new()
+	difficulty_select.position = Vector2(ROW_X,846)
+	difficulty_select.size = Vector2(ROW_WIDTH,32)
+	difficulty_select.add_theme_font_override("font",game.font)
+	difficulty_select.add_theme_font_size_override("font_size",18)
+	difficulty_select.pressed.connect(func(): difficulty_popup.show())
+	add_child(difficulty_select)
+	difficulty_popup = Control.new()
+	difficulty_popup.size = size
+	difficulty_popup.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(difficulty_popup)
+	var shade = Panel.new()
+	shade.size = size
+	shade.add_theme_stylebox_override("panel",game.style(Color(0.045,0.055,0.04,0.88)))
+	difficulty_popup.add_child(shade)
+	var panel = Panel.new()
+	panel.position = Vector2(528,316)
+	panel.size = Vector2(384,248)
+	panel.add_theme_stylebox_override("panel",game.style(game.PANEL,game.GOLD))
+	difficulty_popup.add_child(panel)
+	var title = Label.new()
+	title.text = "難易度を選択"
+	title.position = Vector2(548,334)
+	title.add_theme_font_override("font",game.font)
+	title.add_theme_font_size_override("font_size",24)
+	difficulty_popup.add_child(title)
+	for i in range(3):
+		var id: String = game.RunState.Content.DIFFICULTIES.keys()[i]
+		var button = Button.new()
+		button.text = game.RunState.Content.DIFFICULTIES[id].name
+		button.icon = game.pixel_icons.texture("shield" if i == 0 else "battle" if i == 1 else "battery")
+		button.expand_icon = true
+		button.add_theme_constant_override("icon_max_width",24)
+		button.add_theme_font_override("font",game.font)
+		button.add_theme_font_size_override("font_size",20)
+		button.position = Vector2(548,380+i*54)
+		button.size = Vector2(344,44)
+		button.pressed.connect(func():
+			game.set_difficulty(id)
+			difficulty_popup.hide()
+			refresh())
+		difficulty_popup.add_child(button)
+		difficulty_buttons.append(button)
+	difficulty_popup.hide()
 	visible = false
 
 func row_rect(y: float) -> Rect2:
@@ -106,8 +153,11 @@ func utility_action(kind: String):
 	game.queue_redraw()
 
 func refresh():
+	difficulty_select.text = "難易度："+game.RunState.Content.DIFFICULTIES[game.expedition.difficulty].name
+	difficulty_select.disabled = game.started or game.expedition.sector != 1
 	actions[1].disabled = not FileAccess.file_exists(game.checkpoint_path) and not FileAccess.file_exists(game.checkpoint_path+".bak")
 	actions[2].disabled = game.menu_title
+	if OS.has_feature("web"): actions[4].disabled = game.menu_title
 	volume_slider.set_value_no_signal(game.sound.volume*100)
 	for i in range(actions.size()): actions[i].tooltip_text = action_labels()[i]
 	for kind in layout_buttons: layout_buttons[kind].tooltip_text = layout_label(kind)
@@ -124,7 +174,7 @@ func plate(rect: Rect2, fill: Color, border: Color = Color.TRANSPARENT):
 	draw_style_box(game.style(fill,border),rect)
 
 func action_labels() -> Array:
-	return ["準備へ" if game.menu_title else "ゲームに戻る","続きから","ランを保存","新しいラン","終了"]
+	return ["準備へ" if game.menu_title else "ゲームに戻る","続きから","ランを保存","新しいラン","保存してタイトルへ" if OS.has_feature("web") else "終了"]
 
 func layout_label(kind: String) -> String:
 	return {"save":"配置保存","load":"配置読込","erase":"全撤去","undo":"取り消し"}[kind]
@@ -162,7 +212,7 @@ func _draw():
 	for kind in layout_buttons: draw_row(layout_buttons[kind],kind,layout_label(kind),false,kind == "erase")
 	for kind in utility_buttons:
 		draw_row(utility_buttons[kind],"roof_open" if kind == "roof" and not game.world.roof_closed else kind,utility_label(kind),false,kind == "retreat")
-	section("設計図",526)
+	section("配置テンプレート · 設備設計図 %d/10" % game.history.researched_blocks.size(),526)
 	for i in range(blueprint_buttons.size()):
 		var id = game.Blueprints.IDS[i]
 		var unlocked = id in game.history.unlocked
@@ -176,7 +226,7 @@ func _draw():
 	line_text(str(roundi(game.sound.volume*100))+"%",Rect2(842,722,54,24),18,game.INK,HORIZONTAL_ALIGNMENT_RIGHT)
 	section("直近の出撃",758)
 	if game.history.entries.is_empty(): line_text("履歴なし",row_rect(782).grow(-PADDING),14,game.MUTED)
-	for i in range(mini(3,game.history.entries.size())):
+	for i in range(mini(2,game.history.entries.size())):
 		var entry = game.history.entries[i]
 		var at = Vector2(544,786+i*30)
 		var icon = "victory" if entry.phase == "won" else "retreat" if entry.phase == "retreated" else "defeat"

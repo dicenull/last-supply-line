@@ -90,11 +90,11 @@ func run():
 	game.factory.ammo = 11
 	game.battlefield.recover(game.factory,{"scrap":8,"coal":4,"shell":5})
 	game.logistics.sync(0)
-	check(game.factory.reserves == {"scrap":100,"coal":100} and game.factory.ammo == 12,"pickup honors real capacities")
-	check(game.logistics.notices.scrap.accepted == 2 and game.logistics.notices.scrap.lost == 6 and game.logistics.notices.coal.lost == 3 and game.logistics.notices.shell.lost == 4,"notices distinguish accepted and discarded material")
+	check(game.factory.reserves == {"scrap":106,"coal":103} and game.factory.ammo == 12,"raw pickup has no cap while loaded ammunition retains its capacity")
+	check(game.logistics.notices.scrap.accepted == 8 and game.logistics.notices.scrap.lost == 0 and game.logistics.notices.coal.lost == 0 and game.logistics.notices.shell.lost == 4,"all raw resources are accepted and shell overflow remains accurate")
 	game.battlefield.recover(game.factory,{"scrap":2})
 	game.logistics.sync(0)
-	check(game.logistics.notices.scrap.accepted == 2 and game.logistics.notices.scrap.lost == 8,"nearby salvage events aggregate by material")
+	check(game.logistics.notices.scrap.accepted == 10 and game.logistics.notices.scrap.lost == 0,"nearby salvage events aggregate by material without losses")
 	game.factory.running = false
 	game.logistics.sync(10)
 	check(game.logistics.notices.size() == 3,"pause keeps pickup feedback readable")
@@ -107,8 +107,9 @@ func run():
 	check(game.logistics.notices.is_empty(),"active playback expires feedback after four seconds")
 	check(Save.new().apply(game,pickup_save),"pickup state remains valid for checkpoint restoration")
 	game.logistics.sync(0)
-	check(game.logistics.notices.is_empty() and game.factory.reserves.scrap == 100,"resume retains inventory without replaying old pickup notices")
+	check(game.logistics.notices.is_empty() and game.factory.reserves.scrap == 108,"resume retains uncapped inventory without replaying old pickup notices")
 	game.factory.running = true
+	game.battlefield.movement_direction = Vector3.RIGHT
 	game.battlefield.distance = 17.99
 	game.battlefield.player.position.x = 17.99
 	game.factory.fuel = 1
@@ -142,6 +143,6 @@ func run():
 	e.pressed = false
 	Input.parse_input_event(e)
 	await process_frame
-	check(game.factory.cells.has(target) and game.factory.running,"overlay permits actual construction click while running")
+	check(not game.factory.cells.has(target) and game.factory.running,"overlay cannot bypass combat construction lock")
 	print("LOGISTICS RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)

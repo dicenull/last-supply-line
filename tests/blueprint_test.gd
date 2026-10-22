@@ -58,7 +58,7 @@ func run():
 		var f = Factory.new()
 		f.auto_fire = false
 		f.finite_resources = true
-		check(f.restore(Blueprints.layout(id)),"valid equipment limits and fixed ports: "+id)
+		check(f.restore(Blueprints.layout(id),false),"valid equipment limits and fixed ports: "+id)
 		for tick in range(320):
 			f.simulate_tick()
 			if tick%4 == 0: f.fire_round()
@@ -69,7 +69,7 @@ func run():
 	var stock = Factory.new()
 	stock.auto_fire = false
 	stock.finite_resources = true
-	stock.restore(Blueprints.layout("buffered"))
+	stock.restore(Blueprints.layout("buffered"),false)
 	for tick in range(400): stock.simulate_tick()
 	check(stock.ammo == 12 and stock.cells[Vector2i(7,2)].items.size() == 8 and stock.cells[Vector2i(8,2)].items.size() == 8,"buffered design accumulates two real magazines behind full turret")
 	game = load("res://main.tscn").instantiate()
@@ -84,7 +84,7 @@ func run():
 	game.history.unlock_for_clear(path,3)
 	game.menu.refresh()
 	await click_at(game.menu.blueprint_buttons[1].get_rect().get_center())
-	check(Blueprints.matches(game.factory.layout(),"parallel") and game.factory.ammo == 0 and game.factory.reserves == {"scrap":48,"coal":32},"actual list click applies layout without free products")
+	check(Blueprints.matches(game.factory.layout(),"parallel") and game.factory.ammo == 0 and game.factory.reserves == {"scrap":29,"coal":30},"actual list click pays net construction cost without free products")
 	game.factory.undo()
 	check(game.factory.layout() == before,"blueprint placement can be undone")
 	await click_at(game.menu.blueprint_buttons[2].get_rect().get_center())
@@ -105,8 +105,9 @@ func run():
 	game.history.unlocked = ["standard"]
 	game.toggle_running()
 	for tick in range(1600):
-		game._process(0.1)
+		preload("res://tests/profile_fixture.gd").drive(game,0.1)
 		if game.expedition.phase != "travel": break
+	game.finish_crafting()
 	check(game.expedition.phase == "reward" and "parallel" in game.history.unlocked and "parallel" in game.new_blueprints,"real first-sector win unlocks design before ending run")
 	game.queue_redraw()
 	await RenderingServer.frame_post_draw

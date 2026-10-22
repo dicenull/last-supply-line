@@ -47,8 +47,10 @@ func run():
 		for sector in range(1,5):
 			a.start_sector()
 			b.start_sector()
-			a.finish_sector(true,100)
-			b.finish_sector(true,100)
+			a.finish_sector(true,50 if seed%4 == 0 else 100)
+			b.finish_sector(true,50 if seed%4 == 0 else 100)
+			a.finish_crafting()
+			b.finish_crafting()
 			deterministic = deterministic and a.reward_options == b.reward_options
 			unique = unique and a.reward_options.size() == 3 and a.reward_options[0] != a.reward_options[1] and a.reward_options[1] != a.reward_options[2] and a.reward_options[0] != a.reward_options[2]
 			for id in a.reward_options: seen_reward[id] = true
@@ -61,7 +63,7 @@ func run():
 			a.choose_route(0)
 			b.choose_route(0)
 	check(deterministic,"32 seeds reproduce all reward and route choices")
-	check(unique and seen_reward.size() == 5,"three distinct offers cover all five upgrades")
+	check(unique and seen_reward.size() == Run.EQUIPMENT.size() and seen_reward.keys().all(func(id): return id.begins_with("gear:")),"three distinct offers cover the equipment-only reward pool")
 	check(seen_terrain.size() == 3 and seen_formation.size() == 3,"all terrain and formation variants appear")
 	var first = Run.new(77)
 	check(first.current.terrain == "road" and first.current.formation == "patrol","opening encounter retains baseline conditions")
@@ -73,6 +75,7 @@ func run():
 		var f = Factory.new()
 		f.fuel = 2
 		f.running = true
+		b.movement_direction = Vector3.RIGHT
 		b.tick_battle(f,0.1)
 		var condition = Run.CONDITIONS[terrain]
 		check(is_equal_approx(b.distance,0.1*condition.speed) and is_equal_approx(f.fuel_used,b.distance*0.12*condition.fuel),"actual speed and fuel consumption: "+terrain)
@@ -82,6 +85,8 @@ func run():
 		var b = Battle.new()
 		b.sector_config = Run.new(81).current
 		b.sector_config.formation = formation
+		b.sector_config.erase("enemies")
+		b.sector_config.combat_version = 2
 		b.sector_config.boss = true
 		root.add_child(b)
 		var hp = 0
@@ -96,6 +101,7 @@ func run():
 	var r = Run.new(1)
 	r.start_sector()
 	r.finish_sector(true,100)
+	r.finish_crafting()
 	r.reward_options = ["autoload","cargo","production"]
 	check(r.choose_reward(0) and is_equal_approx(r.modifiers.reload,0.8) and not r.choose_reward(0),"autoload reward applies only once")
 	game = load("res://main.tscn").instantiate()
@@ -106,17 +112,18 @@ func run():
 	game.set_process(false)
 	game.toggle_running()
 	for i in range(1600):
-		game._process(0.1)
+		preload("res://tests/profile_fixture.gd").drive(game,0.1)
 		if game.expedition.phase != "travel": break
+	game.finish_crafting()
 	check(game.expedition.phase == "reward","real factory reaches first reward screen")
 	game.expedition.reward_options = ["autoload","cargo","magazine"]
 	game._process(0)
 	await capture("res://preview-expanded-reward.png")
 	var before = game.factory.reserves.duplicate()
-	await click_at(Vector2(700,850))
-	check(game.factory.reserve_capacity == 125 and game.factory.reserves == before,"cargo card raises capacity without granting resources")
+	await click_at(game.choice_rect(1).get_center())
+	check(game.factory.reserve_capacity == 125 and game.factory.reserves == before,"legacy cargo card remains readable without changing raw resource stock")
 	game.factory.collect("coal",200)
-	check(game.factory.reserves.coal == 125,"raised capacity changes actual salvage acceptance")
+	check(game.factory.reserves.coal == before.coal+200,"legacy capacity no longer limits salvage acceptance")
 	game.expedition.route_options[0].terrain = "mud"
 	game.expedition.route_options[0].formation = "battery"
 	game.expedition.route_options[1].terrain = "road"
@@ -131,17 +138,17 @@ func run():
 	duplicate_offer.run.reward_options = ["cargo","cargo","autoload"]
 	check(not codec.validate(duplicate_offer),"duplicate reward offers rejected")
 	await capture("res://preview-expanded-routes.png")
-	await click_at(Vector2(1000,850))
+	await click_at(game.choice_rect(1).get_center())
 	check(game.expedition.current.terrain == "road" and game.expedition.current.formation == "raiders","wide second route card selects its displayed encounter")
-	check(codec.apply(game,data) and game.factory.reserve_capacity == 125 and game.factory.reserves.coal == 125,"checkpoint restores real expanded cargo")
+	check(codec.apply(game,data) and game.factory.reserve_capacity == 125 and game.factory.reserves.coal == before.coal+200,"checkpoint restores uncapped cargo alongside legacy metadata")
 	game.choose_run_option(0)
 	game.expedition.modifiers.reload = 0.8
 	game.battlefield.reload_multiplier = 0.8
 	game.toggle_running()
-	for i in range(85): game._process(0.1)
+	for i in range(85): preload("res://tests/profile_fixture.gd").drive(game,0.1)
 	var moving = codec.snapshot(game)
 	check(codec.validate(moving),"mud and heavy formation validate during real battle")
-	check(codec.apply(game,moving) and game.battlefield.reload_multiplier == 0.8 and game.expedition.current.terrain == "mud" and game.battlefield.enemies[0].role == 2,"resume restores terrain formation and reload modifier")
+	check(codec.apply(game,moving) and game.battlefield.reload_multiplier == 0.8 and game.expedition.current.terrain == "mud" and game.battlefield.enemies[0].role == Run.enemy_role(game.expedition.current,0),"resume restores terrain formation and reload modifier")
 	var bad = moving.duplicate(true)
 	bad.run.current.terrain = "unknown"
 	check(not codec.validate(bad),"unknown terrain rejected")

@@ -1,7 +1,8 @@
 extends Node
 ## Bounded original mechanical sounds on an owned bus; never changes simulation or Master.
-const KINDS = ["engine","machine","shot","impact","pickup"]
-const GAINS = {"engine":0.18,"machine":0.25,"shot":0.65,"impact":0.5,"pickup":0.3}
+const KINDS = ["engine","machine","shot","impact","pickup","place","connect","armor","reward","combo"]
+const GAINS = {"engine":0.18,"machine":0.25,"shot":0.65,"impact":0.5,"pickup":0.3,"place":0.45,"connect":0.35,"armor":0.5,"reward":0.45,"combo":0.35}
+const PRIORITIES = {"machine":0,"place":1,"connect":1,"pickup":1,"combo":2,"shot":3,"impact":3,"armor":3,"reward":4}
 var game
 var enabled = true
 var volume = 0.35
@@ -38,11 +39,13 @@ func _ready():
 			stream.loop_end = stream.data.size()/2
 		streams[kind] = stream
 	motor = AudioStreamPlayer.new()
+	if OS.has_feature("web"): motor.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 	motor.stream = streams.engine
 	motor.bus = bus_name
 	add_child(motor)
 	for i in range(8):
 		var voice = AudioStreamPlayer.new()
+		if OS.has_feature("web"): voice.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 		voice.bus = bus_name
 		add_child(voice)
 		voices.append(voice)
@@ -87,16 +90,29 @@ func update_gain():
 func stop_all():
 	if motor != null: motor.stop()
 	for voice in voices: voice.stop()
-func play_effect(kind: String):
+func play_effect(kind: String, pitch: float = 1.0):
 	if not enabled or volume <= 0 or not streams.has(kind): return
+	var selected_voice = null
 	for voice in voices:
-		if voice.playing: continue
-		voice.stream = streams[kind]
-		voice.set_meta("kind",kind)
-		voice.volume_db = linear_to_db(volume*GAINS[kind])
-		voice.play()
-		played[kind] = played.get(kind,0)+1
-		return
+		if not voice.playing:
+			selected_voice = voice
+			break
+	# Dense factory activity must not swallow a cannon shot or armor impact.
+	# Reuse the quietest-priority voice; the fixed pool never expands.
+	if selected_voice == null:
+		var lowest = int(PRIORITIES.get(kind,0))
+		for voice in voices:
+			var priority = int(PRIORITIES.get(voice.get_meta("kind","machine"),0))
+			if priority < lowest:
+				lowest = priority
+				selected_voice = voice
+	if selected_voice == null: return
+	selected_voice.stream = streams[kind]
+	selected_voice.pitch_scale = clampf(pitch,0.8,1.6)
+	selected_voice.set_meta("kind",kind)
+	selected_voice.volume_db = linear_to_db(volume*GAINS[kind])
+	selected_voice.play()
+	played[kind] = played.get(kind,0)+1
 func sync():
 	var f = game.factory
 	var b = game.battlefield
@@ -115,11 +131,14 @@ func sync():
 			if f.ticks > last_ticks and not f.completed.is_empty(): play_effect("machine")
 			if f.shots > last_shots: play_effect("shot")
 			if kills > last_kills or hull < last_hull or (b != null and b.impact_serial > last_impacts): play_effect("impact")
+			if kills > last_kills and b != null and b.combo >= 2: play_effect("combo",1.0+minf(b.combo-2,6)*0.06)
 			if b != null:
 				for event in b.collection_events:
 					if event.accepted > 0:
 						play_effect("pickup")
 						break
+	elif enabled and volume > 0 and not game.menu.visible and game.expedition.phase in ["prepare","reward","route","won"]:
+		motor.stop()
 	else: stop_all()
 	last_factory = factory_id
 	last_battle = battle_id

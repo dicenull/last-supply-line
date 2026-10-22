@@ -27,15 +27,21 @@ func sync(delta: float):
 func badges() -> Array:
 	var result: Array = []
 	if game.battle_mode or game.world.roof_closed or game.factory.elapsed <= 0: return result
+	for pos in game.factory.wrecks: result.append({"pos":pos,"code":"defeat"})
 	for pos in game.factory.cells:
 		var c = game.factory.cells[pos]
 		var state = game.factory.diagnostic(pos)
 		var show = state.code in ["disconnected","incompatible"]
-		show = show or (state.code == "empty" and c.kind in ["source","coal_source","gun","engine"])
-		show = show or (state.code == "full" and c.kind in ["gun","engine","depot"])
+		show = show or (state.code == "empty" and (c.kind in ["source","coal_source","gun","engine","blast_furnace","auto_press"] or game.Factory.AUXILIARY.has(c.kind)))
+		show = show or (state.code == "full" and (c.kind in ["gun","engine","depot","fuel_depot","overflow_gate"] or game.Factory.AUXILIARY.has(c.kind)))
 		if show: result.append({"pos":pos,"code":state.code})
 	return result
 func _draw():
+	var battle = game.battlefield
+	if game.battle_mode and battle != null and battle.combo >= 2 and battle.combo_time > 0:
+		var alpha = minf(1.0,battle.combo_time)
+		var at = Vector2(1160,128)
+		draw_string(game.font,at,"連続撃破 ×%d" % battle.combo,HORIZONTAL_ALIGNMENT_RIGHT,220,24,Color(game.GOLD,alpha))
 	for entry in badges():
 		var world_pos = game.world.cell_position(entry.pos)+Vector3(0,1.4,0)
 		if game.world.camera.is_position_behind(world_pos): continue

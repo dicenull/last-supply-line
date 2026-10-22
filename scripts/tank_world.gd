@@ -9,10 +9,19 @@ var equipment: Node3D
 var roof: Node3D
 var goods: Node3D
 var marker: MeshInstance3D
+var placement_preview: Node3D
+var preview_model: Node3D
+var preview_arrows: Node3D
+var preview_kind = ""
+var preview_topology = ""
+var preview_valid = false
+var preview_materials: Dictionary = {}
 var muzzle: MeshInstance3D
 var mats: Dictionary = {}
 var material_meshes: Dictionary = {}
 var rendered_layout = ""
+var damage_layer: Node3D
+var rendered_damage = ""
 var goods_pool: Array = []
 var machines: Dictionary = {}
 var yaw = 0.65
@@ -30,6 +39,96 @@ var recoil = 0.0
 var old_shots = 0
 var playback_only = false
 var shot_time = 0.0
+var installed_equipment: Array = []
+var upgrade_mount: Node3D
+var auxiliary_guns: Array = []
+var feedback: Node3D
+
+func feedback_effect(kind: String, at: Vector3, strength: float = 1.0):
+	if feedback == null:
+		feedback = preload("res://scripts/feedback_fx.gd").new()
+		add_child(feedback)
+		feedback.setup(self)
+	return feedback.burst(kind,at,strength)
+
+func tick_feedback(delta: float):
+	if feedback != null: feedback.tick(delta)
+
+func configure_equipment(ids: Array, positions: Dictionary = {}):
+	if installed_equipment == ids:
+		position_auxiliary_guns(positions)
+		return
+	installed_equipment = ids.duplicate()
+	if upgrade_mount != null:
+		upgrade_mount.get_parent().remove_child(upgrade_mount)
+		upgrade_mount.queue_free()
+	auxiliary_guns.clear()
+	upgrade_mount = Node3D.new()
+	turret.get_parent().add_child(upgrade_mount)
+	for id in F.Content.GUNS:
+		if id not in ids: continue
+		var side = -1 if id == "left_gun" else 1
+		var pivot = Node3D.new()
+		upgrade_mount.add_child(pivot)
+		pivot.position = Vector3(4.4,3.2,side*4.0)
+		cylinder(pivot,Vector3.ZERO,0.9,0.25,"turret_dark",24)
+		cylinder(pivot,Vector3(0,0.55,0),0.85,0.9,"turret_armor",24,0.7)
+		cylinder(pivot,Vector3(0,1.03,0),0.72,0.12,"turret_edge",24)
+		var gun_barrel = Node3D.new()
+		pivot.add_child(gun_barrel)
+		gun_barrel.position = Vector3(0.6,0.65,0)
+		beam(gun_barrel,Vector3.ZERO,Vector3(2.1,0,0),0.16,"turret_dark",24)
+		beam(gun_barrel,Vector3.ZERO,Vector3(0.8,0,0),0.27,"turret_armor",24)
+		beam(gun_barrel,Vector3(1.95,0,0),Vector3(2.1,0,0),0.22,"turret_edge",24)
+		if id == "long_gun": beam(gun_barrel,Vector3(2,0,0),Vector3(3.4,0,0),0.13,"turret_dark",24)
+		if id == "rapid_gun": beam(gun_barrel,Vector3(0,0,0.25),Vector3(2.1,0,0.25),0.1,"turret_dark",16)
+		if id == "mortar_gun": beam(pivot,Vector3(0,0.6,0),Vector3(0.8,2.1,0),0.3,"turret_edge",24)
+		if id == "rear_gun": cylinder(pivot,Vector3(0,1.15,0),0.4,0.12,"turret_dark",16)
+		if id == "scatter_gun":
+			for z in [-0.36,0.36]:
+				beam(gun_barrel,Vector3(0,0,z),Vector3(1.8,0,z),0.22,"turret_dark",16)
+				beam(gun_barrel,Vector3(1.65,0,z),Vector3(1.9,0,z),0.28,"turret_edge",16)
+		if id == "arc_gun":
+			for x in [0.55,1.0,1.45]:
+				var coil = cylinder(gun_barrel,Vector3(x,0,0),0.34,0.16,"machine_fuel",16)
+				coil.rotation.z = PI/2
+			for z in [-0.48,0.48]: cylinder(pivot,Vector3(-0.35,1.0,z),0.18,0.7,"machine_bronze",12)
+		var flash = box(gun_barrel,Vector3(3.65 if id == "long_gun" else 2.35,0,0),Vector3(0.7,0.35,0.35),"arc_light" if id == "arc_gun" else "fire")
+		if id == "scatter_gun":
+			for z in [-0.36,0.36]: box(flash,Vector3(-0.3,0,z),Vector3(0.55,0.27,0.27),"fire")
+		flash.visible = false
+		auxiliary_guns.append({"id":id,"pivot":pivot,"barrel":gun_barrel,"muzzle":flash,"cooldown":0.0,"flash":0.0,"recoil":0.0})
+	if "armor" in ids:
+		for side in [-1,1]:
+			for x in [-4,-1,2]:
+				armor_block(upgrade_mount,Vector3(x,2.2,side*4.7),Vector3(2.6,1.3,0.3),0.12,"turret_armor")
+				for dx in [-0.9,0.9]: box(upgrade_mount,Vector3(x+dx,2.2,side*4.9),Vector3(0.12,0.12,0.08),"turret_edge")
+	if "rangefinder" in ids:
+		beam(upgrade_mount,Vector3(1,6.5,-1.4),Vector3(1,6.5,1.4),0.18,"turret_edge",16)
+	if "servo" in ids: cylinder(upgrade_mount,Vector3(2.6,4.1,0),3.6,0.18,"turret_edge",32)
+	if "supercharger" in ids:
+		for z in [-1,1]: cylinder(upgrade_mount,Vector3(-5,3.3,z),0.45,0.8,"turret_dark",20)
+	if "economizer" in ids:
+		for x in [-5.8,-5.4,-5.0]: box(upgrade_mount,Vector3(x,3.3,2.8),Vector3(0.16,0.8,1.4),"turret_edge")
+	if "salvage_arm" in ids:
+		beam(upgrade_mount,Vector3(-4,3.0,-3),Vector3(-4,5.4,-3),0.16,"turret_edge",16)
+		beam(upgrade_mount,Vector3(-4,5.4,-3),Vector3(-6,4.7,-4),0.16,"turret_armor",16)
+	if "skirts" in ids:
+		for z in [-5.1,5.1]: armor_block(upgrade_mount,Vector3(0,1.7,z),Vector3(11,0.7,0.18),0.06,"turret_dark")
+	if "blast_fuse" in ids:
+		for x in [-1.8,-1.3,-0.8]:
+			cylinder(upgrade_mount,Vector3(x,3.5,-3.6),0.18,0.65,"machine_hot",12)
+	if "drum_loader" in ids:
+		for z in [-1.3,1.3]:
+			var drum = cylinder(upgrade_mount,Vector3(0.1,4.6,z),0.5,0.75,"turret_dark",16)
+			drum.rotation.x = PI/2
+	position_auxiliary_guns(positions)
+
+func position_auxiliary_guns(positions: Dictionary):
+	for gun in auxiliary_guns:
+		if positions.has(gun.id):
+			var at = cell_position(positions[gun.id])
+			gun.pivot.position = Vector3(at.x,3.2,at.z)
 
 func material(name: String, color: String, metal: float = 0.0, glow: float = 0.0) -> StandardMaterial3D:
 	var m = StandardMaterial3D.new()
@@ -90,7 +189,7 @@ func rivets(parent: Node3D, transforms: Array[Transform3D], mat: String, radius:
 	var node = MultiMeshInstance3D.new()
 	node.multimesh = instances
 	node.material_override = mats[mat]
-	if mat.begins_with("turret_"): node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if mat.begins_with("turret_"): node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if roof_closed else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(node)
 
 func mesh_node(parent: Node3D, mesh: Mesh, pos: Vector3, mat: String) -> MeshInstance3D:
@@ -98,7 +197,7 @@ func mesh_node(parent: Node3D, mesh: Mesh, pos: Vector3, mat: String) -> MeshIns
 	node.mesh = mesh
 	node.material_override = mats[mat]
 	node.position = pos
-	if mat.begins_with("turret_"): node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if mat.begins_with("turret_"): node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if roof_closed else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(node)
 	return node
 
@@ -149,6 +248,13 @@ func _ready():
 	material("dark","292c26",0.4)
 	material("track","3a3a32",0.45)
 	material("steel","89978e",0.5)
+	material("pipe","343c35",0.2)
+	material("pipe_joint","596052",0.25)
+	material("pipe_cover","4c5547",0.25)
+	material("machine_iron","697365",0.3)
+	material("machine_hot","675c48",0.25)
+	material("machine_fuel","51695e",0.25)
+	material("machine_bronze","837b56",0.35)
 	material("brass","bb9750",0.55)
 	material("wood","655038")
 	material("floor","4b5045",0.2)
@@ -156,6 +262,7 @@ func _ready():
 	material("rust","955f3e",0.25)
 	material("coal","322d25")
 	material("fire","ee9f47",0.1,1.8)
+	material("arc_light","91b9a4",0,0.55)
 	material("shell","d3ac5b",0.6)
 	material("tip","d8c9a0",0.6)
 	material("mud","44483c")
@@ -165,9 +272,8 @@ func _ready():
 	material("red","c26a48",0,0.3)
 	material("inlet","70d4cc",0,0.25)
 	material("outlet","ffcf65",0,0.25)
-	material("kiln","ae4f32")
 	material("fuel","5b9b99")
-	for spec in [["turret_armor","8f916c",0.12],["turret_edge","c6bd91",0.18],["turret_dark","505644",0.22]]:
+	for spec in [["turret_armor","6b7057",0.12],["turret_edge","8b8d6f",0.18],["turret_dark","41493c",0.22]]:
 		var translucent = material(spec[0],spec[1])
 		translucent.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		translucent.albedo_color.a = spec[2]
@@ -210,6 +316,19 @@ func _ready():
 	add_child(goods)
 	marker = box(self,Vector3(0,DECK_Y+0.02,0),Vector3(0.94,0.025,0.94),"green")
 	marker.visible = false
+	placement_preview = Node3D.new()
+	add_child(placement_preview)
+	placement_preview.visible = false
+	for id in ["valid","invalid","arrow","blocked_arrow"]:
+		var mat = StandardMaterial3D.new()
+		mat.albedo_color = Color("a8c58a") if id == "valid" else Color("bcc1a9") if id == "arrow" else Color("e87555")
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.no_depth_test = true
+		mat.render_priority = 20 if "arrow" in id else 10
+		if "arrow" not in id:
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			mat.albedo_color.a = 0.28
+		preview_materials[id] = mat
 
 func update_camera():
 	var target = Vector3(0,1.7,0)
@@ -234,7 +353,11 @@ func toggle_roof():
 		var mat: StandardMaterial3D = mats[key]
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED if roof_closed else BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.albedo_color.a = 1.0 if roof_closed else float(mat.get_meta("interior_alpha"))
+		for geometry in find_children("*","GeometryInstance3D",true,false):
+			if geometry.material_override == mat:
+				geometry.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if roof_closed else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	marker.visible = false
+	placement_preview.visible = false
 
 func terrain():
 	box(self,Vector3(0,-0.27,0),Vector3(100,0.3,100),"mud")
@@ -546,51 +669,148 @@ func update_gun(factory, delta: float):
 			shot.node.queue_free()
 			projectiles.erase(shot)
 
-func direction_arrow(parent: Node3D, height: float):
-	box(parent,Vector3(0,height,0),Vector3(0.44,0.018,0.06),"brass")
-	prism(parent,PackedVector2Array([Vector2(0.3,0),Vector2(0.1,-0.13),Vector2(0.1,0.13)]),height,height+0.025,"brass")
+func directional_cover(parent: Node3D, height: float, compact: bool = false):
+	# Folded access plates: their overlapping seams converge toward the outlet.
+	# Branches keep each cover on its own arm, clear of the central manifold.
+	var half_width = 0.12 if compact else 0.27
+	var fold = 0.09 if compact else 0.16
+	var depth = 0.08 if compact else 0.14
+	var centers = [0.18,0.32] if compact else [-0.10,0.14]
+	for x in centers:
+		var outline = PackedVector2Array([
+			Vector2(x-depth,-half_width),Vector2(x,-half_width),
+			Vector2(x+fold,0),Vector2(x,half_width),
+			Vector2(x-depth,half_width),Vector2(x+fold-depth,0)])
+		prism(parent,outline,height,height+0.035,"pipe_cover")
+		for side in [-1,1]:
+			cylinder(parent,Vector3(x-depth*0.5,height+0.04,side*(half_width-0.025)),0.018,0.012,"pipe_joint",6)
 
 func flow_ports(kind: String, parent: Node3D, inputs: Array):
-	# All four sides accept input in the simulation; output is directional.
-	for side in range(4):
+	var outlets: Array = [] if kind in ["gun","engine"] or F.AUXILIARY.has(kind) else [0]
+	var ports: Array = inputs.duplicate() if kind not in ["source","coal_source"] else []
+	for side in outlets:
+		if side not in ports: ports.append(side)
+	for side in ports:
 		var port = Node3D.new()
 		parent.add_child(port)
 		port.rotation.y = -side*PI/2
-		if kind not in ["source","coal_source"] and side in inputs:
-			# Recessed receiving tray; geometry communicates flow without small arrows.
-			box(port,Vector3(0.43,0.16,-0.19),Vector3(0.14,0.05,0.25),"dark")
-			for z in [-0.32,-0.06]: box(port,Vector3(0.43,0.20,z),Vector3(0.14,0.035,0.035),"inlet")
-		if kind not in ["gun","engine"] and (side == 0 or (kind == "splitter" and side == 1)):
-			box(port,Vector3(0.35,0.17,0.18),Vector3(0.26,0.055,0.27),"outlet")
+		var sleeve = Node3D.new()
+		port.add_child(sleeve)
+		# Same bore and height as the conveyor, from machine body to cell edge.
+		sleeve.position.x = 0.37
+		square_pipe(sleeve,0.26,false)
+		# Folded coupling guards point along actual flow, including into consumers.
+		var guard = Node3D.new()
+		port.add_child(guard)
+		guard.position.x = 0.2 if side in outlets else 0.5
+		guard.scale = Vector3(0.6,1,1.8)
+		if side not in outlets: guard.rotation.y = PI
+		directional_cover(guard,0.486,true)
+
+func machine_cover(kind: String, parent: Node3D):
+	# Each machine carries the same folded metalwork on a real casing or outlet.
+	var cover = Node3D.new()
+	parent.add_child(cover)
+	match kind:
+		"furnace":
+			cover.position = Vector3(0.06,0.662,0)
+			cover.scale = Vector3(0.8,1,0.92)
+		"press":
+			cover.position.y = 1.117
+			cover.scale = Vector3(0.58,1,1.0)
+		"depot":
+			cover.position = Vector3(0.04,0.5,0)
+			cover.scale = Vector3(0.8,1,1.8)
+		"refinery":
+			cover.position = Vector3(0.19,0.652,0)
+			cover.scale = Vector3(0.36,1,0.4)
+		_:
+			cover.position = Vector3(-0.025,0.578,0)
+			cover.scale = Vector3(0.7,1,1.6)
+	directional_cover(cover,0.0,kind not in ["furnace","press","refinery"])
+
+func square_pipe(parent: Node3D, length: float = 0.94, inlet_flange: bool = true):
+	# Four metal walls leave a square bore visible at the ends.
+	box(parent,Vector3(0,0.08,0),Vector3(length,0.08,0.64),"dark")
+	box(parent,Vector3(0,0.44,0),Vector3(length,0.08,0.64),"pipe")
+	for side in [-1,1]:
+		box(parent,Vector3(0,0.26,side*0.28),Vector3(length,0.28,0.08),"dark")
+	for end in [-1,1]:
+		if end == -1 and not inlet_flange: continue
+		var x = end*(length*0.5-0.045)
+		for height in [0.08,0.44]: box(parent,Vector3(x,height,0),Vector3(0.09,0.09,0.72),"pipe_joint")
+		for side in [-1,1]: box(parent,Vector3(x,0.26,side*0.32),Vector3(0.09,0.3,0.08),"pipe_joint")
+
+func pipe_junction(parent: Node3D, ports: Array):
+	box(parent,Vector3(0,0.08,0),Vector3(0.64,0.08,0.64),"dark")
+	box(parent,Vector3(0,0.44,0),Vector3(0.64,0.08,0.64),"pipe")
+	for side in range(4):
+		var arm = Node3D.new()
+		parent.add_child(arm)
+		arm.rotation.y = -side*PI/2
+		if side in ports:
+			var segment = Node3D.new()
+			arm.add_child(segment)
+			segment.position.x = 0.41
+			square_pipe(segment,0.18,false)
+		else:
+			box(arm,Vector3(0.28,0.26,0),Vector3(0.08,0.28,0.64),"dark")
 
 func machine(kind: String, parent: Node3D, inputs: Array = [2]) -> Dictionary:
 	var parts: Dictionary = {}
+	if kind == "armor_block":
+		box(parent,Vector3(0,0.08,0),Vector3(0.9,0.16,0.9),"pipe_joint")
+		parts.armor_plates = []
+		for i in range(F.ARMOR_HITS):
+			var plate = box(parent,Vector3(0,0.25+i*0.18,0),Vector3(0.78,0.14,0.78),"machine_iron")
+			parts.armor_plates.append(plate)
+			for x in [-0.31,0.31]:
+				for z in [-0.31,0.31]:
+					cylinder(plate,Vector3(x,0.1,z),0.055,0.06,"pipe_joint",6)
+		return parts
+	var base_kind = F.Content.BLOCKS[kind].base if F.Content.BLOCKS.has(kind) else kind
+	if base_kind in ["belt","splitter"]:
+		var ports: Array = inputs.duplicate()
+		var exits = [0]
+		if base_kind == "splitter": exits.append(1)
+		if kind == "router": exits.append(3)
+		for side in exits:
+			if side not in ports: ports.append(side)
+		pipe_junction(parent,ports)
+		for side in exits:
+			var cover = Node3D.new()
+			parent.add_child(cover)
+			cover.rotation.y = -side*PI/2
+			directional_cover(cover,0.482,exits.size() > 1)
+		if F.Content.BLOCKS.has(kind):
+			var mark = "machine_fuel" if kind == "fuel_filter" else "machine_hot" if kind == "scrap_filter" else "machine_bronze"
+			box(parent,Vector3(-0.2,0.52,0),Vector3(0.06,0.04,0.5),mark)
+		parts.ports = ports
+		return parts
+	if F.Content.BLOCKS.has(kind):
+		parts = machine(base_kind,parent,inputs)
+		var mark = "machine_fuel" if kind in ["fuel_depot","auto_press"] else "machine_hot" if kind == "blast_furnace" else "machine_bronze"
+		box(parent,Vector3(-0.3,0.13,0),Vector3(0.08,0.08,0.7),mark)
+		if kind == "blast_furnace": cylinder(parent,Vector3(0.2,1.0,-0.2),0.14,0.7,"machine_hot",12)
+		if kind == "auto_press": cylinder(parent,Vector3(0.28,0.35,0),0.16,0.4,"machine_fuel",12)
+		return parts
 	match kind:
-		"belt", "splitter":
-			box(parent,Vector3(0,0.08,0),Vector3(0.93,0.12,0.7),"dark")
-			direction_arrow(parent,0.24)
-			if kind == "splitter":
-				box(parent,Vector3(0,0.12,0.27),Vector3(0.65,0.16,0.53),"dark")
-				var arm = Node3D.new()
-				parent.add_child(arm)
-				arm.rotation.y = -PI/2
-				direction_arrow(arm,0.26)
 		"furnace":
-			box(parent,Vector3(0,0.33,0),Vector3(0.60,0.56,0.56),"kiln")
+			box(parent,Vector3(0,0.33,0),Vector3(0.60,0.56,0.56),"machine_hot")
 			# Open glowing hearth on both visible faces, with a tall chimney.
 			for z in [-0.29,0.29]:
 				box(parent,Vector3(0,0.34,z),Vector3(0.37,0.30,0.025),"dark")
 				box(parent,Vector3(0,0.30,z*1.04),Vector3(0.25,0.16,0.025),"fire")
 			cylinder(parent,Vector3(-0.18,0.86,-0.15),0.10,0.66,"dark",6)
-			cylinder(parent,Vector3(-0.18,1.20,-0.15),0.14,0.08,"rust",6)
-			box(parent,Vector3(0,0.63,0),Vector3(0.64,0.06,0.60),"rust")
+			cylinder(parent,Vector3(-0.18,1.20,-0.15),0.14,0.08,"pipe_joint",6)
+			box(parent,Vector3(0,0.63,0),Vector3(0.64,0.06,0.60),"pipe_joint")
 			parts.fire = box(parent,Vector3(0.20,0.67,0.12),Vector3(0.18,0.04,0.20),"fire")
 		"press":
-			box(parent,Vector3(0,0.10,0),Vector3(0.62,0.16,0.64),"steel")
-			for z in [-0.24,0.24]: box(parent,Vector3(0,0.57,z),Vector3(0.15,0.92,0.12),"steel")
-			box(parent,Vector3(0,1.03,0),Vector3(0.38,0.17,0.65),"steel")
-			cylinder(parent,Vector3(0,0.87,0),0.09,0.22,"brass",6)
-			parts.piston = box(parent,Vector3(0,0.74,0),Vector3(0.40,0.16,0.37),"steel")
+			box(parent,Vector3(0,0.10,0),Vector3(0.62,0.16,0.64),"machine_iron")
+			for z in [-0.24,0.24]: box(parent,Vector3(0,0.57,z),Vector3(0.15,0.92,0.12),"machine_iron")
+			box(parent,Vector3(0,1.03,0),Vector3(0.38,0.17,0.65),"machine_iron")
+			cylinder(parent,Vector3(0,0.87,0),0.09,0.22,"machine_bronze",6)
+			parts.piston = box(parent,Vector3(0,0.74,0),Vector3(0.40,0.16,0.37),"machine_iron")
 			box(parent,Vector3(0,0.29,0),Vector3(0.38,0.13,0.38),"dark")
 		"depot":
 			box(parent,Vector3(0,0.12,0),Vector3(0.62,0.20,0.62),"wood")
@@ -600,7 +820,7 @@ func machine(kind: String, parent: Node3D, inputs: Array = [2]) -> Dictionary:
 				cylinder(parent,Vector3(x,0.33,-0.30),0.055,0.22,"shell",6)
 				cylinder(parent,Vector3(x,0.48,-0.30),0.055,0.09,"tip",6,0)
 		"source", "coal_source":
-			cylinder(parent,Vector3(0,0.32,0),0.22,0.46,"rust",4,0.44)
+			cylinder(parent,Vector3(0,0.32,0),0.22,0.46,"machine_hot",4,0.44)
 			box(parent,Vector3(0,0.56,0),Vector3(0.56,0.025,0.56),"dark")
 			for offset in [Vector3(-0.15,0.57,0),Vector3(0.12,0.59,0.13),Vector3(0.03,0.57,-0.17)]:
 				var scrap = make_good("coal" if kind == "coal_source" else "scrap")
@@ -608,21 +828,26 @@ func machine(kind: String, parent: Node3D, inputs: Array = [2]) -> Dictionary:
 				scrap.position = offset
 		"refinery":
 			box(parent,Vector3(0,0.10,0),Vector3(0.65,0.14,0.65),"dark")
-			cylinder(parent,Vector3(-0.14,0.58,0),0.19,0.92,"fuel",6)
-			cylinder(parent,Vector3(0.19,0.39,0),0.14,0.52,"brass",6)
-			beam(parent,Vector3(-0.14,0.98,0),Vector3(0.19,0.65,0),0.045,"steel")
+			cylinder(parent,Vector3(-0.14,0.58,0),0.19,0.92,"machine_fuel",6)
+			cylinder(parent,Vector3(0.19,0.39,0),0.14,0.52,"machine_bronze",6)
+			beam(parent,Vector3(-0.14,0.98,0),Vector3(0.19,0.65,0),0.045,"machine_iron")
 			box(parent,Vector3(-0.14,0.18,0.19),Vector3(0.18,0.15,0.025),"fire")
 		"engine":
-			box(parent,Vector3(0,0.26,0),Vector3(0.68,0.44,0.60),"fuel")
+			box(parent,Vector3(0,0.26,0),Vector3(0.68,0.44,0.60),"machine_fuel")
 			for x in [-0.22,0,0.22]: box(parent,Vector3(x,0.53,0),Vector3(0.09,0.16,0.5),"dark")
 			cylinder(parent,Vector3(0.19,0.77,-0.17),0.07,0.35,"dark",6)
-		"gun":
+		"gun", "left_gun", "right_gun", "rapid_gun", "long_gun", "mortar_gun", "rear_gun", "scatter_gun", "arc_gun":
 			box(parent,Vector3(0,0.22,0),Vector3(0.62,0.40,0.62),"dark")
 			for z in [-0.18,0,0.18]:
 				var round_node = make_good("shell")
 				parent.add_child(round_node)
 				round_node.position = Vector3(0,0.44,z)
-			beam(parent,Vector3(0.23,0.3,0),Vector3(0.23,0.95,0),0.14,"brass")
+			beam(parent,Vector3(0.23,0.3,0),Vector3(0.23,0.95,0),0.14,"machine_bronze")
+			if F.AUXILIARY.has(kind):
+				# Different side stripes identify the two independent magazines.
+				box(parent,Vector3(0,0.05,-0.43 if kind == "left_gun" else 0.43),Vector3(0.85,0.05,0.08),"machine_fuel")
+	if kind in ["furnace","press","depot","refinery","source","coal_source"]:
+		machine_cover(kind,parent)
 	if kind not in ["belt","splitter"]: flow_ports(kind,parent,inputs)
 	return parts
 
@@ -649,7 +874,9 @@ func make_good(kind: String) -> Node3D:
 	return n
 
 func good_height(kind: String) -> float:
-	return {"furnace":0.83,"press":0.38,"source":0.4,"depot":0.35,"gun":0.4,"refinery":1.08,"engine":0.65,"coal_source":0.6}.get(kind,0.25)
+	if F.Content.BLOCKS.has(kind): return good_height(F.Content.BLOCKS[kind].base)
+	if F.AUXILIARY.has(kind): return 0.4
+	return {"belt":0.57,"splitter":0.57,"furnace":0.83,"press":0.38,"source":0.4,"depot":0.35,"gun":0.4,"refinery":1.08,"engine":0.65,"coal_source":0.6}.get(kind,0.25)
 
 func item_frames(factory) -> Array:
 	var frames: Array = []
@@ -657,10 +884,11 @@ func item_frames(factory) -> Array:
 	for move in factory.moves: arrivals[move.to] = true
 	for p in factory.cells:
 		var c: Dictionary = factory.cells[p]
+		if F.AUXILIARY.has(c.kind): continue
 		var count = c.items.size()-(1 if arrivals.has(p) else 0)
 		for i in range(count):
 			var offset = Vector3(0,good_height(c.kind),0)
-			if c.kind == "depot": offset += Vector3(-0.21+int(i/4)*0.42,0,-0.29+(i%4)*0.19)
+			if c.kind in ["depot","fuel_depot","overflow_gate"]: offset += Vector3(-0.21+int(i/4)*0.42,0,-0.29+(i%4)*0.19)
 			frames.append({"kind":c.items[i],"pos":cell_position(p)+offset,"dir":c.dir})
 	for move in factory.moves:
 		if not factory.cells.has(move.from) or not factory.cells.has(move.to): continue
@@ -669,7 +897,73 @@ func item_frames(factory) -> Array:
 		frames.append({"kind":move.item,"pos":a.lerp(b,clampf(factory.clock/F.TICK,0,1)),"dir":factory.cells[move.from].dir})
 	return frames
 
-func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: float):
+func sync_damage(factory):
+	var signature = str(factory.wrecks)+str(roof_closed)
+	if signature == rendered_damage: return
+	rendered_damage = signature
+	if damage_layer == null:
+		damage_layer = Node3D.new()
+		turret.get_parent().add_child(damage_layer)
+	for child in damage_layer.get_children():
+		damage_layer.remove_child(child)
+		child.queue_free()
+	for p in factory.wrecks:
+		var at = cell_position(p)
+		if roof_closed: at.y = 4.2
+		box(damage_layer,at+Vector3(0,0.03,0),Vector3(0.94,0.06,0.94),"dark")
+		for side in [-1,1]:
+			var shard = box(damage_layer,at+Vector3(side*0.2,0.15,0),Vector3(0.18,0.19,0.65),"rust")
+			shard.rotation = Vector3(0.2,side*0.7,side*0.3)
+		beam(damage_layer,at+Vector3(-0.32,0.28,-0.32),at+Vector3(0.32,0.28,0.32),0.05,"red",6)
+		beam(damage_layer,at+Vector3(-0.32,0.28,0.32),at+Vector3(0.32,0.28,-0.32),0.05,"red",6)
+
+func tint_preview(node: Node, mat: StandardMaterial3D):
+	if node is MeshInstance3D:
+		node.material_override = mat
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for child in node.get_children(): tint_preview(child,mat)
+
+func sync_placement_preview(factory, hovered: Vector2i, selected: String, direction: int, enabled: bool = true):
+	placement_preview.visible = enabled and not factory.layout_locked and not roof_closed and factory.inside(hovered) and F.LIMITS.has(selected)
+	if not placement_preview.visible: return
+	var valid = factory.can_place(hovered,selected)
+	var topology = factory.connection_sides(hovered,factory.make_cell(selected,direction))
+	var topology_key = str(topology.display_inputs)
+	var rebuild = preview_kind != selected or preview_topology != topology_key
+	if rebuild:
+		for child in placement_preview.get_children():
+			placement_preview.remove_child(child)
+			child.queue_free()
+		preview_kind = selected
+		preview_topology = topology_key
+		preview_model = Node3D.new()
+		placement_preview.add_child(preview_model)
+		machine(selected,preview_model,topology.display_inputs)
+		preview_arrows = Node3D.new()
+		placement_preview.add_child(preview_arrows)
+		var exits = [0]
+		if selected == "armor_block": exits.clear()
+		if selected in ["splitter","smart_splitter","priority_splitter","router"]: exits.append(1)
+		if selected == "router": exits.append(3)
+		var base_kind = F.Content.BLOCKS[selected].base if F.Content.BLOCKS.has(selected) else selected
+		var is_pipe = base_kind in ["belt","splitter"]
+		for side in exits:
+			var arrow = Node3D.new()
+			preview_arrows.add_child(arrow)
+			arrow.rotation.y = -side*PI/2
+			if is_pipe:
+				directional_cover(arrow,0.484,exits.size() > 1)
+			else:
+				machine_cover(base_kind,arrow)
+	if rebuild or preview_valid != valid:
+		preview_valid = valid
+		tint_preview(preview_model,preview_materials.valid if valid else preview_materials.invalid)
+		tint_preview(preview_arrows,preview_materials.arrow if valid else preview_materials.blocked_arrow)
+	placement_preview.position = cell_position(hovered)+Vector3(0,0.035,0)
+	placement_preview.rotation.y = -posmod(direction,4)*PI/2
+
+func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: float, preview_enabled: bool = true):
+	sync_damage(factory)
 	var signature = str(factory.layout())
 	if signature != rendered_layout:
 		rendered_layout = signature
@@ -683,19 +977,14 @@ func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: f
 			equipment.add_child(n)
 			n.position = cell_position(p)
 			n.rotation.y = -c.dir*PI/2
-			var inputs: Array = []
-			for side in range(4):
-				var neighbor: Vector2i = p+F.DIRS[side]
-				if not factory.cells.has(neighbor): continue
-				var upstream: Dictionary = factory.cells[neighbor]
-				if upstream.kind in ["gun","engine"]: continue
-				var toward = (side+2)%4
-				if upstream.dir == toward or (upstream.kind == "splitter" and (upstream.dir+1)%4 == toward):
-					inputs.append((side-c.dir+4)%4)
-			if inputs.is_empty(): inputs = [2]
-			machines[p] = machine(c.kind,n,inputs)
+			var topology = factory.connection_sides(p)
+			machines[p] = machine(c.kind,n,topology.display_inputs)
+			machines[p].connections = topology.connected
+			machines[p].inputs = topology.inputs
 	for p in machines:
 		var c: Dictionary = factory.cells[p]
+		if machines[p].has("armor_plates"):
+			for i in range(F.ARMOR_HITS): machines[p].armor_plates[i].visible = i < c.armor_hp
 		if machines[p].has("piston"):
 			machines[p].piston.position.y = 0.78-(0.29*sin((1.0-c.work/8.0)*PI) if c.work > 0 else 0.0)
 		if machines[p].has("fire"): machines[p].fire.visible = c.work > 0
@@ -715,8 +1004,10 @@ func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: f
 		goods_pool[i].visible = not roof_closed
 		goods_pool[i].position = frame.pos
 		goods_pool[i].rotation.y = -frame.dir*PI/2
-	marker.visible = not roof_closed and factory.inside(hovered)
+	marker.visible = not factory.layout_locked and not roof_closed and factory.inside(hovered)
 	if marker.visible:
 		marker.position = cell_position(hovered)+Vector3(0,0.015,0)
-		marker.material_override = mats.red if hovered in F.BLOCKS or F.PORTS.has(hovered) else mats.green
+		var unavailable = F.LIMITS.has(selected) and not factory.can_place(hovered,selected)
+		marker.material_override = mats.red if hovered in F.BLOCKS or F.PORTS.has(hovered) or unavailable else mats.green
+	sync_placement_preview(factory,hovered,selected,direction,preview_enabled)
 	update_gun(factory,delta)

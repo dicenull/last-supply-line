@@ -2,10 +2,11 @@ extends RefCounted
 ## Data-only Variant payload (objects disabled), bounded size, checksum, atomic replacement.
 const Factory = preload("res://scripts/factory.gd")
 const RunState = preload("res://scripts/run_state.gd")
-const VERSION = 1
+const VERSION = 7
 const MAX_BYTES = 2000000
 const FIELDS = ["cells","clock","elapsed","ticks","fuel","fuel_used","ammo","rate","fire_clock","shots","supplied","injected","manufactured","missed","history","moves","completed","undo_stack","reserves","collected","reserve_capacity","work_multiplier","ammo_capacity"]
 const RUN_FIELDS = ["run_seed","sector","phase","hull","cleared","rewards_taken","modifiers","route_options","reward_options","current"]
+const CRAFT_FIELDS = ["recipes","equipment","stage_recipes"]
 const BATTLE_FIELDS = ["hull","kills","elapsed","cooldown","result","distance","speed","trail_clock","shake","recoil","shot_time","visual_shots","target_angle"]
 const ENEMY_FIELDS = ["hp","max_hp","cooldown","active","role","wave","locked","aim"]
 const ITEMS = ["scrap","steel","shell","coal","fuel"]
@@ -20,11 +21,18 @@ func snapshot(game) -> Dictionary:
 	var data = {"version":VERSION,"factory":fields(game.factory,FIELDS),"run":fields(game.expedition,RUN_FIELDS),
 		"rng_state":game.expedition.rng.state,"started":game.started,"battle_mode":game.battle_mode,
 		"view":{"yaw":game.world.yaw,"pitch":game.world.pitch,"zoom":game.world.zoom,"roof":game.world.roof_closed},"battle":{}}
+	data.run.merge(fields(game.expedition,CRAFT_FIELDS))
+	data.factory.wrecks = game.factory.wrecks.duplicate()
+	data.factory.wreck_directions = game.factory.wreck_directions.duplicate()
+	data.run.difficulty = game.expedition.difficulty
 	if game.battlefield == null: return data
 	var b = game.battlefield
 	var state = fields(b,BATTLE_FIELDS)
 	state.player = b.player.transform
 	state.turret = b.turret.rotation.y
+	state.auxiliary = []
+	for gun in b.auxiliary_guns:
+		state.auxiliary.append({"id":gun.id,"angle":gun.pivot.rotation.y,"cooldown":gun.cooldown,"flash":gun.flash,"recoil":gun.recoil})
 	state.enemies = []
 	for enemy in b.enemies:
 		var e: Dictionary = {}
@@ -36,19 +44,21 @@ func snapshot(game) -> Dictionary:
 		state.enemies.append(e)
 	state.sites = []
 	for site in b.resource_sites: state.sites.append(site.taken)
+	state.mines = []
+	for mine in b.obstacles.mines: state.mines.append(mine.spent)
 	state.projectiles = []
 	for shot in b.projectiles:
-		state.projectiles.append({"origin":shot.origin,"dir":shot.dir,"age":shot.age,"duration":shot.duration,"target":b.enemies.find(shot.target),"position":shot.node.position})
+		state.projectiles.append({"origin":shot.origin,"dir":shot.dir,"age":shot.age,"duration":shot.duration,"target":b.enemies.find(shot.target),"position":shot.node.position,"splash":shot.get("splash",0.0),"style":shot.get("style","heavy"),"chain":shot.get("chain",0)})
 	state.bolts = []
 	for bolt in b.bolts:
 		var mark_index = -1
 		for i in range(b.enemies.size()):
 			if b.enemies[i].mark == bolt.mark: mark_index = i
-		state.bolts.append({"origin":bolt.origin,"target":bolt.target,"age":bolt.age,"duration":bolt.duration,"mark":mark_index,"position":bolt.node.position})
+		state.bolts.append({"origin":bolt.origin,"target":bolt.target,"age":bolt.age,"duration":bolt.duration,"mark":mark_index,"position":bolt.node.position,"radius":bolt.get("radius",6.0),"damage":bolt.get("damage",b.hit_damage()),"style":bolt.get("style","heavy")})
 	state.trails = []
 	for tread in b.trails: state.trails.append(tread.transform)
 	state.impacts = []
-	for effect in b.impacts: state.impacts.append({"position":effect.node.position,"life":effect.life})
+	for effect in b.impacts: state.impacts.append({"position":effect.node.position,"life":effect.life,"style":effect.get("style","heavy")})
 	data.battle = state
 	return data
 
@@ -78,50 +88,98 @@ func numeric(value, low: float, high: float) -> bool:
 func valid_route(route) -> bool:
 	if not route is Dictionary or not route.has_all(["kind","seed","sector","length","scrap","coal","shells","enemy_hp","damage","attack_period","boss","opening"]): return false
 	if route.get("terrain","road") not in RunState.CONDITIONS or route.get("formation","patrol") not in RunState.FORMATIONS: return false
+	if not route.get("combat_version",1) is int or route.get("combat_version",1) not in [1,2,3]: return false
+	if route.get("combat_version",1) == 3 or route.has("enemies"):
+		if route.get("difficulty","") not in RunState.Content.DIFFICULTIES or not route.get("enemies") is Array or route.enemies.size() < 6 or route.enemies.size() > 30: return false
+		for role in route.enemies:
+			if not role is int or role < 0 or role >= RunState.Content.ENEMIES.size(): return false
+		if route.get("wave_size",0) not in [2,3,4,5] or not numeric(route.get("wave_delay"),10,40) or not numeric(route.get("warning_scale"),0.5,2): return false
+	if not route.get("obstacles_version",0) is int or route.get("obstacles_version",0) not in [0,1]: return false
 	return route.kind in RunState.ROUTES and route.seed is int and numeric(route.sector,1,5) and numeric(route.length,80,200) and numeric(route.scrap,0,100) and numeric(route.coal,0,100) and numeric(route.shells,0,100) and numeric(route.enemy_hp,1,10) and numeric(route.damage,1,100) and numeric(route.attack_period,1,30) and route.boss is bool and route.opening is bool
 
 func validate(data) -> bool:
 	if not data is Dictionary or not safe_value(data) or not data.has_all(["version","factory","run","rng_state","started","battle_mode","view","battle"]): return invalid("validation_1")
-	if data.version != VERSION or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
+	if data.version not in [1,2,3,4,5,6,VERSION] or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
 	var f = data.factory
 	var r = data.run
 	if not f is Dictionary or not f.has_all(FIELDS) or not r is Dictionary or not r.has_all(RUN_FIELDS): return invalid("validation_5")
-	if not numeric(r.sector,1,5) or not numeric(r.hull,0,100) or not numeric(r.cleared,0,5) or not numeric(r.rewards_taken,0,4) or not r.run_seed is int: return invalid("validation_6")
-	if r.phase not in ["prepare","travel","reward","route","won","lost","retreated"] or not valid_route(r.current): return invalid("validation_7")
+	if not numeric(r.sector,1,5) or not numeric(r.hull,0,100) or not numeric(r.cleared,0,5) or not numeric(r.rewards_taken,0,5) or not r.run_seed is int: return invalid("validation_6")
+	if data.version == 4 and not f.has("inventory"): return invalid("missing_inventory")
+	if f.has("inventory"):
+		if not f.inventory is Dictionary or f.inventory.size() not in [Factory.LIMITS.size()-1,Factory.LIMITS.size()]: return invalid("inventory")
+		for kind in Factory.LIMITS:
+			if kind == "armor_block" and not f.inventory.has(kind): continue
+			if not f.inventory.get(kind) is int or not numeric(f.inventory[kind],0,Factory.LIMITS[kind]): return invalid("inventory_count")
+		for kind in f.inventory:
+			if not Factory.LIMITS.has(kind): return invalid("inventory_kind")
+	if r.get("difficulty","normal") not in RunState.Content.DIFFICULTIES: return invalid("difficulty")
+	if r.phase not in ["prepare","travel","craft","reward","route","won","lost","retreated"] or not valid_route(r.current): return invalid("validation_7")
+	for key in CRAFT_FIELDS:
+		var ids = r.get(key,[])
+		if not ids is Array or ids.size() > RunState.EQUIPMENT.size(): return invalid("craft_ids")
+		var seen = []
+		for id in ids:
+			if not id is String or not RunState.EQUIPMENT.has(id) or id in seen: return invalid("craft_id")
+			if key != "recipes" and id not in r.get("recipes",[]): return invalid("craft_locked")
+			seen.append(id)
+	if r.phase == "craft" and r.cleared != r.sector: return invalid("craft_clear")
 	if not r.modifiers is Dictionary or not r.modifiers.has_all(["work","fuel","magazine"]): return invalid("validation_8")
 	if not numeric(r.modifiers.work,0.4,1) or not numeric(r.modifiers.fuel,0.4,1) or not numeric(r.modifiers.magazine,12,28): return invalid("validation_9")
 	if not numeric(r.modifiers.get("reload",1.0),0.4,1) or r.modifiers.get("cargo",100) not in [100,125,150,175,200]: return invalid("new_modifiers")
+	if not numeric(r.modifiers.get("craft",1.0),0.4,1) or not numeric(r.modifiers.get("range",0.0),0,16) or not numeric(r.modifiers.get("salvage",0),0,4) or not numeric(r.modifiers.get("damage",1.0),0.5,1) or not numeric(r.modifiers.get("speed",1.0),1,1.5) or r.modifiers.get("routes",2) not in [2,3]: return invalid("expanded_modifiers")
 	if not r.route_options is Array or not r.reward_options is Array: return invalid("validation_10")
-	if r.route_options.size() != (2 if r.phase == "route" else 0): return invalid("validation_11")
+	if r.route_options.size() != (r.modifiers.get("routes",2) if r.phase == "route" else 0): return invalid("validation_11")
 	for route in r.route_options:
 		if not valid_route(route): return invalid("validation_13")
-	if r.reward_options.size() != (3 if r.phase == "reward" else 0): return invalid("reward_count")
+	if (r.phase == "reward" and (r.reward_options.is_empty() or r.reward_options.size() > 3)) or (r.phase != "reward" and not r.reward_options.is_empty()): return invalid("reward_count")
 	var seen_rewards = []
 	for reward in r.reward_options:
-		if reward not in RunState.REWARDS or reward in seen_rewards: return invalid("reward_id")
+		if not reward is String or reward in seen_rewards: return invalid("reward_id")
+		if reward.begins_with("block:"):
+			if reward.trim_prefix("block:") not in Factory.LIMITS: return invalid("reward_block")
+		elif reward.begins_with("gear:"):
+			var gear = reward.trim_prefix("gear:")
+			if gear not in RunState.EQUIPMENT or gear in r.get("equipment",[]): return invalid("reward_gear")
+		elif reward not in RunState.REWARDS: return invalid("reward_id")
 		seen_rewards.append(reward)
 	if r.phase == "travel" and not data.started: return invalid("validation_15")
 	for key in ["sector","hull","cleared","rewards_taken"]:
 		if not r[key] is int: return invalid("run_integer")
 	if r.phase == "prepare" and data.started: return invalid("phase")
-	if r.phase in ["travel","reward","route","won","lost"] and not data.started: return invalid("phase")
+	if r.phase in ["travel","craft","reward","route","won","lost"] and not data.started: return invalid("phase")
 	for key in ["ticks","ammo","rate","shots","supplied","injected","manufactured","missed","ammo_capacity","reserve_capacity"]:
 		if not f[key] is int: return invalid("factory_integer")
 	if not f.cells is Dictionary or f.cells.size() > 112 or not f.reserves is Dictionary or not f.collected is Dictionary: return invalid("validation_16")
 	for raw in ["scrap","coal"]:
-		if not numeric(f.reserves.get(raw),0,f.reserve_capacity) or not numeric(f.collected.get(raw),0,1000000): return invalid("validation_18")
+		if not f.reserves.get(raw) is int or f.reserves[raw] < 0 or not f.collected.get(raw) is int or f.collected[raw] < 0: return invalid("validation_18")
 	if not numeric(f.work_multiplier,0.4,1) or f.ammo_capacity != r.modifiers.magazine or not is_equal_approx(float(f.work_multiplier),float(r.modifiers.work)): return invalid("validation_19")
 	if not numeric(f.ammo,0,f.ammo_capacity) or not numeric(f.fuel,0,12.001) or f.rate not in [30,60,90] or f.reserve_capacity != r.modifiers.get("cargo",100): return invalid("validation_20")
 	for key in ["clock","elapsed","ticks","fuel_used","fire_clock","shots","supplied","injected","manufactured","missed"]:
 		if not numeric(f[key],0,1e9): return invalid("validation_22")
+	if data.version >= 6 and not f.has("wrecks"): return invalid("missing_wrecks")
+	var wrecks = f.get("wrecks",{})
+	if not wrecks is Dictionary or wrecks.size() > Factory.W*Factory.H: return invalid("wrecks")
+	for pos in wrecks:
+		if not pos is Vector2i or pos.x < 0 or pos.x >= Factory.W or pos.y < 0 or pos.y >= Factory.H or f.cells.has(pos) or not wrecks[pos] is String or not Factory.LIMITS.has(wrecks[pos]): return invalid("wreck_cell")
+	var wreck_directions = f.get("wreck_directions",{})
+	if not wreck_directions is Dictionary: return invalid("wreck_directions")
+	if data.version >= 7 and (not f.has("wreck_directions") or wreck_directions.size() != wrecks.size()): return invalid("missing_wreck_direction")
+	for pos in wreck_directions:
+		if not wrecks.has(pos) or not wreck_directions[pos] is int or not numeric(wreck_directions[pos],0,3): return invalid("wreck_direction")
 	var rows: Array = []
 	for pos in f.cells:
 		var c = f.cells[pos]
 		if not pos is Vector2i or not c is Dictionary or not c.has_all(["kind","dir","items","work","turn","incoming","made","busy"]): return invalid("validation_26")
-		if not c.items is Array or not numeric(c.dir,0,3) or not numeric(c.work,0,8) or not numeric(c.turn,0,1) or not numeric(c.incoming,0,3) or not numeric(c.made,0,1e9) or not numeric(c.busy,0,1e9): return invalid("validation_27")
+		if not c.items is Array or not numeric(c.dir,0,3) or not numeric(c.work,0,8) or not numeric(c.turn,0,2 if c.kind == "router" else 1) or not numeric(c.incoming,0,3) or not numeric(c.made,0,1e9) or not numeric(c.busy,0,1e9): return invalid("validation_27")
 		for key in ["dir","work","turn","incoming","made","busy"]:
 			if not c[key] is int: return invalid("cell_integer")
-		if c.items.size() > (8 if c.kind == "depot" else 1): return invalid("validation_28")
+		if c.kind == "armor_block":
+			if not c.get("armor_hp") is int or not numeric(c.armor_hp,1,Factory.ARMOR_HITS) or not c.items.is_empty() or c.work != 0: return invalid("armor_state")
+		if c.items.size() > (f.ammo_capacity if Factory.AUXILIARY.has(c.kind) else 8 if c.kind in ["depot","fuel_depot"] else 4 if c.kind == "overflow_gate" else 1): return invalid("validation_28")
+		if Factory.AUXILIARY.has(c.kind):
+			if data.version == 1 or c.kind not in r.get("equipment",[]) or c.work != 0: return invalid("auxiliary_cell")
+			for item in c.items:
+				if item != "shell": return invalid("auxiliary_ammunition")
 		for item in c.items:
 			if item not in ITEMS: return invalid("validation_30")
 		if c.work > 0 and (not Factory.RECIPES.has(c.kind) or c.items.size() != 1): return invalid("validation_31")
@@ -131,7 +189,16 @@ func validate(data) -> bool:
 	for pos in Factory.PORTS:
 		if not f.cells.has(pos): return invalid("validation_36")
 	var candidate = Factory.new()
-	if not candidate.restore(rows): return invalid("validation_38")
+	candidate.inventory = f.get("inventory",Factory.LIMITS).duplicate()
+	if data.version >= 2:
+		for id in r.get("equipment",[]):
+			if Factory.AUXILIARY.has(id): candidate.auxiliary_ids.append(id)
+	if not candidate.restore(rows,false): return invalid("validation_38")
+	var repair_counts = {}
+	for pos in wrecks:
+		var kind: String = wrecks[pos]
+		repair_counts[kind] = repair_counts.get(kind,0)+1
+		if candidate.count_kind(kind)+repair_counts[kind] > Factory.LIMITS[kind]: return invalid("wreck_limit")
 	for key in ["history","moves","completed","undo_stack"]:
 		if not f[key] is Array: return invalid("validation_40")
 	for move in f.moves:
@@ -139,7 +206,12 @@ func validate(data) -> bool:
 	for h in f.history:
 		if not h is Array or h.size() != 2 or not numeric(h[0],0,1e9) or not h[1] is bool: return invalid("validation_44")
 	for rows_before in f.undo_stack:
-		if not rows_before is Array or not candidate.restore(rows_before): return invalid("validation_46")
+		if not rows_before is Array or not candidate.restore(rows_before,false): return invalid("validation_46")
+	if data.version == 1:
+		var required = 0
+		for id in r.get("equipment",[]):
+			if Factory.AUXILIARY.has(id): required += 1
+		if Factory.W*Factory.H-f.cells.size() < required: return invalid("legacy_mount_space")
 	var v = data.view
 	if not v is Dictionary or not v.has_all(["yaw","pitch","zoom","roof"]) or not numeric(v.yaw,-100000,100000) or not numeric(v.pitch,0.5,1.5) or not numeric(v.zoom,8,50) or not v.roof is bool: return invalid("validation_48")
 	return validate_battle(data.battle,data.started,r)
@@ -148,18 +220,34 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 	if not b is Dictionary: return invalid("validation_52")
 	if b.is_empty(): return not started and run.phase == "prepare"
 	if not b.has_all(BATTLE_FIELDS) or not b.has_all(["player","turret","enemies","sites","projectiles","bolts","trails","impacts"]): return invalid("validation_54")
+	var mine_count = preload("res://scripts/course_obstacles.gd").layout(run.current).size()*3
+	var mines = b.get("mines",[])
+	if not mines is Array or mines.size() != mine_count: return invalid("mine_count")
+	for spent in mines:
+		if not spent is bool: return invalid("mine_state")
 	for key in BATTLE_FIELDS:
 		if not numeric(b[key],-100000,1e9): return invalid("validation_56")
-	if b.hull < 0 or b.hull > 100 or b.kills < 0 or b.kills > 6 or b.result not in [-1,0,1]: return invalid("validation_57")
+	var count = RunState.enemy_count(run.current)
+	if b.hull < 0 or b.hull > 100 or b.kills < 0 or b.kills > count or b.result not in [-1,0,1]: return invalid("validation_57")
+	if run.phase == "craft" and b.result != 1: return invalid("craft_battle")
+	var gun_ids = []
+	for id in RunState.Content.GUNS:
+		if id in run.get("equipment",[]): gun_ids.append(id)
+	var auxiliary = b.get("auxiliary",[])
+	if not auxiliary is Array or auxiliary.size() != gun_ids.size(): return invalid("auxiliary_count")
+	for i in range(auxiliary.size()):
+		var gun = auxiliary[i]
+		if not gun is Dictionary or gun.get("id") != gun_ids[i]: return invalid("auxiliary_id")
+		if not numeric(gun.get("angle"),-100000,100000) or not numeric(gun.get("cooldown"),0,60) or not numeric(gun.get("flash"),0,0.14) or not numeric(gun.get("recoil"),0,0.2): return invalid("auxiliary_state")
 	if not b.player is Transform3D or not numeric(b.turret,-100000,100000): return invalid("validation_58")
-	if not b.enemies is Array or b.enemies.size() != 6 or not b.sites is Array or b.sites.size() != 3: return invalid("validation_59")
+	if not b.enemies is Array or b.enemies.size() != count or not b.sites is Array or b.sites.size() != 3: return invalid("validation_59")
 	var dead = 0
-	for i in range(6):
+	for i in range(count):
 		var e = b.enemies[i]
 		if not e is Dictionary or not e.has_all(ENEMY_FIELDS) or not e.has_all(["transform","pivot","mark_position","mark_visible"]): return invalid("validation_63")
 		if not e.hp is int: return invalid("enemy_integer")
 		var hp = RunState.enemy_health(run.current,i)
-		if e.max_hp != hp or not numeric(e.hp,0,hp) or not numeric(e.cooldown,-1,100) or e.role != RunState.enemy_role(run.current,i) or e.wave != int(i/2): return invalid("validation_65")
+		if e.max_hp != hp or not numeric(e.hp,0,hp) or not numeric(e.cooldown,-1,100) or e.role != RunState.enemy_role(run.current,i) or e.wave != int(i/int(run.current.get("wave_size",2))): return invalid("validation_65")
 		if not e.transform is Transform3D or not e.aim is Vector3 or not e.mark_position is Vector3 or not numeric(e.pivot,-100000,100000): return invalid("validation_66")
 		if not e.active is bool or not e.locked is bool or not e.mark_visible is bool: return invalid("validation_67")
 		if e.hp == 0: dead += 1
@@ -171,14 +259,18 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 		for shot in b[key]:
 			if not shot is Dictionary or not shot.has_all(["origin","target","age","duration","position"]): return invalid("validation_75")
 			if not shot.origin is Vector3 or not shot.position is Vector3 or not numeric(shot.age,0,1000) or not numeric(shot.duration,0.001,1000) or shot.age > shot.duration: return invalid("validation_76")
+			if not numeric(shot.get("splash",0.0),0,8) or not numeric(shot.get("radius",6.0),1,12) or not numeric(shot.get("damage",10.0),0,100): return invalid("projectile_effect")
+			if not shot.get("chain",0) is int or not numeric(shot.get("chain",0),0,2): return invalid("projectile_chain")
+			if shot.get("style","heavy") not in RunState.Content.BALLISTICS: return invalid("projectile_style")
 			if key == "projectiles":
-				if not shot.has("dir") or not shot.dir is Vector3 or not shot.target is int or shot.target < 0 or shot.target >= 6: return invalid("validation_78")
-			elif not shot.target is Vector3 or not shot.has("mark") or not shot.mark is int or shot.mark < 0 or shot.mark >= 6: return invalid("validation_79")
+				if not shot.has("dir") or not shot.dir is Vector3 or not shot.target is int or shot.target < 0 or shot.target >= count: return invalid("validation_78")
+			elif not shot.target is Vector3 or not shot.has("mark") or not shot.mark is int or shot.mark < 0 or shot.mark >= count: return invalid("validation_79")
 	if not b.trails is Array or b.trails.size() > 90 or not b.impacts is Array or b.impacts.size() > 128: return invalid("validation_80")
 	for trail in b.trails:
 		if not trail is Transform3D: return invalid("validation_82")
 	for impact in b.impacts:
-		if not impact is Dictionary or not impact.has_all(["position","life"]) or not impact.position is Vector3 or not numeric(impact.life,0,0.4): return invalid("validation_84")
+		if not impact is Dictionary or not impact.has_all(["position","life"]) or not impact.position is Vector3 or not numeric(impact.life,0,1.6): return invalid("validation_84")
+		if impact.get("style","heavy") not in RunState.Content.BALLISTICS or impact.life > RunState.Content.BALLISTICS[impact.get("style","heavy")].life: return invalid("impact_style")
 	return true
 
 func write_file(path: String, data: Dictionary) -> bool:
@@ -242,13 +334,36 @@ func apply(game, data: Dictionary) -> bool:
 		error = "invalid_state"
 		return false
 	game.sound.stop_all()
+	if game.world.feedback != null: game.world.feedback.clear()
 	var restored_factory = Factory.new()
 	for key in FIELDS: restored_factory.set(key,data.factory[key].duplicate(true) if data.factory[key] is Array or data.factory[key] is Dictionary else data.factory[key])
+	restored_factory.wrecks = data.factory.get("wrecks",{}).duplicate()
+	for pos in restored_factory.wrecks:
+		restored_factory.wreck_directions[pos] = data.factory.get("wreck_directions",{}).get(pos,0)
+	if data.factory.has("inventory"):
+		restored_factory.inventory = data.factory.inventory.duplicate()
+		if not restored_factory.inventory.has("armor_block"): restored_factory.inventory.armor_block = 0
+	else:
+		# Preserve legacy layouts and undo history without granting every old cap.
+		var layouts: Array = [restored_factory.layout()]+restored_factory.undo_stack
+		for rows in layouts:
+			var counts = {}
+			for row in rows:
+				var kind = row[2]
+				if not Factory.LIMITS.has(kind): continue
+				counts[kind] = counts.get(kind,0)+1
+				restored_factory.inventory[kind] = maxi(restored_factory.inventory[kind],counts[kind])
+	restored_factory.unlocked_blocks = RunState.Content.STARTING_BLOCKS.keys()+game.history.researched_blocks
 	restored_factory.finite_resources = true
 	restored_factory.auto_fire = false
 	restored_factory.running = false
-	var restored_run = RunState.new(data.run.run_seed)
+	var restored_run = RunState.new(data.run.run_seed,data.run.get("difficulty","normal"))
 	for key in RUN_FIELDS: restored_run.set(key,data.run[key].duplicate(true) if data.run[key] is Array or data.run[key] is Dictionary else data.run[key])
+	for key in CRAFT_FIELDS: restored_run.set(key,data.run.get(key,[]).duplicate())
+	for id in restored_run.equipment:
+		if not Factory.AUXILIARY.has(id): continue
+		if data.version == 1: restored_factory.install_auxiliary(id)
+		else: restored_factory.auxiliary_ids.append(id)
 	restored_run.rng.state = data.rng_state
 	if game.battlefield != null: game.battle_container.queue_free()
 	game.battlefield = null
@@ -256,17 +371,24 @@ func apply(game, data: Dictionary) -> bool:
 	game.factory = restored_factory
 	game.expedition = restored_run
 	game.started = data.started
+	game.clear_movement()
+	restored_factory.layout_locked = data.started and data.run.phase in ["travel","lost","retreated"]
 	game.battle_mode = data.battle_mode
 	game.world.playback_only = data.started
 	game.world.rendered_layout = ""
 	game.world.old_shots = restored_factory.shots
 	game.world.pending_shots = 0
+	game.world.configure_equipment(restored_run.equipment,restored_factory.auxiliary_positions())
 	for key in ["yaw","pitch","zoom"]: game.world.set(key,data.view[key])
 	if game.world.roof_closed != data.view.roof: game.world.toggle_roof()
 	game.world.update_camera()
 	if not data.battle.is_empty():
 		game.ensure_battle()
 		apply_battle(game.battlefield,data.battle)
+	if restored_run.phase == "craft":
+		restored_run.finish_crafting({},restored_factory.inventory,game.has_mount_space())
+	elif data.version < 5 and restored_run.phase == "reward":
+		restored_run.offer_rewards({},game.has_mount_space())
 	game.refresh_view()
 	game.world.sync(game.factory,Vector2i(-1,-1),"belt",0,0)
 	game.queue_redraw()
@@ -278,7 +400,14 @@ func apply_battle(b, state: Dictionary):
 	b.turret.rotation.y = state.turret
 	b.barrel.position.x = b.BARREL_REST-b.recoil
 	b.muzzle.visible = b.shot_time > 0
-	for i in range(6):
+	for i in range(b.auxiliary_guns.size()):
+		var gun = b.auxiliary_guns[i]
+		var saved = state.auxiliary[i]
+		for key in ["cooldown","flash","recoil"]: gun[key] = saved[key]
+		gun.pivot.rotation.y = saved.angle
+		gun.barrel.position.x = 0.6-gun.recoil
+		gun.muzzle.visible = gun.flash > 0
+	for i in range(b.enemies.size()):
 		var enemy = b.enemies[i]
 		var e = state.enemies[i]
 		for key in ENEMY_FIELDS: enemy[key] = e[key]
@@ -290,30 +419,33 @@ func apply_battle(b, state: Dictionary):
 		for pip in range(enemy.health.size()): enemy.health[pip].visible = pip < enemy.hp
 	for i in range(b.resource_sites.size()):
 		b.resource_sites[i].taken = state.sites[i]
-		b.resource_sites[i].node.visible = not state.sites[i]
+		b.resource_sites[i].node.set_taken(state.sites[i])
+	for i in range(b.obstacles.mines.size()):
+		b.obstacles.set_spent(i,state.mines[i])
 	for shot in state.projectiles:
 		var node = Node3D.new()
 		b.add_child(node)
 		node.position = shot.position
-		b.beam(node,Vector3.ZERO,-shot.dir*1.8,0.085,"fire")
-		b.projectiles.append({"node":node,"origin":shot.origin,"dir":shot.dir,"age":shot.age,"duration":shot.duration,"target":b.enemies[shot.target]})
+		b.build_shell(node,shot.dir,shot.get("style","heavy"))
+		b.projectiles.append({"node":node,"origin":shot.origin,"dir":shot.dir,"age":shot.age,"duration":shot.duration,"target":b.enemies[shot.target],"splash":shot.get("splash",0.0),"style":shot.get("style","heavy"),"chain":shot.get("chain",0)})
 	for bolt in state.bolts:
 		var node = Node3D.new()
 		b.add_child(node)
 		node.position = bolt.position
-		b.beam(node,Vector3.ZERO,(bolt.origin-bolt.target).normalized()*1.5,0.11,"fire")
-		b.bolts.append({"node":node,"origin":bolt.origin,"target":bolt.target,"age":bolt.age,"duration":bolt.duration,"mark":b.enemies[bolt.mark].mark})
+		b.build_shell(node,(bolt.target-bolt.origin).normalized(),bolt.get("style","heavy"))
+		b.bolts.append({"node":node,"origin":bolt.origin,"target":bolt.target,"age":bolt.age,"duration":bolt.duration,"mark":b.enemies[bolt.mark].mark,"radius":bolt.get("radius",6.0),"damage":bolt.get("damage",b.hit_damage()),"style":bolt.get("style","heavy")})
 	for transform in state.trails:
 		var tread = b.box(b,Vector3.ZERO,Vector3(0.65,0.025,1),"dark")
 		tread.transform = transform
 		b.trails.append(tread)
 	for effect in state.impacts:
-		b.impact(effect.position)
+		b.impact(effect.position,effect.get("style","heavy"),false)
 		b.impacts.back().life = effect.life
+		b.update_impact(b.impacts.back())
+	b.update_camera()
 	var target = b.nearest_enemy()
 	b.target_marker.visible = target != null and b.result == 0
 	if target != null: b.target_marker.position = target.node.position+Vector3(0,0.12,0)
-	b.update_camera()
 
 func invalid(reason: String) -> bool:
 	error = reason

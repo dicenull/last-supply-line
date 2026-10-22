@@ -1,4 +1,24 @@
 extends RefCounted
+## Explicit waypoint pilot for simulation regression tests. Real key input
+## and no-input stopping are covered separately by phase_movement_test.gd.
+static func drive(game, delta: float):
+	if game.battlefield != null and game.expedition.phase == "travel" and game.factory.running and not game.menu.visible:
+		pilot(game.battlefield)
+	game._process(delta)
+
+static func pilot(battle):
+	var points = battle.obstacles.navigation_points(battle.route_length)
+	var index = 0
+	while index < points.size()-1:
+		var reached = battle.player.position.distance_to(points[index]) < 0.6
+		var passed = battle.player.position.x > points[index].x+0.4
+		var corner = points[index].x == points[index+1].x and battle.player.position.x >= points[index].x-0.4
+		if not reached and not passed and not corner: break
+		index += 1
+	var offset: Vector3 = points[index]-battle.player.position
+	var desired = atan2(-offset.z,offset.x)
+	var error = angle_difference(battle.player.rotation.y,desired)
+	battle.movement_direction = Vector3(1 if absf(error) < 0.055 else 0,0,clampf(-error/0.12,-1,1))
 ## Keep tests from reading or granting unlocks in the player's profile.
 static func path_for(suite: String) -> String:
 	return "user://"+suite+"_profile_fixture.json"

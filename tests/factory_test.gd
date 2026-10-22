@@ -115,7 +115,7 @@ func _initialize():
 	edit.undo()
 	check(edit.cells[Vector2i(1,1)].dir == 0,"undo restores previous layout")
 	for x in range(2,6): edit.edit(Vector2i(x,1),"furnace",0)
-	check(edit.count_kind("furnace") == 4,"machine inventory limit enforced")
+	check(edit.count_kind("furnace") == Factory.LIMITS.furnace,"machine installation cap enforced")
 	var snapshot = parallel.layout()
 	var restored = Factory.new()
 	check(restored.restore(JSON.parse_string(JSON.stringify(snapshot))),"layout survives JSON save/load round trip")

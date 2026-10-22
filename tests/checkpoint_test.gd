@@ -21,11 +21,13 @@ func make_game():
 	games.append(game)
 	return game
 func advance(game, seconds: float):
-	for i in range(int(seconds/0.025)): game._process(0.025)
+	for i in range(int(seconds/0.025)): preload("res://tests/profile_fixture.gd").drive(game,0.025)
 func same(a, b) -> bool:
 	if a is float or b is float: return absf(float(a)-float(b)) < 0.0001
 	if a is Vector3: return a.is_equal_approx(b)
-	if a is Transform3D: return a.is_equal_approx(b)
+	if a is Transform3D:
+		if not a.is_equal_approx(b): print("DIFFERENT TRANSFORM ",a," vs ",b)
+		return a.is_equal_approx(b)
 	if a is Dictionary:
 		if not b is Dictionary or a.size() != b.size(): return false
 		for key in a:
@@ -45,12 +47,34 @@ func run():
 		if FileAccess.file_exists(PATH+suffix): DirAccess.remove_absolute(PATH+suffix)
 	var codec = Save.new()
 	var original = make_game()
+	# Save/restore must exercise a reproducible, supplied route rather than
+	# depend on the wall-clock seed or a damaged starter fuel line.
+	original.expedition = preload("res://scripts/run_state.gd").new(42)
+	original.factory.restore(preload("res://scripts/blueprints.gd").layout("parallel"))
 	var resumed = make_game()
 	var prepared = codec.snapshot(original)
 	check(codec.validate(prepared),"preparation snapshot validates")
 	check(codec.write_file(PATH,prepared) and not codec.read_file(PATH).is_empty(),"preparation snapshot round-trips to disk")
+	var legacy = prepared.duplicate(true)
+	for key in ["combat_version","enemies","wave_size","wave_delay","warning_scale","difficulty"]: legacy.run.current.erase(key)
+	legacy.run.current.enemy_hp = 4
+	legacy.run.current.boss = true
+	legacy.run.current.formation = "battery"
+	check(codec.apply(resumed,legacy),"old route without combat version restores")
+	resumed.ensure_battle()
+	var old_battle = codec.snapshot(resumed)
+	check(old_battle.battle.enemies[5].max_hp == 11 and codec.validate(old_battle) and codec.apply(resumed,old_battle),"legacy boss health survives checkpoint validation and restoration")
+	var unknown = prepared.duplicate(true)
+	unknown.run.current.combat_version = 99
+	check(not codec.validate(unknown),"unknown combat rules rejected")
+	unknown = prepared.duplicate(true)
+	unknown.run.current.combat_version = 2
+	unknown.run.current.enemies = "invalid roster"
+	check(not codec.validate(unknown),"malformed expanded roster cannot bypass validation using older combat version")
 	original.toggle_running()
-	advance(original,8.5)
+	for tick in range(800):
+		advance(original,0.025)
+		if not original.battlefield.projectiles.is_empty(): break
 	check(original.battlefield.projectiles.size()+original.battlefield.bolts.size() > 0,"fixture contains live projectiles")
 	var travelling = codec.snapshot(original)
 	check(codec.validate(travelling),"live factory and encounter snapshot validates: "+codec.error)
@@ -70,7 +94,12 @@ func run():
 	check(same(frozen,codec.snapshot(original)),"menu freezes factory and battle")
 	original.close_menu()
 	check(original.factory.running,"closing pause menu restores prior playback")
-	advance(original,90)
+	for tick in range(7200):
+		advance(original,0.025)
+		if original.expedition.phase != "travel": break
+	original.finish_crafting()
+	if original.expedition.phase != "reward":
+		print("CHECKPOINT ROUTE ",original.expedition.phase," position=",original.battlefield.player.position," yaw=",original.battlefield.player.rotation.y," fuel=",original.factory.fuel," wrecks=",original.factory.wrecks)
 	check(original.expedition.phase == "reward","fixture reaches reward selection")
 	var reward = codec.snapshot(original)
 	check(codec.apply(resumed,reward),"reward phase restores without granting twice")

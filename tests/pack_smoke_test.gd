@@ -22,10 +22,12 @@ func run():
 	await process_frame
 	game.set_process(false)
 	check(game.menu.visible and game.menu.blueprint_buttons.size() == 3,"pack opens title with blueprint previews")
-	check(game.sound.streams.size() == 5,"dynamically loaded sound assets are present")
+	check(game.sound.streams.size() == 10,"all ten dynamically loaded sound assets are present")
 	game.close_menu()
 	game.toggle_running()
-	for i in range(180): game._process(0.1)
+	for i in range(180):
+		game.battlefield.movement_direction = Vector3.RIGHT
+		game._process(0.1)
 	check(game.factory.manufactured > 0 and game.factory.shots > 0,"packed factory produces and supplies real rounds")
 	check(game.battlefield.distance > 0 and game.factory.fuel_used > 0,"packed battle drives on manufactured fuel")
 	check(game.factory.finite_resources and game.factory.injected > 0 and game.factory.reserves.scrap+game.factory.reserves.coal == 80+game.factory.collected.scrap+game.factory.collected.coal-game.factory.injected,"packed sources consume finite raw materials")

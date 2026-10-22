@@ -19,14 +19,14 @@ func create_game():
 	return game
 func advance(game, ticks: int):
 	for i in range(ticks):
-		game._process(0.1)
+		preload("res://tests/profile_fixture.gd").drive(game,0.1)
 		if i%100 == 99: await process_frame
 func run():
 	for link in [Vector2i(3,7),Vector2i(9,3)]:
 		var game = create_game()
+		game.paint(link,true)
 		game.toggle_running()
 		game.toggle_battle()
-		game.paint(link,true)
 		await advance(game,120)
 		var fuel_case = link.y == 7
 		check(game.factory.running and game.expedition.phase == "travel","disconnected supply keeps automatic simulation active")
@@ -36,12 +36,16 @@ func run():
 		game.selected = "belt"
 		game.direction = 0 if fuel_case else 1
 		game.paint(link,false)
-		check(game.factory.running and game.factory.reserves == stock,"live reconnection preserves playback and grants no raw stock")
-		await advance(game,180)
-		check(game.battlefield.distance > 0 and game.factory.shots > 0,"reconnected line resumes actual fuel and ammunition supply")
-		check(game.factory.manufactured > 0 and game.factory.fuel_used > 0,"recovery uses manufactured consumables")
+		check(game.factory.running and game.factory.reserves == stock and not game.factory.cells.has(link),"combat rejects reconnection and grants no raw stock")
 		game.retreat_run()
-		check(game.expedition.phase == "retreated" and not game.factory.running,"damaged run remains retreatable")
+		check(game.expedition.phase == "retreated" and not game.factory.running,"disconnected run remains retreatable")
+		game.reset_battle()
+		game.last_paint = Vector2i(-1,-1)
+		game.paint(link,false)
+		game.toggle_running()
+		await advance(game,180)
+		check(game.battlefield.distance > 0 and game.factory.shots > 0,"rebuilding before departure restores real fuel and ammunition supply")
+		check(game.factory.manufactured > 0 and game.factory.fuel_used > 0,"recovery uses manufactured consumables")
 		game.queue_free()
 		await process_frame
 	var empty = create_game()
