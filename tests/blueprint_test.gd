@@ -105,7 +105,9 @@ func run():
 	game.expedition.sector = 2
 	game.started = false
 	check(game.apply_blueprint("standard") and game.factory.ammo == 5 and game.factory.fuel == 6,"later sector preparation permits blueprints and preserves carried cargo")
-	game.reset_battle()
+	# Exercise unlock persistence on a repeatable course; randomized combat
+	# outcomes belong to the campaign and balance suites.
+	game.reset_battle(42)
 	check(game.apply_blueprint("parallel"),"new run retains unlocked designs")
 	game.history.unlocked = ["standard"]
 	game.toggle_running()
@@ -113,6 +115,7 @@ func run():
 		preload("res://tests/profile_fixture.gd").drive(game,0.1)
 		if game.expedition.phase != "travel": break
 	game.finish_crafting()
+	print("BLUEPRINT CAMPAIGN: ",JSON.stringify({"seed":game.expedition.run_seed,"phase":game.expedition.phase,"hull":game.battlefield.hull,"fuel":game.factory.fuel}))
 	check(game.expedition.phase == "reward" and "parallel" in game.history.unlocked and "parallel" in game.new_blueprints,"real first-sector win unlocks design before ending run")
 	game.queue_redraw()
 	await RenderingServer.frame_post_draw
