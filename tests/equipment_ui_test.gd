@@ -115,6 +115,10 @@ func run():
 		game.begin_item_drag(game.expedition.gear_items[1].uid)
 		game._notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
 		check(game.dragging_item < 0 and not game.world.equipment_preview.visible,"focus loss clears the placement ghost and item capture")
+		root.push_input(e)
+		await process_frame
+		check(game.menu.visible,"keyboard menu remains usable after focus loss cancels a held drag")
+		game.close_menu()
 		for id in game.Inventory.Catalog.DEFINITIONS:
 			for rarity in game.Inventory.Catalog.RARITIES: game.expedition.add_item({"kind":id,"rarity":rarity})
 		await click(game.inventory_button)

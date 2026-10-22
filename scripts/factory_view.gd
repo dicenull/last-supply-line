@@ -633,7 +633,8 @@ func _unhandled_input(event):
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_I and not menu.visible:
 		toggle_inventory()
 		return
-	if dragging_item >= 0 or suppress_item_paint: return
+	if dragging_item >= 0: return
+	if suppress_item_paint and (event is InputEventMouseMotion or event is InputEventMouseButton): return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		if not menu.visible and inventory_panel.visible:
 			inventory_panel.hide()
