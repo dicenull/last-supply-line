@@ -88,8 +88,9 @@ func mounted_at(p: Vector2i, except_id: String = "") -> String:
 	return ""
 
 func can_place_equipment(id: String, at: Vector2i) -> bool:
-	if loadout_locked or layout_locked or id not in Gear.DEFINITIONS: return false
+	if layout_version != 2 or loadout_locked or layout_locked or id not in Gear.DEFINITIONS: return false
 	var size: Vector2i = Gear.DEFINITIONS[id].size
+	if Gear.DEFINITIONS[id].genre == "secondary" and not Layout.roof_clearance(at,size): return false
 	for y in range(at.y,at.y+size.y):
 		for x in range(at.x,at.x+size.x):
 			var p = Vector2i(x,y)
@@ -99,6 +100,7 @@ func can_place_equipment(id: String, at: Vector2i) -> bool:
 
 func place_equipment(id: String, at: Vector2i) -> bool:
 	if not can_place_equipment(id,at): return false
+	if equipment_mounts.get(id,Vector2i(-1,-1)) == at: return true
 	if AUXILIARY.has(id):
 		var old = auxiliary_position(id)
 		var cell = cells[old] if cells.has(old) else make_cell(id,0)

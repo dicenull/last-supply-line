@@ -154,9 +154,9 @@ func position_auxiliary_guns(positions: Dictionary):
 			var at = cell_position(positions[gun.id])
 			gun.pivot.position = Vector3(at.x,3.2,at.z)
 			if layout_version == 2:
-				gun.pivot.position = at+Vector3(0.5,0.28,0.5)
+				gun.pivot.position = Vector3(at.x+0.5,4.18 if roof_closed else DECK_Y+0.28,at.z+0.5)
 				# The entire rotating barrel and muzzle fit inside the 2×2 reservation.
-				gun.pivot.scale = Vector3(0.8,0.65,0.8)
+				gun.pivot.scale = Vector3(0.8,(0.2 if gun.id == "mortar_gun" else 0.4) if roof_closed else 0.65,0.8)
 				gun.barrel.scale = Vector3(0.15,0.65,0.65)
 
 func material(name: String, color: String, metal: float = 0.0, glow: float = 0.0) -> StandardMaterial3D:
@@ -387,6 +387,11 @@ func toggle_roof():
 				geometry.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if roof_closed else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	marker.visible = false
 	placement_preview.visible = false
+	if layout_version == 2:
+		position_auxiliary_guns(mounted_positions)
+		position_mounted_models()
+		if equipment != null: equipment.visible = not roof_closed
+		if goods != null: goods.visible = not roof_closed
 
 func terrain():
 	box(self,Vector3(0,-0.27,0),Vector3(100,0.3,100),"mud")
@@ -597,6 +602,8 @@ func track_housing(side: int, profile: PackedVector2Array):
 
 func set_layout_version(version: int):
 	layout_version = version
+	if equipment != null: equipment.visible = version != 2 or not roof_closed
+	if goods != null: goods.visible = version != 2 or not roof_closed
 	var center = Vector3(3,4.08,0) if version == 2 else TURRET_CENTER
 	if turret != null: turret.position = center
 	if turret_base != null: turret_base.position = center-Vector3(0,0.04,0)
@@ -1088,6 +1095,7 @@ func position_mounted_models():
 		if not mounted_positions.has(id): continue
 		var size: Vector2i = F.Gear.DEFINITIONS[id].size
 		mounted_models[id].position = cell_position(mounted_positions[id])+Vector3((size.x-1)*0.5,0,(size.y-1)*0.5)
+		mounted_models[id].visible = not roof_closed
 
 func build_mounted_model(parent: Node3D, id: String):
 	var size: Vector2i = F.Gear.DEFINITIONS[id].size
@@ -1107,11 +1115,11 @@ func build_mounted_model(parent: Node3D, id: String):
 			elif id == "rangefinder": beam(parent,Vector3(-0.7,0.8,0),Vector3(0.7,0.8,0),0.12,"edge",12)
 			else: box(parent,Vector3(0,0.65,0),Vector3(0.6,0.14,0.6),"machine_fuel")
 
-func preview_equipment(factory, item: Dictionary, at: Vector2i):
+func preview_equipment(factory, item: Dictionary, at: Vector2i, allowed: bool = true):
 	if item.is_empty() or roof_closed or not factory.inside(at):
 		if equipment_preview != null: equipment_preview.hide()
 		return
-	var valid = factory.can_place_equipment(item.kind,at)
+	var valid = allowed and factory.can_place_equipment(item.kind,at)
 	var key = item.kind+str(valid)
 	if equipment_preview == null:
 		equipment_preview = Node3D.new()

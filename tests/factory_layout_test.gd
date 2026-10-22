@@ -49,6 +49,9 @@ func _initialize():
 	check(not f.place_equipment("armor",Vector2i(13,1)),"wide passive gear cannot overhang hull")
 	f.cells[Vector2i(0,0)].items = ["shell","shell"]
 	check(f.move_auxiliary("left_gun",Vector2i(1,0)) and f.auxiliary_ammo("left_gun") == 2,"partial-footprint move preserves loaded rounds")
+	f.edit(Vector2i(4,0),"belt",0)
+	var undo_before = f.undo_stack.duplicate(true)
+	check(f.place_equipment("left_gun",Vector2i(1,0)) and f.undo_stack == undo_before,"clicking an installed weapon in place preserves line undo history")
 	var rows = f.layout()
 	for row in rows:
 		if row[2] == "left_gun": row[0] = 3
