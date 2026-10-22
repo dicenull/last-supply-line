@@ -1188,7 +1188,7 @@ func begin_item_drag(uid: int):
 	var item = Inventory.find_item(expedition,uid)
 	if item.is_empty(): return
 	if item.position == Inventory.STOWED and expedition.equipment.any(func(id): return Inventory.Catalog.family(id) == Inventory.Catalog.family(item.kind)):
-		factory.message = "同型の装備は1基までです。先に取り外してください。"
+		factory.message = "同じ系統の装備は1基までです。先に取り外してください。"
 		return
 	battle_mode = false
 	if world.roof_closed: world.toggle_roof()

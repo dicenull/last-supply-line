@@ -103,6 +103,10 @@ func refresh():
 		buttons[i].disabled = crafting and not expedition.can_craft(craft_id(i),factory.reserves)
 		if expedition.phase == "reward" and i < expedition.reward_options.size(): buttons[i].disabled = not (reward_allowed.is_valid() and reward_allowed.call(expedition.reward_options[i]))
 		buttons[i].tooltip_text = ""
+		if expedition.phase == "reward" and i < expedition.reward_options.size():
+			var reward: String = expedition.reward_options[i]
+			if expedition.item_mode and reward.begins_with("gear:"):
+				buttons[i].tooltip_text = RunState.Content.reward_info(reward).name+"\n"+RunState.Gear.description({"kind":reward.trim_prefix("gear:"),"rarity":"rare"})
 		if expedition.phase == "route" and i < expedition.route_options.size():
 			var route = expedition.route_options[i]
 			var surface = RunState.condition(route)
@@ -112,6 +116,11 @@ func refresh():
 
 func label(value: String, at: Vector2, font_size: int = 20, color: Color = Color.WHITE):
 	draw_string(ui.font,at,value,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size,color)
+
+func fitted(value: String, width: float, font_size: int) -> String:
+	if ui.font.get_string_size(value,HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x <= width: return value
+	while not value.is_empty() and ui.font.get_string_size(value+"…",HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x > width: value = value.left(-1)
+	return value+"…"
 
 func icon(kind: String, at: Vector2, side: float = 28):
 	draw_texture_rect(ui.pixel_icons.texture(kind),Rect2(at,Vector2.ONE*side),false)
@@ -166,8 +175,8 @@ func _draw():
 				label("所持 %d" % factory.inventory[kind],at+Vector2(510,37),17,ui.MUTED)
 			elif reward.begins_with("gear:"):
 				label("レア" if expedition.item_mode else "装備",at+Vector2(550,37),17,Color("7dadd2") if expedition.item_mode else ui.MUTED)
-			label(title,at+Vector2(88,37),22,ui.INK)
-			label(info.effect,at+Vector2(88,68),17,ui.GOLD)
+			label(fitted(title,450,22),at+Vector2(88,37),22,ui.INK)
+			label(fitted(info.effect,550,17),at+Vector2(88,68),17,ui.GOLD)
 		else:
 			var route: Dictionary = expedition.route_options[i]
 			var surface = RunState.condition(route)

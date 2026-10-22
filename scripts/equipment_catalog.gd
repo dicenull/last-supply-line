@@ -70,6 +70,11 @@ static func family(id: String) -> String:
 static func level(id: String) -> int:
 	return int(Data.ITEMS[id].level)
 
+static func profile_icon(id: String) -> String:
+	var spec = Data.ITEMS[id]
+	if spec.profile == "focus": return "camera" if spec.genre == "secondary" else "settings"
+	return {"balanced":"ready","rapid":"autoload","heavy":"shield","mobile":"move","power":"engine","economy":"fuel","efficient":"fuel"}.get(spec.profile,"ready")
+
 static func effect_values(item: Dictionary) -> Dictionary:
 	var values: Dictionary = Data.ITEMS[item.kind].effects.duplicate()
 	var power: float = RARITIES[item.rarity].power

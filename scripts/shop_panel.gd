@@ -76,6 +76,11 @@ func _draw():
 		var icon = Content.reward_info(id).icon if id.begins_with("gear:") else id
 		draw_texture_rect(icons.texture(icon),Rect2(at+Vector2(53,26),Vector2(64,64)),false)
 		if id in ["coal","shell"]: draw_string(font,at+Vector2(66,126),"+24" if id == "coal" else "+12",HORIZONTAL_ALIGNMENT_LEFT,-1,22,Style.INK)
+		elif state.get("item_mode",false):
+			var gear = preload("res://scripts/equipment_catalog.gd")
+			var kind = id.trim_prefix("gear:")
+			draw_texture_rect(icons.texture(gear.profile_icon(kind)),Rect2(at+Vector2(28,105),Vector2(26,26)),false)
+			draw_string(font,at+Vector2(68,126),"Lv.%d" % gear.level(kind),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
 		draw_texture_rect(icons.texture("scrap"),Rect2(at+Vector2(42,162),Vector2(26,26)),false)
 		draw_string(font,at+Vector2(80,184),str(Services.price(id)),HORIZONTAL_ALIGNMENT_LEFT,-1,22,Style.INK if state.allowed[i] else Style.MUTED)
 		if state.purchased[i]: draw_texture_rect(icons.texture("victory"),Rect2(at+Vector2(126,8),Vector2(30,30)),false)

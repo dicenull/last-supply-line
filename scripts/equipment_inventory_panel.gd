@@ -154,7 +154,7 @@ func refresh():
 		var rarity = Catalog.RARITIES[item.rarity]
 		var mounted = item.position != Inventory.STOWED
 		var materials = Catalog.salvage(item)
-		row_buttons[i].tooltip_text = "%s · %s\n%s / %d×%d\n%s\n%s" % [rarity.name,Catalog.Content.EQUIPMENT[item.kind].name,Catalog.GENRES[definition.genre],definition.size.x,definition.size.y,Catalog.description(item),"D&Dで配置（同型は1基まで）" if state.editable else "出撃中：装備変更不可"]
+		row_buttons[i].tooltip_text = "%s · %s\n%s / %d×%d\n%s\n%s" % [rarity.name,Catalog.Content.EQUIPMENT[item.kind].name,Catalog.GENRES[definition.genre],definition.size.x,definition.size.y,Catalog.description(item),"D&Dで配置（同じ系統は1基まで）" if state.editable else "出撃中：装備変更不可"]
 		if item.kind in Catalog.Content.ALL_GUNS:
 			row_buttons[i].tooltip_text += "\n主砲の旋回範囲外に設置 / 2×2枠の外周から給弾"
 			if item.get("ammo",0) > 0: row_buttons[i].tooltip_text += "\n保管弾 %d発" % item.ammo
@@ -185,6 +185,7 @@ func _draw():
 		draw_rect(Rect2(at+Vector2(1,1),Vector2(5,70)),Color(rarity.color))
 		icon(Catalog.Content.EQUIPMENT[item.kind].icon,Rect2(at+Vector2(14,10),Vector2(44,44)))
 		icon(GENRE_ICONS[Catalog.DEFINITIONS[item.kind].genre],Rect2(at+Vector2(80,12),Vector2(24,24)),Color(rarity.color))
+		icon(Catalog.profile_icon(item.kind),Rect2(at+Vector2(112,12),Vector2(24,24)))
 		for j in range(rank): draw_rect(Rect2(at+Vector2(80+j*14,46),Vector2(10,8)),Color(rarity.color))
 		var footprint: Vector2i = Catalog.DEFINITIONS[item.kind].size
 		draw_string(font,at+Vector2(148,30),"Lv.%d" % Catalog.level(item.kind),HORIZONTAL_ALIGNMENT_LEFT,-1,18,Style.INK)

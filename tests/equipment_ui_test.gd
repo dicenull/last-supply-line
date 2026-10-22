@@ -207,6 +207,32 @@ func run():
 	check(game.expedition.current.shop_purchased[0] and game.factory.reserves.scrap == purchase_funds-game.RunState.Services.GEAR_PRICE and game.expedition.gear_items.back().rarity == "uncommon" and game.expedition.equipment.is_empty(),"shop purchase enters inventory without changing departed loadout")
 	await click(game.shop_panel.buttons[0])
 	check(game.factory.reserves.scrap == purchase_funds-game.RunState.Services.GEAR_PRICE,"purchased offer cannot be charged twice")
+	for dimensions in [Vector2i(1440,940),Vector2i(960,628)]:
+		root.size = dimensions
+		game.reset_battle(42)
+		game.expedition.gear_items.clear()
+		var kinds = ["mortar_gun_focus_l10","armor_mobile_l09","supercharger_economy_l08","servo_efficient_l10"]
+		var positions = [Vector2i(0,0),Vector2i(2,0),Vector2i(0,2),Vector2i(2,2)]
+		for kind in kinds: game.expedition.add_item({"kind":kind,"rarity":"legendary"})
+		await click(game.inventory_button)
+		await capture("advanced-inventory-"+str(dimensions.x))
+		for index in range(kinds.size()):
+			if not game.inventory_panel.visible: await click(game.inventory_button)
+			check(game.inventory_panel.row_buttons[index].tooltip_text.contains(game.RunState.EQUIPMENT[kinds[index]].name),"advanced model tooltip preserves full name and performance")
+			await drag(game.inventory_panel.row_buttons[index],positions[index])
+			check(game.factory.equipment_mounts.get(kinds[index]) == positions[index],"advanced equipment drag places genre "+str(index)+" at "+str(dimensions.x))
+		await capture("advanced-mounted-"+str(dimensions.x))
+		game.expedition.add_item({"kind":"armor","rarity":"legendary"})
+		await click(game.inventory_button)
+		await click(game.inventory_panel.sort_button)
+		var ordered = game.inventory_panel.rows.map(func(item): return game.Inventory.Catalog.level(item.kind))
+		check(ordered == [10,10,9,8,1],"equal-quality items sort by equipment level before acquisition order")
+		game.inventory_panel.hide()
+		game.expedition.phase = "reward"
+		game.expedition.reward_options = ["gear:mortar_gun_focus_l10","gear:rangefinder_focus_l10","gear:drum_loader_efficient_l10"]
+		game.refresh_view()
+		check(game.choice_popup.buttons.all(func(button): return not button.tooltip_text.is_empty()),"advanced reward cards retain complete effects in tooltips")
+		await capture("advanced-rewards-"+str(dimensions.x))
 	game.queue_free()
 	await process_frame
 	Fixture.clean("equipment_ui_test")
