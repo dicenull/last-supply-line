@@ -18,7 +18,15 @@ static func preferred_destination(battle, kind: String) -> int:
 
 static func pilot(battle, destination: int = 0):
 	var points = battle.obstacles.navigation_points(battle.route_length)
-	if battle.field_course != null: points = battle.field_course.navigation_points(destination)
+	if battle.field_course != null:
+		points = battle.field_course.navigation_points(destination)
+		# Approach the loading areas physically; X progress no longer grants cargo.
+		for site in battle.resource_sites:
+			var center: Vector3 = battle.field_course.center_at(site.distance)
+			var approach = site.node.position.move_toward(center,site.node.COLLECTION_RADIUS-1.0)
+			var index = 0
+			while index < points.size() and points[index].x < approach.x: index += 1
+			points.insert(index,approach)
 	var key = "pilot_index_"+str(destination)
 	var index = int(battle.get_meta(key,0)) if battle.field_course != null else 0
 	while index < points.size()-1:

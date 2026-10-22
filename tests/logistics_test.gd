@@ -110,8 +110,8 @@ func run():
 	check(game.logistics.notices.is_empty() and game.factory.reserves.scrap == 108,"resume retains uncapped inventory without replaying old pickup notices")
 	game.factory.running = true
 	game.battlefield.movement_direction = Vector3.RIGHT
-	game.battlefield.distance = 17.99
-	game.battlefield.player.position.x = 17.99
+	var pickup = game.battlefield.resource_sites[0].node
+	game.battlefield.player.position = pickup.position-Vector3(pickup.COLLECTION_RADIUS+0.01,0,0)
 	game.factory.fuel = 1
 	game.factory.reserves = {"scrap":0,"coal":0}
 	game.battlefield.tick_battle(game.factory,0.1)

@@ -54,7 +54,8 @@ func run():
 						# An immobilized tank may remain alive. The pilot uses
 						# the existing retreat action after its fuel line is cut.
 						var fuel_line_broken = game.factory.wrecks.keys().any(func(p): return p.y == 7)
-						stranded_time = stranded_time+0.1 if fuel_line_broken and game.factory.fuel < 0.000001 else 0.0
+						# Less than a millimeter of fuel may remain after float-limited movement.
+						stranded_time = stranded_time+0.1 if fuel_line_broken and game.factory.fuel < 0.0001 else 0.0
 						if stranded_time >= 30:
 							game.retreat_run()
 							break

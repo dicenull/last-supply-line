@@ -54,6 +54,10 @@ func run():
 	# the longer obstacle route. Difficulty cohorts are covered by balance_test.
 	game.factory.restore(preload("res://scripts/blueprints.gd").layout("parallel"))
 	for sector in range(1,6):
+		# The physical supply detours expose the tank longer. Buy protection for
+		# this progression fixture; unprotected outcomes remain in balance_test.
+		for p in [Vector2i(2,6),Vector2i(4,1),Vector2i(7,1),Vector2i(4,6)]:
+			if not game.factory.cells.has(p): game.factory.edit(p,"armor_block",0)
 		if sector == 3:
 			for x in [1,3,5,6,7,8]: game.factory.edit(Vector2i(x,5),"belt",0)
 			game.factory.edit(Vector2i(2,5),"furnace",0)

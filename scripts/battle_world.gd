@@ -531,7 +531,7 @@ func tick_battle(factory, delta: float):
 			shake = 0.45
 	sync_damage(factory)
 	for site in resource_sites:
-		if not site.taken and distance >= site.distance:
+		if not site.taken and site.node.crossed_by(drive_poses):
 			site.taken = true
 			recover(factory,{"scrap":site.scrap,"coal":site.coal,"shell":site.shells})
 			site.node.set_taken(true)

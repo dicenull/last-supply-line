@@ -1,6 +1,8 @@
 extends Node3D
 ## Roadside supply stop. Cargo disappears on collection; its empty depot remains.
+const COLLECTION_RADIUS = 12.0
 var cargo: Node3D
+var collection_ring: MeshInstance3D
 var signal_lamp: MeshInstance3D
 var semaphore: Node3D
 var available_material: Material
@@ -13,6 +15,15 @@ func build(world, kind: String, index: int, shells: int):
 	name = "SupplyPoint"+str(index+1)
 	available_material = world.mats.goal_signal
 	empty_material = world.mats.dark
+	var ring = TorusMesh.new()
+	ring.inner_radius = COLLECTION_RADIUS-0.1
+	ring.outer_radius = COLLECTION_RADIUS+0.1
+	ring.rings = 48
+	ring.ring_segments = 4
+	collection_ring = world.mesh_node(self,ring,Vector3(0,0.025,0),"goal_signal")
+	collection_ring.name = "CollectionRange"
+	collection_ring.scale.y = 0.1
+	collection_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	cargo = Node3D.new()
 	cargo.name = "Cargo"
 	add_child(cargo)
@@ -87,5 +98,17 @@ func build_magazine(world):
 func set_taken(value: bool):
 	taken = value
 	cargo.visible = not value
+	collection_ring.visible = not value
 	signal_lamp.material_override = empty_material if value else available_material
 	semaphore.rotation.z = -PI/2 if value else 0.0
+
+func crossed_by(poses: Array) -> bool:
+	# Test actual swept movement in the ground plane, including entry and exit
+	# within one tick. Course progress and attempted blocked motion do not count.
+	var center = Vector2(position.x,position.z)
+	for i in range(poses.size()):
+		var at: Vector3 = poses[i].position
+		var before: Vector3 = poses[maxi(0,i-1)].position
+		var nearest = Geometry2D.get_closest_point_to_segment(center,Vector2(before.x,before.z),Vector2(at.x,at.z))
+		if center.distance_squared_to(nearest) <= COLLECTION_RADIUS*COLLECTION_RADIUS: return true
+	return false
