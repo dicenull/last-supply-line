@@ -13,8 +13,9 @@ func check(ok: bool, label: String):
 		push_error(label)
 func run():
 	for sample in [
-		{"seed":1333,"sector":5,"kind":"coalfield","encounter":"rich","route_seed":872583036,"at":Vector3(26.97793,0,14.86048),"yaw":0.005510688,"taken":1,"variant":76},
-		{"seed":2251,"sector":3,"kind":"arsenal","encounter":"hostile","route_seed":1660790971,"at":Vector3(76.91239,0,-25.97725),"yaw":-0.365832716,"taken":3,"variant":130}
+		{"seed":1333,"sector":5,"kind":"coalfield","encounter":"rich","route_seed":872583036,"at":Vector3(26.97793,0,14.86048),"yaw":0.005510688,"taken":1,"variant":76,"terrain":"mud"},
+		{"seed":2251,"sector":3,"kind":"arsenal","encounter":"hostile","route_seed":1660790971,"at":Vector3(76.91239,0,-25.97725),"yaw":-0.365832716,"taken":3,"variant":130,"terrain":"mud"},
+		{"seed":3577,"sector":5,"kind":"coalfield","encounter":"shop","route_seed":1098885777,"at":Vector3(26.93572,0,16.04033),"yaw":-0.057107095,"taken":1,"variant":208,"terrain":"road"}
 	]: await scenario(sample)
 	print("EQUIPMENT PILOT RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
@@ -28,7 +29,7 @@ func scenario(sample: Dictionary):
 	game.expedition.sector = sample.sector
 	game.expedition.current = game.expedition.make_route(sample.kind,false,sample.encounter)
 	game.expedition.current.seed = sample.route_seed
-	game.expedition.current.terrain = "mud"
+	game.expedition.current.terrain = sample.terrain
 	root.add_child(game)
 	game.set_process(false)
 	await process_frame
@@ -38,7 +39,7 @@ func scenario(sample: Dictionary):
 	var b = game.battlefield
 	for enemy in b.enemies: enemy.hp = 0
 	b.kills = b.total
-	# Recorded poses from overnight runs 76 and 130, after supply collection.
+	# Recorded poses from overnight runs 76, 130 and 208, after supply collection.
 	b.player.position = sample.at
 	b.player.rotation.y = sample.yaw
 	for i in range(sample.taken):
