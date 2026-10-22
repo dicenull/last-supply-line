@@ -183,6 +183,56 @@ async function openGame(page) {
     await page.screenshot({path:path.join(out,'small-menu.png')});
     const canvas = await page.locator('canvas').boundingBox();
     check(canvas.width <= 960 && canvas.height <= 628, 'minimum window fits');
+    // A separate player profile reviews and confirms the real bulk UI.
+    const bulkContext = await browser.newContext({viewport:{width:1440,height:940}});
+    const bulkPage = await bulkContext.newPage();
+    bulkPage.on('console', m => {
+      logs.push('bulk ' + m.type() + ': ' + m.text());
+      if (m.type() === 'error' || /SCRIPT ERROR|ERROR:/.test(m.text())) errors.push(m.text());
+    });
+    bulkPage.on('pageerror', e => errors.push(e.message));
+    await openGame(bulkPage);
+    await bulkPage.mouse.click(650,382);
+    await bulkPage.keyboard.press('i');
+    await bulkPage.waitForTimeout(250);
+    await bulkPage.mouse.click(1272,128); // Quality ordering.
+    await bulkPage.mouse.click(1200,780); // Review the two normal items.
+    await bulkPage.waitForTimeout(250);
+    await bulkPage.screenshot({path:path.join(out,'bulk-review.png')});
+    await bulkPage.mouse.click(1072,780); // Cancel before any mutation.
+    await bulkPage.keyboard.press('i');
+    await bulkPage.keyboard.press('Escape');
+    await bulkPage.mouse.click(650,308);
+    await bulkPage.waitForTimeout(1500);
+    const cancelled = await readSave(bulkPage, 'bulk-cancelled');
+    check(cancelled.state.gear_items.length === 3 && cancelled.state.reserves.scrap === 48 &&
+      cancelled.state.reserves.coal === 32, 'browser bulk cancellation preserves all items and materials');
+    await bulkPage.keyboard.press('Escape');
+    await bulkPage.keyboard.press('i');
+    await bulkPage.waitForTimeout(250);
+    await bulkPage.mouse.click(1200,780);
+    await bulkPage.waitForTimeout(250);
+    await bulkPage.mouse.click(1352,780); // Confirm the reviewed normal items.
+    await bulkPage.screenshot({path:path.join(out,'bulk-confirmed.png')});
+    await bulkPage.keyboard.press('i');
+    await bulkPage.keyboard.press('Escape');
+    await bulkPage.mouse.click(650,308);
+    await bulkPage.waitForTimeout(1500);
+    const salvaged = await readSave(bulkPage, 'bulk-salvaged');
+    check(salvaged.state.gear_items.length === 1 && salvaged.state.gear_items[0].uid === 3 &&
+      salvaged.state.gear_items[0].rarity === 'uncommon' && salvaged.state.reserves.scrap === 57 &&
+      salvaged.state.reserves.coal === 37, 'browser bulk confirmation preserves uncommon equipment and grants exact materials');
+    await openGame(bulkPage);
+    await bulkPage.mouse.click(650,438);
+    await bulkPage.waitForTimeout(1500);
+    await bulkPage.keyboard.press('Escape');
+    await bulkPage.mouse.click(650,308);
+    await bulkPage.waitForTimeout(1500);
+    const bulkRestored = await readSave(bulkPage, 'bulk-restored');
+    check(JSON.stringify(bulkRestored.state.gear_items) === JSON.stringify(salvaged.state.gear_items) &&
+      JSON.stringify(bulkRestored.state.reserves) === JSON.stringify(salvaged.state.reserves),
+      'browser reload preserves confirmed bulk salvage without duplicate materials');
+    await bulkContext.close();
     check(errors.length === 0, 'no browser or Godot runtime errors: ' + errors.join('\n'));
     fs.writeFileSync(path.join(out,'browser-result.json'), JSON.stringify({base,checks:results.length,failures:0,results,audioPeak,states:{prepared:prepared.state,stationary:stationary.state,moved:moved.state,restored:restored.state},browser:browser.version()},null,2));
     console.log(`WEB RESULT: ${results.length} checks, 0 failures`);
