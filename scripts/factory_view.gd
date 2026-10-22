@@ -63,6 +63,15 @@ var last_paint = Vector2i(-1,-1)
 var dragging_auxiliary = ""
 var movement_keys: Dictionary = {}
 var tool_page = 0
+const TOOL_TABS = [
+	{"name":"搬送・選別","icon":"belt","kinds":["belt","scrap_filter","shell_filter","fuel_filter"]},
+	{"name":"分岐","icon":"splitter","kinds":["splitter","smart_splitter","priority_splitter","router"]},
+	{"name":"加工","icon":"furnace","kinds":["furnace","press","refinery","blast_furnace","auto_press"]},
+	{"name":"備蓄","icon":"depot","kinds":["depot","overflow_gate","fuel_depot"]},
+	{"name":"防御","icon":"shield","kinds":["armor_block"]}
+]
+var tool_tabs: Array = []
+var erase_button: Button
 var start_button: Button
 var tool_buttons: Dictionary = {}
 var shot_glow = 0.0
@@ -107,12 +116,17 @@ func _ready():
 	icon_button("menu",Rect2(1274,862,134,52),func(): open_menu(false),"Esc")
 	battle_retry = add_button("",Rect2(614,862,212,52),reset_battle)
 	battle_retry.visible = false
-	var kinds = ["belt","furnace","press","splitter","depot","erase","refinery"]
-	for i in kinds.size():
-		var kind: String = kinds[i]
-		tool_buttons[kind] = icon_button(kind,Rect2(32+i*82,862,72,52),func(): selected = kind,str(i+1))
-	icon_button("rotate",Rect2(610,862,74,52),func(): direction = (direction+1)%4,"R")
-	icon_button("example",Rect2(688,862,40,52),cycle_tools)
+	for i in range(7):
+		icon_button("",Rect2(110+i*68,880,62,44),func(): pass,str(i+1))
+	icon_button("rotate",Rect2(610,880,74,44),func(): direction = (direction+1)%4,"R")
+	erase_button = icon_button("erase",Rect2(32,862,64,52),func(): selected = "erase","0")
+	erase_button.tooltip_text = "撤去（0）"
+	for i in range(TOOL_TABS.size()):
+		var index = i
+		var button = icon_button(TOOL_TABS[i].icon,Rect2(110+i*96,852,90,24),func(): select_tool_tab(index))
+		button.tooltip_text = TOOL_TABS[i].name
+		icon_buttons.back().tab_index = i
+		tool_tabs.append(button)
 	var logistics_layer = CanvasLayer.new()
 	logistics_layer.layer = 2
 	add_child(logistics_layer)
@@ -249,6 +263,7 @@ func refresh_view():
 	world.placement_preview.visible = false
 	for entry in icon_buttons:
 		entry.button.visible = entry.icon == "menu" or ((expedition.phase in ["prepare","travel"]) and ((not battle_mode and can_manage_layout()) or entry.icon in ["battle","play"]))
+	sync_tools()
 	start_button.tooltip_text = "出撃" if not started else "一時停止 / 再開"
 	if choice_popup != null: choice_popup.refresh()
 	if shop_panel != null: shop_panel.refresh()
@@ -289,23 +304,60 @@ func reset_battle(seed_value: int = -1):
 func live_control(icon: String, _rect: Rect2) -> bool:
 	return icon in ["play","battle","menu"] or (can_manage_layout() and not battle_mode)
 
-func tool_kinds() -> Array:
-	return ["belt","furnace","press","splitter","depot","erase","refinery"] if tool_page == 0 else ["smart_splitter","priority_splitter","router","overflow_gate","scrap_filter","shell_filter","fuel_filter"] if tool_page == 1 else ["blast_furnace","auto_press","fuel_depot","armor_block","splitter","erase","refinery"]
+func available_tools() -> Array:
+	var kinds: Array = []
+	for tab in TOOL_TABS: kinds.append_array(tab.kinds.filter(func(kind): return kind in factory.unlocked_blocks))
+	return kinds
 
-func cycle_tools():
-	tool_page = (tool_page+1)%3
+func available_tool_tabs() -> Array:
+	var tabs: Array = []
+	for i in range(TOOL_TABS.size()):
+		if TOOL_TABS[i].kinds.any(func(kind): return kind in factory.unlocked_blocks): tabs.append(i)
+	return tabs
+
+func tool_page_count() -> int:
+	return available_tool_tabs().size()
+
+func select_tool_tab(index: int):
+	if index not in available_tool_tabs(): return
+	tool_page = index
+	if selected != "erase": selected = tool_kinds()[0]
+	sync_tools()
+	queue_redraw()
+
+func sync_tools():
 	var kinds = tool_kinds()
-	tool_buttons.clear()
+	if selected != "erase" and selected not in available_tools(): selected = kinds[0] if not kinds.is_empty() else "erase"
+	var changed = tool_buttons.keys() != kinds
+	if changed: tool_buttons.clear()
+	var shown = expedition.phase in ["prepare","travel"] and not battle_mode and can_manage_layout()
 	for i in range(7):
 		var entry = icon_buttons[3+i]
-		entry.icon = kinds[i]
+		entry.button.visible = shown and i < kinds.size()
+		if not changed: continue
 		for connection in entry.button.pressed.get_connections(): entry.button.pressed.disconnect(connection.callable)
+		if i >= kinds.size():
+			entry.icon = ""
+			continue
+		entry.icon = kinds[i]
 		var kind: String = kinds[i]
 		entry.button.pressed.connect(func(): selected = kind)
+		entry.button.disabled = false
 		entry.button.tooltip_text = Factory.Content.BLOCKS[kind].name+"："+Factory.Content.BLOCKS[kind].effect if Factory.Content.BLOCKS.has(kind) else NAMES.get(kind,kind)
 		tool_buttons[kind] = entry.button
-	selected = kinds[0]
-	queue_redraw()
+	erase_button.visible = shown
+	for i in range(tool_tabs.size()):
+		tool_tabs[i].visible = shown and i in available_tool_tabs()
+
+func tool_kinds() -> Array:
+	var tabs = available_tool_tabs()
+	if tabs.is_empty(): return []
+	if tool_page not in tabs: tool_page = tabs[0]
+	return TOOL_TABS[tool_page].kinds.filter(func(kind): return kind in factory.unlocked_blocks)
+
+func cycle_tools():
+	var tabs = available_tool_tabs()
+	if not tabs.is_empty(): select_tool_tab(tabs[(tabs.find(tool_page)+1)%tabs.size()])
 
 func set_difficulty(mode: String) -> bool:
 	if started or mode not in RunState.Content.DIFFICULTIES or not can_manage_layout() or expedition.sector != 1: return false
@@ -413,6 +465,7 @@ func _process(delta):
 	previous_shots = factory.shots
 	shot_glow = maxf(0,shot_glow-delta)
 	start_button.text = ""
+	sync_tools()
 	for kind in tool_buttons:
 		tool_buttons[kind].add_theme_color_override("font_color",GOLD if selected == kind else MUTED)
 		if Factory.LIMITS.has(kind):
@@ -572,18 +625,15 @@ func _unhandled_input(event):
 				if started: factory.running = was_running
 			KEY_Z:
 				factory.undo()
-			KEY_1: selected = "belt"
-			KEY_2: selected = "furnace"
-			KEY_3: selected = "press"
-			KEY_4: selected = "splitter"
-			KEY_5: selected = "depot"
-			KEY_6: selected = "erase"
-			KEY_7: selected = "refinery"
+			KEY_0: selected = "erase"
 			KEY_8: cycle_tools()
 			KEY_9:
-				while tool_page != 2: cycle_tools()
-				selected = "armor_block"
-		if event.keycode >= KEY_1 and event.keycode <= KEY_7: selected = tool_kinds()[event.keycode-KEY_1]
+				if "armor_block" in factory.unlocked_blocks:
+					select_tool_tab(4)
+					selected = "armor_block"
+		if event.keycode >= KEY_1 and event.keycode <= KEY_7:
+			var index = event.keycode-KEY_1
+			if index < tool_kinds().size(): selected = tool_kinds()[index]
 	if event is InputEventMouseMotion:
 		if event.button_mask & MOUSE_BUTTON_MASK_MIDDLE:
 			world.yaw -= event.relative.x*0.007
@@ -657,6 +707,7 @@ func keycap(value: String, at: Vector2):
 func draw_control(entry: Dictionary):
 	var rect: Rect2 = entry.rect
 	var picked = selected == entry.icon or (entry.icon == "roof" and world.roof_closed)
+	if entry.has("tab_index"): picked = tool_page == entry.tab_index
 	var primary = entry.icon == "play"
 	panel(rect,Color("51563b") if picked else SURFACE,GOLD if picked or primary else EDGE)
 	if picked: panel(Rect2(rect.position+Vector2(12,rect.size.y-5),Vector2(rect.size.x-24,3)),GOLD)
@@ -670,7 +721,7 @@ func draw_control(entry: Dictionary):
 	symbol(icon,center,minf(1.05 if entry.icon in tool_buttons else 0.82,(rect.size.y-4)/44.0))
 	if primary: text_at("出撃" if not started else "停止" if factory.running else "再開",rect.position+Vector2(160,34),20,INK)
 	if entry.key != "": keycap(entry.key,rect.position+Vector2(5,5))
-	if Factory.LIMITS.has(entry.icon):
+	if Factory.LIMITS.has(entry.icon) and not entry.has("tab_index"):
 		var remaining = factory.available(entry.icon)
 		panel(Rect2(rect.position+Vector2(rect.size.x-27,rect.size.y-21),Vector2(25,19)),SURFACE)
 		text_at(str(remaining) if entry.icon in factory.unlocked_blocks else "—",rect.position+Vector2(rect.size.x-24,rect.size.y-6),14,GOLD if remaining > 0 else MUTED)

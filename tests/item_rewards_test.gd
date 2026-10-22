@@ -166,7 +166,7 @@ func run():
 	game.cycle_tools()
 	game.cycle_tools()
 	game._process(0)
-	check(game.tool_buttons.auto_press.disabled,"footer disables unknown blueprint")
+	check(not game.available_tools().has("auto_press") and not game.tool_buttons.has("auto_press"),"footer omits unknown blueprint")
 	await capture("res://preview-construction-locked-960.png")
 	var construction_save = game.checkpoint.snapshot(game)
 	check(game.checkpoint.apply(game,construction_save) and game.factory.reserves == construction_save.factory.reserves,"construction funds survive checkpoint without another charge")

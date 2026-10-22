@@ -36,6 +36,10 @@ func run():
 	root.add_child(game)
 	await process_frame
 	game.set_process(false)
+	# Wait for the first native frame and Control layout before clicking menus.
+	game._process(0)
+	await process_frame
+	await RenderingServer.frame_post_draw
 	await click_at(game.menu.navigation.settings.get_rect().get_center())
 	for index in range(3):
 		await click_at(game.menu.difficulty_select.get_rect().get_center())
@@ -51,11 +55,11 @@ func run():
 	game.factory.unlocked_blocks = Content.BLOCK_LIMITS.keys()
 	game.factory.reserves = {"scrap":100,"coal":100}
 	game._process(0)
-	await click_at(game.icon_buttons[11].button.get_rect().get_center())
-	check(game.tool_page == 1 and game.tool_buttons.has("router"),"equipment-page footer button reveals advanced routing blocks")
+	await click_at(game.tool_tabs[1].get_rect().get_center())
+	check(game.tool_page == 1 and game.tool_buttons.has("router"),"branching tab reveals advanced routing blocks")
 	var placed = 0
-	for page in [1,2]:
-		if game.tool_page != page: await click_at(game.icon_buttons[11].button.get_rect().get_center())
+	for page in range(game.TOOL_TABS.size()):
+		await click_at(game.tool_tabs[page].get_rect().get_center())
 		for id in Content.BLOCKS:
 			if not game.tool_buttons.has(id): continue
 			await click_at(game.tool_buttons[id].get_rect().get_center())

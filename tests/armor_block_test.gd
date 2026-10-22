@@ -72,7 +72,7 @@ func run():
 	key = key.duplicate()
 	key.pressed = false
 	root.push_input(key)
-	check(game.tool_page == 2 and game.selected == "armor_block","9 key selects armor and reveals its palette page")
+	check("armor_block" in game.tool_kinds() and game.selected == "armor_block","9 key selects armor and reveals its available palette page")
 	check("armor_block" in game.tool_kinds() and not game.tool_buttons.armor_block.disabled,"construction palette exposes an unlocked defense block")
 	game.tool_buttons.armor_block.pressed.emit()
 	game.hover = Vector2i(2,6)

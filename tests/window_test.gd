@@ -51,10 +51,9 @@ func run():
 		for child in game.get_children():
 			if child is Button and child.visible:
 				footer_only = footer_only and game.FOOTER_RECT.encloses(child.get_rect())
-				footer_only = footer_only and child.position.y == game.start_button.position.y
 				for other in controls: footer_only = footer_only and not child.get_rect().intersects(other)
 				controls.append(child.get_rect())
-		check(footer_only,"all visible gameplay controls fit one footer row without overlap "+str(dimensions))
+		check(footer_only,"all visible gameplay controls and tabs fit the footer without overlap "+str(dimensions))
 		var layout_before = game.factory.layout()
 		await click_logical(Vector2(1096,45))
 		check(not game.factory.running and game.factory.layout() == layout_before,"header is display-only "+str(dimensions))
