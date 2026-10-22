@@ -8,7 +8,7 @@ const P = {
 	"rust":"905238", "rust_hi":"cb8651", "red":"a94735", "fire":"f39d3c", "yellow":"ffe88a",
 	"steel":"7f9e9f", "steel_hi":"c3dcce", "steel_dark":"466469", "inlet":"70d4cc", "wood":"80613e", "wood_hi":"b38d55"
 }
-const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo","disconnected","incompatible","empty","full","blocked","waiting","processing","ready","idle","sound","mute","volume_knob","menu","rich_site","hostile_site","shop","repair","settings","close"]
+const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo","disconnected","incompatible","empty","full","blocked","waiting","processing","ready","idle","sound","mute","volume_knob","menu","rich_site","hostile_site","shop","repair","settings","close","sort"]
 var cache: Dictionary = {}
 var canvas: Image
 
@@ -76,6 +76,11 @@ func texture(kind: String) -> ImageTexture:
 	if cache.has(kind): return cache[kind]
 	canvas = Image.create(32,32,false,Image.FORMAT_RGBA8)
 	match kind:
+		"sort":
+			for i in range(3):
+				rect(4,6+i*8,15-i*4,3,"steel_hi")
+			rect(24,5,3,18,"gold_hi")
+			poly([[20,20],[30,20],[25,28]],"gold_hi")
 		"close":
 			line(Vector2i(7,7),Vector2i(25,25),"deep",5)
 			line(Vector2i(25,7),Vector2i(7,25),"deep",5)

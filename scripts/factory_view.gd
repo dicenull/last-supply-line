@@ -179,6 +179,7 @@ func _ready():
 	inventory_panel.drag_requested.connect(begin_item_drag)
 	inventory_panel.stow_requested.connect(stow_item)
 	inventory_panel.dismantle_requested.connect(dismantle_item)
+	inventory_panel.normal_dismantle_requested.connect(dismantle_normal_items)
 	inventory_layer.add_child(inventory_panel)
 	choice_popup = preload("res://scripts/run_choice_popup.gd").new()
 	choice_popup.configure(ui,choice_models,can_claim_reward)
@@ -1212,10 +1213,19 @@ func stow_item(uid: int) -> bool:
 func dismantle_item(uid: int) -> bool:
 	var before = factory.reserves.duplicate()
 	if menu.visible or not Inventory.dismantle(expedition,factory,uid): return false
+	show_dismantle_receipt(before)
+	return true
+
+func dismantle_normal_items(uids: Array) -> bool:
+	var before = factory.reserves.duplicate()
+	if menu.visible or not Inventory.dismantle_normals(expedition,factory,uids): return false
+	show_dismantle_receipt(before)
+	return true
+
+func show_dismantle_receipt(before: Dictionary):
 	for raw in before: logistics.add_receipt(raw,factory.reserves[raw]-before[raw])
 	factory.message = "装備を解体してスクラップと石炭を回収しました。"
 	inventory_panel.refresh()
-	return true
 
 func inventory_state() -> Dictionary:
 	return {"enabled":expedition.item_mode,"menu_visible":menu != null and menu.visible,"items":expedition.gear_items,
