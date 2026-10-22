@@ -62,3 +62,21 @@ static func salvage(item: Dictionary) -> Dictionary:
 
 static func valid(item) -> bool:
 	return item is Dictionary and item.get("kind") in DEFINITIONS and item.get("rarity") in RARITIES
+
+static func description(item: Dictionary) -> String:
+	var kind: String = item.kind
+	var power: float = RARITIES[item.rarity].power
+	if kind in Content.GUNS:
+		var spec: Dictionary = Content.EQUIPMENT[kind]
+		return "%.2f秒間隔 / 射程%dm / 砲弾%d発" % [spec.interval/power,spec.range,spec.ammo]
+	match kind:
+		"armor": return "被ダメージ −%.1f%%" % (25*power)
+		"skirts": return "被ダメージ −%.1f%% / 追加装甲と併用可" % (20*power)
+		"supercharger": return "走行速度 +%.1f%% / 燃料消費 +10%%" % (20*power)
+		"economizer": return "走行燃料消費 −%.1f%%" % (20*power)
+		"rangefinder": return "全砲の射程 +%.1fm" % (6*power)
+		"servo": return "全砲の旋回速度 +%.1f%%" % (60*power)
+		"salvage_arm": return "敵%d体撃破ごとに装備を1個追加回収" % maxi(2,roundi(3/power))
+		"blast_fuse": return "全砲の爆発範囲 +%.1fm" % (4*power)
+		"drum_loader": return "主砲・副砲の射撃間隔 −%.1f%%" % (20*power)
+	return Content.EQUIPMENT[kind].effect

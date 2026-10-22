@@ -38,5 +38,11 @@ func _initialize():
 			previous = material
 		check(increasing,"all four variants dismantle into increasing value: "+id)
 	check(not Gear.valid({}) and not Gear.valid({"kind":"armor","rarity":"unknown"}),"malformed item definitions are rejected")
+	var descriptions_valid = true
+	for id in Gear.DEFINITIONS:
+		for rarity in Gear.RARITIES:
+			descriptions_valid = descriptions_valid and not Gear.description({"kind":id,"rarity":rarity}).is_empty()
+	check(descriptions_valid,"all equipment variants provide a displayable performance description")
+	check("37.5%" in Gear.description({"kind":"armor","rarity":"legendary"}) and "25.0%" in Gear.description({"kind":"armor","rarity":"normal"}),"inventory descriptions distinguish rarity-dependent protection")
 	print("EQUIPMENT CATALOG RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
