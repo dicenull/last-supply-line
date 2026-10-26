@@ -3,7 +3,10 @@ const Fixture = preload("res://tests/profile_fixture.gd")
 var game
 var checks = 0
 var failures = 0
-func _initialize(): call_deferred("run")
+func _initialize():
+	root.set_flag(Window.FLAG_NO_FOCUS,true)
+	root.set_flag(Window.FLAG_MOUSE_PASSTHROUGH,true)
+	call_deferred("run")
 func check(ok: bool, label: String):
 	checks += 1
 	if ok: print("PASS menu pages: ",label)
@@ -14,7 +17,7 @@ func click(button: Button):
 	var e = InputEventMouseButton.new()
 	e.button_index = MOUSE_BUTTON_LEFT
 	e.pressed = true
-	e.position = root.get_final_transform()*button.get_rect().get_center()
+	e.position = root.get_final_transform()*button.get_global_rect().get_center()
 	root.push_input(e,false)
 	e = e.duplicate()
 	e.pressed = false
@@ -32,7 +35,8 @@ func escape():
 func capture(label: String):
 	game.queue_redraw()
 	await process_frame
-	await RenderingServer.frame_post_draw
+	await process_frame
+	RenderingServer.force_draw()
 	root.get_texture().get_image().save_png("res://build/menu-audit/"+label+".png")
 func run():
 	game = load("res://main.tscn").instantiate()

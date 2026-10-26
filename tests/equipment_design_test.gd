@@ -9,7 +9,7 @@ func check(ok: bool, label: String):
 		failures += 1
 		push_error(label)
 func _initialize():
-	check(Data.ITEMS.size() == 300 and Data.DEFINITIONS.size() == 300,"300 base designs exist independently of rarity")
+	check(Data.ITEMS.size() == 312 and Data.DEFINITIONS.size() == 312,"300 accessory designs and 12 vehicle parts exist independently of rarity")
 	var names = {}
 	var signatures = {}
 	var genres = {"secondary":0,"protection":0,"engine":0,"support":0}
@@ -19,6 +19,7 @@ func _initialize():
 	var finite_stats = true
 	for id in Data.ITEMS:
 		var item = Data.ITEMS[id]
+		if item.has("slot"): continue
 		names[item.name] = true
 		var stats = {}
 		for key in ["interval","range","ammo","turn","splash","chain","pellets","ballistics","effects"]:
@@ -66,6 +67,7 @@ func _initialize():
 	var tradeoffs = true
 	for id in Data.ITEMS:
 		var item = Data.ITEMS[id]
+		if item.has("slot"): continue
 		if item.profile == "balanced": continue
 		var base_id = item.family if item.level == 1 else item.family+"_balanced_l%02d" % item.level
 		var base = Data.ITEMS[base_id]

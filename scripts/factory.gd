@@ -21,6 +21,7 @@ var layout_version = 1
 var ports: Dictionary = PORTS.duplicate()
 var blocks: Array = []
 var equipment_mounts: Dictionary = {}
+var equipment_rotations: Dictionary = {}
 var loadout_locked = false
 var auxiliary_ids: Array = []
 var cells: Dictionary = {}
@@ -84,14 +85,17 @@ func inside(p: Vector2i) -> bool:
 
 func mounted_at(p: Vector2i, except_id: String = "") -> String:
 	for id in equipment_mounts:
-		if id != except_id and Rect2i(equipment_mounts[id],Gear.DEFINITIONS[id].size).has_point(p): return id
+		if id != except_id and Rect2i(equipment_mounts[id],Gear.footprint(id,equipment_rotations.get(id,0))).has_point(p): return id
 	return ""
 
-func can_place_equipment(id: String, at: Vector2i) -> bool:
+func can_place_equipment(id: String, at: Vector2i, facing: int = -1) -> bool:
 	if layout_version != 2 or loadout_locked or layout_locked or id not in Gear.DEFINITIONS: return false
+	if not Gear.part_slot(id).is_empty(): return false
 	for mounted in equipment_mounts:
 		if mounted != id and Gear.family(mounted) == Gear.family(id): return false
-	var size: Vector2i = Gear.DEFINITIONS[id].size
+	if facing == -1: facing = equipment_rotations.get(id,0)
+	if facing < 0 or facing > 3: return false
+	var size: Vector2i = Gear.footprint(id,facing)
 	if Gear.DEFINITIONS[id].genre == "secondary" and not Layout.roof_clearance(at,size): return false
 	for y in range(at.y,at.y+size.y):
 		for x in range(at.x,at.x+size.x):
@@ -100,9 +104,10 @@ func can_place_equipment(id: String, at: Vector2i) -> bool:
 			if cells.has(p) and not (id in auxiliary_ids and cells[p].kind == id): return false
 	return true
 
-func place_equipment(id: String, at: Vector2i) -> bool:
-	if not can_place_equipment(id,at): return false
-	if equipment_mounts.get(id,Vector2i(-1,-1)) == at: return true
+func place_equipment(id: String, at: Vector2i, facing: int = -1) -> bool:
+	if facing == -1: facing = equipment_rotations.get(id,0)
+	if not can_place_equipment(id,at,facing): return false
+	if equipment_mounts.get(id,Vector2i(-1,-1)) == at and equipment_rotations.get(id,0) == facing: return true
 	if AUXILIARY.has(id):
 		var old = auxiliary_position(id)
 		var cell = cells[old] if cells.has(old) else make_cell(id,0)
@@ -110,6 +115,7 @@ func place_equipment(id: String, at: Vector2i) -> bool:
 		cells[at] = cell
 		if id not in auxiliary_ids: auxiliary_ids.append(id)
 	equipment_mounts[id] = at
+	equipment_rotations[id] = facing
 	undo_stack.clear()
 	moves.clear()
 	return true
@@ -117,6 +123,7 @@ func place_equipment(id: String, at: Vector2i) -> bool:
 func remove_equipment(id: String) -> bool:
 	if loadout_locked or layout_locked or not equipment_mounts.has(id): return false
 	equipment_mounts.erase(id)
+	equipment_rotations.erase(id)
 	if id in auxiliary_ids:
 		cells.erase(auxiliary_position(id))
 		auxiliary_ids.erase(id)
@@ -170,6 +177,7 @@ func install_auxiliary(id: String) -> bool:
 func remove_auxiliary():
 	if layout_locked or (layout_version == 2 and loadout_locked): return
 	equipment_mounts.clear()
+	equipment_rotations.clear()
 	for p in cells.keys():
 		if AUXILIARY.has(cells[p].kind): cells.erase(p)
 	auxiliary_ids.clear()

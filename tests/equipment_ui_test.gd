@@ -3,17 +3,22 @@ const Fixture = preload("res://tests/profile_fixture.gd")
 var game
 var checks = 0
 var failures = 0
-func _initialize(): call_deferred("run")
+func _initialize():
+	# Input is injected below. Ignore desktop pointer events so this suite can
+	# run while the player is using a separate game window.
+	root.set_flag(Window.FLAG_NO_FOCUS,true)
+	root.set_flag(Window.FLAG_MOUSE_PASSTHROUGH,true)
+	call_deferred("run")
 func check(ok: bool, label: String):
 	checks += 1
 	if ok: print("PASS equipment UI: ",label)
 	else:
 		failures += 1
 		push_error(label)
-func mouse(pos: Vector2, pressed: bool):
+func mouse(pos: Vector2, pressed: bool, button: int = MOUSE_BUTTON_LEFT):
 	var e = InputEventMouseButton.new()
 	e.position = root.get_final_transform()*pos
-	e.button_index = MOUSE_BUTTON_LEFT
+	e.button_index = button
 	e.pressed = pressed
 	root.push_input(e,false)
 	await process_frame
@@ -25,6 +30,12 @@ func motion(pos: Vector2, held: bool):
 	game._process(0)
 	await process_frame
 func click(b):
+	var parent = b.get_parent()
+	while parent != null:
+		if parent is ScrollContainer:
+			parent.ensure_control_visible(b)
+			await process_frame
+		parent = parent.get_parent()
 	var p = b.get_global_rect().get_center()
 	await motion(p,false)
 	await mouse(p,true)
@@ -32,10 +43,14 @@ func click(b):
 	game._process(0)
 func screen(p: Vector2i) -> Vector2:
 	return game.WORLD_RECT.position+game.world.camera.unproject_position(game.world.cell_position(p)+Vector3(0,0.03,0))
+func gun_screen() -> Vector2:
+	var gun = game.world.auxiliary_guns[0]
+	return game.WORLD_RECT.position+game.world.camera.unproject_position(gun.pivot.to_global(Vector3(-0.12,0.7,0)))
 func capture(label):
 	game._process(0)
 	await process_frame
-	await RenderingServer.frame_post_draw
+	await process_frame
+	RenderingServer.force_draw()
 	root.get_texture().get_image().save_png("res://build/equipment-audit/"+label+".png")
 func drag(row, at: Vector2i):
 	var start = row.get_global_rect().get_center()
@@ -54,7 +69,8 @@ func run():
 	root.add_child(game)
 	game.set_process(false)
 	await process_frame
-	await RenderingServer.frame_post_draw
+	await process_frame
+	RenderingServer.force_draw()
 	for dimensions in [Vector2i(1440,940),Vector2i(960,628)]:
 		root.size = dimensions
 		await process_frame
@@ -69,8 +85,25 @@ func run():
 		await drag(game.inventory_panel.row_buttons[0],Vector2i(0,0))
 		check(game.factory.equipment_mounts.get("left_gun") == Vector2i(0,0),"real drag and release places gun on grid at "+str(dimensions.x))
 		check(game.dragging_item == -1 and not game.inventory_panel.visible,"drop completes and leaves deck visible")
-		check(game.world.auxiliary_guns.size() == 1 and game.world.auxiliary_guns[0].pivot.position == game.world.cell_position(Vector2i(0,0))+Vector3(0.5,0.28,0.5),"gun model is centered on its full 2×2 footprint")
+		var mount_offset: Vector2 = game.world.auxiliary_guns[0].mount_offset
+		check(game.world.auxiliary_guns.size() == 1 and game.world.auxiliary_guns[0].pivot.position.is_equal_approx(game.world.cell_position(Vector2i(0,0))+Vector3(0.5+mount_offset.x,game.world.MOUNTED_GUN_Y,0.5+mount_offset.y)),"limited-traverse gun follows its computed pivot within the 2×2 reservation")
 		await capture("installed-"+str(dimensions.x))
+		game.factory.cells[Vector2i.ZERO].items = ["shell","shell","shell"]
+		game.factory.edit(Vector2i(3,6),"belt",0)
+		await mouse(gun_screen(),true,MOUSE_BUTTON_RIGHT)
+		var right_drag = InputEventMouseMotion.new()
+		right_drag.position = root.get_final_transform()*screen(Vector2i(3,6))
+		right_drag.button_mask = MOUSE_BUTTON_MASK_RIGHT
+		root.push_input(right_drag,false)
+		await process_frame
+		check(game.factory.equipment_mounts.is_empty() and game.expedition.gear_items[0].position == Vector2i(-1,-1) and game.expedition.gear_items[0].ammo == 3,"right-clicking the actual raised model stores it with loaded ammunition")
+		check(game.factory.cells.has(Vector2i(3,6)),"dragging after stowing cannot erase a neighboring production line")
+		await mouse(screen(Vector2i(3,6)),false,MOUSE_BUTTON_RIGHT)
+		await mouse(screen(Vector2i(3,6)),true,MOUSE_BUTTON_RIGHT)
+		await mouse(screen(Vector2i(3,6)),false,MOUSE_BUTTON_RIGHT)
+		check(not game.factory.cells.has(Vector2i(3,6)),"a new right-click still removes ordinary line equipment")
+		check(game.place_item(uid,Vector2i.ZERO) and game.factory.auxiliary_ammo("left_gun") == 3,"stowed equipment can be placed again without losing its rounds")
+		game._process(0)
 		game.world.toggle_roof()
 		await motion(Vector2(700,850),false)
 		await capture("exterior-installed-"+str(dimensions.x))
@@ -82,7 +115,13 @@ func run():
 		var stock = game.factory.reserves.duplicate()
 		await click(game.inventory_panel.salvage_buttons[2])
 		check(game.expedition.gear_items.size() == 2 and game.factory.reserves.scrap > stock.scrap and game.factory.reserves.coal > stock.coal,"real salvage button grants materials")
-		check(game.logistics.notices.scrap.accepted == game.factory.reserves.scrap-stock.scrap and game.logistics.notices.coal.accepted == game.factory.reserves.coal-stock.coal,"dismantling reports both material gains in the header")
+		check(game.logistics.notices.get("scrap",{}).get("accepted",-1) == game.factory.reserves.scrap-stock.scrap and game.logistics.notices.get("coal",{}).get("accepted",-1) == game.factory.reserves.coal-stock.coal,"dismantling reports both material gains in the header")
+		var row_center = game.inventory_panel.row_buttons[0].get_global_rect().get_center()
+		await mouse(row_center,true,MOUSE_BUTTON_RIGHT)
+		await mouse(row_center,false,MOUSE_BUTTON_RIGHT)
+		check(game.factory.equipment_mounts.is_empty(),"right-clicking an installed inventory row also returns it to storage")
+		game.place_item(uid,Vector2i.ZERO)
+		game.inventory_panel.refresh()
 		await click(game.inventory_panel.stow_buttons[0])
 		check(game.factory.equipment_mounts.is_empty() and game.expedition.equipment.is_empty(),"real stow button removes mounted effects")
 		await drag(game.inventory_panel.row_buttons[0],Vector2i(0,0))
@@ -95,6 +134,9 @@ func run():
 		await drag(game.inventory_panel.row_buttons[0],Vector2i(2,0))
 		check(game.factory.equipment_mounts.get("left_gun") == Vector2i(0,0) and game.dragging_item < 0,"drag cannot bypass departure lock while paused")
 		check(game.factory.layout() == locked_layout,"rejected equipment drag cannot accidentally paint a conveyor")
+		await mouse(gun_screen(),true,MOUSE_BUTTON_RIGHT)
+		await mouse(gun_screen(),false,MOUSE_BUTTON_RIGHT)
+		check(game.factory.equipment_mounts.get("left_gun") == Vector2i.ZERO and game.factory.layout() == locked_layout,"right-click cannot bypass the deployed equipment lock")
 		await capture("locked-"+str(dimensions.x))
 		game.inventory_panel.hide()
 		game.reset_battle(42)
@@ -124,12 +166,12 @@ func run():
 			for rarity in game.Inventory.Catalog.RARITIES: game.expedition.add_item({"kind":id,"rarity":rarity})
 		await click(game.inventory_button)
 		await click(game.inventory_panel.tabs[1])
-		check(game.inventory_panel.rows.all(func(item): return game.Inventory.Catalog.DEFINITIONS[item.kind].genre == "secondary"),"genre tab filters all rarity variants")
+		check(game.inventory_panel.rows.all(func(item): return game.Inventory.Catalog.part_slot(item.kind) == "gear"),"genre tab filters all rarity variants")
 		var first_page = game.inventory_panel.rows.duplicate()
 		await click(game.inventory_panel.next)
 		check(game.inventory_panel.page == 1 and game.inventory_panel.rows != first_page,"large inventory advances to distinct pages")
 		await click(game.inventory_panel.tabs[2])
-		check(game.inventory_panel.page == 0 and game.inventory_panel.rows.all(func(item): return game.Inventory.Catalog.DEFINITIONS[item.kind].genre == "protection"),"changing genre resets pagination")
+		check(game.inventory_panel.page == 0 and game.inventory_panel.rows.all(func(item): return game.Inventory.Catalog.part_slot(item.kind) == "engine"),"changing genre resets pagination")
 		await capture("rarities-"+str(dimensions.x))
 		await click(game.inventory_panel.sort_button)
 		var descending = true
@@ -139,8 +181,8 @@ func run():
 		var before_bulk = game.expedition.gear_items.duplicate(true)
 		var bulk_stock = game.factory.reserves.duplicate()
 		await click(game.inventory_panel.bulk_button)
-		check(game.inventory_panel.bulk_quote.count == 61 and game.inventory_panel.bulk_quote.scrap == 467 and game.inventory_panel.bulk_quote.coal == 234,"bulk preview quotes all 61 stowed normal protection items")
-		check(game.inventory_panel.rows.size() == 6 and game.inventory_panel.rows.all(func(item): return item.uid in game.inventory_panel.bulk_uids) and game.inventory_panel.salvage_buttons.all(func(button): return button.disabled or not button.visible),"bulk preview shows only reviewed items and disables individual destructive actions")
+		check(game.inventory_panel.bulk_quote.count == 3 and game.inventory_panel.bulk_quote.scrap == 24 and game.inventory_panel.bulk_quote.coal == 12,"bulk preview quotes all 3 stowed normal engine parts")
+		check(game.inventory_panel.rows.size() == 3 and game.inventory_panel.rows.all(func(item): return item.uid in game.inventory_panel.bulk_uids) and game.inventory_panel.salvage_buttons.all(func(button): return button.disabled or not button.visible),"bulk preview shows only reviewed items and disables individual destructive actions")
 		await capture("bulk-preview-"+str(dimensions.x))
 		await click(game.inventory_panel.cancel_button)
 		check(game.expedition.gear_items == before_bulk and game.factory.reserves == bulk_stock and game.inventory_panel.bulk_quote.is_empty(),"bulk preview cancellation changes no items or materials")
@@ -149,9 +191,9 @@ func run():
 		game.receive_item({"kind":"armor","rarity":"normal"})
 		var arrived = game.expedition.gear_items.back().uid
 		game._process(0)
-		check(game.inventory_panel.bulk_uids == reviewed and game.inventory_panel.bulk_quote.count == 61,"new loot does not enter an already reviewed bulk selection")
+		check(game.inventory_panel.bulk_uids == reviewed and game.inventory_panel.bulk_quote.count == 3,"new loot does not enter an already reviewed bulk selection")
 		await click(game.inventory_panel.confirm_button)
-		check(reviewed.all(func(id): return game.Inventory.find_item(game.expedition,id).is_empty()) and not game.Inventory.find_item(game.expedition,arrived).is_empty() and game.factory.reserves.scrap == bulk_stock.scrap+467 and game.factory.reserves.coal == bulk_stock.coal+234,"confirmed bulk action grants the previewed materials and keeps later arrivals")
+		check(reviewed.all(func(id): return game.Inventory.find_item(game.expedition,id).is_empty()) and not game.Inventory.find_item(game.expedition,arrived).is_empty() and game.factory.reserves.scrap == bulk_stock.scrap+24 and game.factory.reserves.coal == bulk_stock.coal+12,"confirmed bulk action grants the previewed materials and keeps later arrivals")
 		await click(game.inventory_panel.tabs[0])
 		await click(game.inventory_panel.bulk_button)
 		var preview_first = game.inventory_panel.rows.duplicate()
@@ -196,7 +238,7 @@ func run():
 	game.expedition.current.shop_purchased = [false,false,false]
 	game.refresh_view()
 	await click(game.shop_panel.inventory_button)
-	check(game.inventory_panel.visible and game.inventory_panel.get_parent().layer > game.shop_panel.get_parent().layer,"shop opens a usable inventory above the modal")
+	check(game.inventory_panel.visible and game.inventory_panel.get_canvas_layer_node().layer > game.shop_panel.get_canvas_layer_node().layer,"shop opens a usable inventory above the modal")
 	var before_shop = game.factory.reserves.scrap
 	await click(game.inventory_panel.salvage_buttons[2])
 	check(game.factory.reserves.scrap > before_shop,"shop inventory can dismantle equipment for purchase funds")

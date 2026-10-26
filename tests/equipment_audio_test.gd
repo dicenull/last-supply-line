@@ -24,13 +24,17 @@ func run():
 	var before = sound.played.get("pickup",0)
 	var enemy = game.battlefield.enemies[0]
 	game.battlefield.kill_enemy(enemy,game.factory,enemy.node.position)
+	game.battlefield.drive_poses = [{"position":enemy.node.position,"yaw":0.0}]
+	game.battlefield.update_ground_items(game.factory)
 	game._process(0)
-	check(sound.played.get("pickup",0) == before+1,"enemy equipment drop produces one collection cue")
+	check(sound.played.get("pickup",0) == before+1,"enemy material drop produces one collection cue")
 	sound.stop_all()
 	before = sound.played.get("pickup",0)
 	var item_count = game.expedition.gear_items.size()
 	game.battlefield.sector_config.encounter = "rich"
 	game.battlefield.player.position = game.battlefield.resource_sites[0].node.position
+	game._process(0)
+	check(game.expedition.gear_items.size() == item_count,"supply opening leaves equipment on the ground")
 	game._process(0)
 	check(game.expedition.gear_items.size() == item_count+6 and sound.played.get("pickup",0) == before+1,"six-item rich site uses one collection voice")
 	game._process(0)

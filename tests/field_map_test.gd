@@ -4,7 +4,7 @@ const Course = preload("res://scripts/field_course.gd")
 class Battle extends Node3D:
 	var field_course
 	var player = Node3D.new()
-	var arrived_destination = -1
+	var progress = preload("res://scripts/battle_progress.gd").new()
 	func _init(seed_value: int):
 		field_course = Course.new({"seed":seed_value,"length":140,"destination_count":2})
 		add_child(player)
@@ -34,7 +34,7 @@ func run():
 		root.add_child(battle)
 		battle.player.position = Vector3(index*2,0,-index)
 		battle.player.rotation.y = index*0.2
-		battle.arrived_destination = index%2
+		battle.progress.arrived_destination = index%2
 		state.battle = battle
 		map._process(0)
 		var position = battle.player.position

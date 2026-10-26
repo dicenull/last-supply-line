@@ -14,21 +14,21 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADLESS = (
-    'factory', 'run', 'checkpoint', 'supply_recovery', 'soak', 'expansion',
-    'enemy_roles', 'balance', 'tank_steering', 'local_damage', 'armor_block',
-    'ballistics', 'feedback', 'arsenal_feedback', 'vehicle_collision',
+    'factory', 'run', 'battle_state', 'checkpoint', 'supply_recovery', 'soak', 'expansion',
+    'enemy_roles', 'balance', 'tank_steering', 'touch_controls', 'local_damage', 'armor_block',
+    'ballistics', 'feedback', 'arsenal_feedback', 'vehicle_collision', 'collision_slide',
     'course_goal', 'supply_point', 'resource_storage', 'course_obstacles',
-    'field_course', 'ui_architecture', 'campaign_variety', 'equipment_catalog',
-    'inventory_model', 'factory_layout', 'equipment_geometry', 'equipment_save',
+    'field_course', 'ui_architecture', 'japanese_font', 'campaign_variety', 'equipment_catalog',
+    'inventory_model', 'ground_items', 'empty_loadout', 'vehicle_parts', 'destination_defenses', 'destination_spacing', 'factory_layout', 'equipment_geometry', 'weapon_arc', 'equipment_save',
     'equipment_campaign', 'equipment_inventory', 'equipment_feed',
     'equipment_feedback', 'equipment_bulk', 'equipment_pilot', 'equipment_design', 'equipment_progression', 'equipment_runtime',
 )
 VISUAL = (
-    'menu_pages', 'field_landscape', 'field_surface', 'field_services',
+    'start_screen', 'responsive_menu', 'responsive_footer', 'menu_pages', 'field_landscape', 'field_surface', 'field_services',
     'pipe_connections', 'placement_preview', 'tank_ui', 'battle', 'run_ui',
     'item_rewards', 'research', 'auxiliary_ports', 'menu', 'history', 'blueprint',
     'variety', 'logistics', 'audio', 'window', 'content_ui', 'phase_movement',
-    'equipment_ui', 'footer_tools', 'equipment_audio', 'field_map',
+    'equipment_ui', 'equipment_rotation', 'loadout_ui', 'item_models', 'footer_tools', 'equipment_audio', 'field_map',
 )
 # These need their own invocation or are aliases; never silently count them twice.
 SPECIAL = {'crafting', 'exit_save', 'overnight_soak', 'pack_smoke'}
@@ -39,7 +39,7 @@ def main():
     parser.add_argument('--godot', default=os.environ.get('GODOT') or shutil.which('godot') or '/Applications/Godot.app/Contents/MacOS/Godot')
     parser.add_argument('--suite', action='append', choices=HEADLESS + VISUAL, help='Select one suite; repeat for related regressions')
     parser.add_argument('--headless-only', action='store_true')
-    parser.add_argument('--jobs', type=int, choices=range(1, 5), default=2, help='Parallel headless processes; visual tests remain serial')
+    parser.add_argument('--jobs', type=int, choices=range(1, 5), default=4, help='Parallel headless processes; visual tests remain serial')
     parser.add_argument('--timeout', type=float, default=180, help='Seconds per suite')
     parser.add_argument('--output', type=Path, default=ROOT / 'build/test-results')
     parser.add_argument('--list', action='store_true')

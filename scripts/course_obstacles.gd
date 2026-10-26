@@ -1,5 +1,6 @@
 extends Node3D
 ## Deterministic staggered roadblocks. Geometry and collision share one plan.
+const Defenses = preload("res://scripts/destination_defenses.gd")
 const HULL_HALF = Vector2(8.8,5.6)
 const MINE_RADIUS = 0.85
 var barriers: Array = []
@@ -22,6 +23,7 @@ func build(world, route: Dictionary):
 	world.material("mine_accent","934b42")
 	if route.get("field_version",0) == 1:
 		build_field(world)
+		if route.get("defenses_version",0) == 1: build_destination_defenses(world)
 		for plan in world.field_course.landmarks:
 			barriers.append(Rect2(Vector2(plan.position.x,plan.position.z)-Vector2.ONE*plan.radius,Vector2.ONE*plan.radius*2))
 		return
@@ -100,6 +102,101 @@ func clear_pose(at: Vector3, yaw: float) -> bool:
 		if overlaps(at,yaw,rect): return false
 	return true
 
+func sweep_hull(at: Vector3, yaw: float, movement: Vector3) -> Dictionary:
+	# Sweep the complete oriented footprint, using the same SAT axes as overlaps.
+	var forward = Vector2(cos(yaw),-sin(yaw))
+	var side = Vector2(sin(yaw),cos(yaw))
+	var step = Vector2(movement.x,movement.z)
+	var first: Dictionary = {}
+	for rect in barriers:
+		var offset: Vector2 = Vector2(at.x,at.z)-rect.get_center()
+		var half: Vector2 = rect.size/2
+		var enter = -INF
+		var leave = INF
+		var normal = Vector2.ZERO
+		var missed = false
+		for axis in [Vector2.RIGHT,Vector2.DOWN,forward,side]:
+			var radius: float = absf(axis.dot(forward))*HULL_HALF.x+absf(axis.dot(side))*HULL_HALF.y+absf(axis.x)*half.x+absf(axis.y)*half.y
+			var distance: float = offset.dot(axis)
+			var speed: float = step.dot(axis)
+			if absf(speed) < 0.0000001:
+				if absf(distance) >= radius: missed = true; break
+				continue
+			var near_time = (-radius-distance)/speed
+			var far_time = (radius-distance)/speed
+			if near_time > far_time:
+				var swap = near_time
+				near_time = far_time
+				far_time = swap
+			if near_time > enter:
+				enter = near_time
+				normal = -axis*signf(speed)
+			leave = minf(leave,far_time)
+		if missed or enter > leave or leave <= 0 or enter < -0.000001 or enter > 1: continue
+		if first.is_empty() or enter < first.time:
+			first = {"time":maxf(0,enter),"normal":Vector3(normal.x,0,normal.y),"rect":rect}
+	return first
+
+static func contact_point(at: Vector3, yaw: float, rect: Rect2) -> Vector3:
+	# Closest hull/obstacle features also cover a box corner hitting a hull side.
+	var corners: Array[Vector2] = []
+	var basis = Basis(Vector3.UP,yaw)
+	for corner in [Vector3(-HULL_HALF.x,0,-HULL_HALF.y),Vector3(HULL_HALF.x,0,-HULL_HALF.y),Vector3(HULL_HALF.x,0,HULL_HALF.y),Vector3(-HULL_HALF.x,0,HULL_HALF.y)]:
+		var point: Vector3 = at+basis*corner
+		corners.append(Vector2(point.x,point.z))
+	var nearest = Vector2.ZERO
+	var best = INF
+	var matches = 0
+	for point in corners:
+		var other = point.clamp(rect.position,rect.end)
+		var distance = point.distance_squared_to(other)
+		if distance < best-0.000001:
+			best = distance
+			nearest = (point+other)/2
+			matches = 1
+		elif absf(distance-best) < 0.000001:
+			nearest += (point+other)/2
+			matches += 1
+	for point in [rect.position,Vector2(rect.end.x,rect.position.y),rect.end,Vector2(rect.position.x,rect.end.y)]:
+		for i in range(4):
+			var other = Geometry2D.get_closest_point_to_segment(point,corners[i],corners[(i+1)%4])
+			var distance: float = point.distance_squared_to(other)
+			if distance < best-0.000001:
+				best = distance
+				nearest = (point+other)/2
+				matches = 1
+			elif absf(distance-best) < 0.000001:
+				nearest += (point+other)/2
+				matches += 1
+	nearest /= maxi(1,matches)
+	# Upper hull edge keeps the sparks visible above tracks and low barricades.
+	return Vector3(nearest.x,2.65,nearest.y)
+
+func slide_hull(at: Vector3, yaw: float, movement: Vector3) -> Dictionary:
+	var remaining = movement
+	var contacts: Array = []
+	var distance = 0.0
+	var positions: Array = []
+	for attempt in range(3):
+		if remaining.length_squared() < 0.00000001: break
+		var hit = sweep_hull(at,yaw,remaining)
+		if hit.is_empty():
+			if clear_pose(at+remaining,yaw):
+				at += remaining
+				distance += remaining.length()
+				positions.append(at)
+			break
+		# A small skin prevents round-off from turning a resting contact into overlap.
+		var fraction = maxf(0,hit.time-0.001/remaining.length())
+		if remaining.length()*fraction < 0.00001: fraction = 0
+		var advance = remaining*fraction
+		at += advance
+		distance += advance.length()
+		positions.append(at)
+		contacts.append({"position":contact_point(at,yaw,hit.rect),"normal":hit.normal})
+		remaining = (remaining*(1-fraction)).slide(hit.normal)
+	return {"position":at,"distance":distance,"positions":positions,"contacts":contacts}
+
 func circle_clear(at: Vector3, radius: float) -> bool:
 	var point = Vector2(at.x,at.z)
 	for rect in barriers:
@@ -165,3 +262,31 @@ func build_field(world):
 		var half = 4.3*row.scale
 		barriers.append(Rect2(Vector2(at.x,at.z)-Vector2.ONE*half,Vector2.ONE*half*2))
 		for offset in [Vector3(-5,0,0),Vector3(5,0,0),Vector3(0,0,5)]: add_mine(world,at+offset)
+
+static func mine_count(route: Dictionary) -> int:
+	var count = layout(route).size()*3
+	if route.get("defenses_version",0) == 1:
+		count += int(route.destination_count)*Defenses.mines(Vector3.ZERO).size()
+	return count
+
+func build_destination_defenses(world):
+	for site in world.field_course.destinations:
+		var perimeter = Node3D.new()
+		perimeter.name = "DestinationPerimeter"
+		add_child(perimeter)
+		for rect in Defenses.fences(site.position):
+			barriers.append(rect)
+			var center: Vector2 = rect.get_center()
+			var along_x = rect.size.x > rect.size.y
+			var length: float = maxf(rect.size.x,rect.size.y)
+			var direction = Vector3.RIGHT if along_x else Vector3.BACK
+			var start = Vector3(center.x,0,center.y)-direction*length/2
+			var finish = start+direction*length
+			for y in [0.8,2.5]:
+				world.box(perimeter,Vector3(center.x,y,center.y),Vector3(rect.size.x,0.24,rect.size.y),"pipe_joint")
+			for i in range(ceili(length/2)+1):
+				var at = start.lerp(finish,float(i)/ceili(length/2))
+				world.box(perimeter,at+Vector3(0,1.5,0),Vector3(0.35,3,0.35),"machine_iron")
+				world.box(perimeter,at+Vector3(0,0.3,0),Vector3(1,0.6,1),"stone")
+			world.beam(perimeter,start+Vector3(0,0.8,0),finish+Vector3(0,2.5,0),0.09,"machine_hot",6)
+		for at in Defenses.mines(site.position): add_mine(world,at)

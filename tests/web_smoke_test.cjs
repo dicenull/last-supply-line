@@ -35,11 +35,11 @@ async function savedBytes(page) {
     });
   });
 }
-async function readSave(page, label) {
+async function readSave(page, label, previousBytes = null) {
   let bytes;
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 50; i++) {
     bytes = await savedBytes(page);
-    if (bytes?.length) break;
+    if (bytes?.length && (!previousBytes || !Buffer.from(bytes).equals(Buffer.from(previousBytes)))) break;
     await page.waitForTimeout(200);
   }
   check(bytes?.length > 36, label + ': persisted IndexedDB save');
@@ -56,9 +56,15 @@ async function openGame(page) {
   await page.waitForFunction(() => !document.querySelector('#loading'), {}, {timeout:120000});
   await page.waitForTimeout(1800);
 }
+async function press(page, key) {
+  await page.keyboard.press(key);
+  // The engine consumes browser events on its render loop. Give each menu
+  // transition a frame before sending a different action, including in parallel runs.
+  await page.waitForTimeout(200);
+}
 (async () => {
   fs.mkdirSync(out, {recursive:true});
-  const browser = await chromium.launch({headless:false});
+  const browser = await chromium.launch({headless:false,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
   try {
     const context = await browser.newContext({viewport:{width:1440,height:940}});
     // Observe the actual output signal without changing or unmuting the game.
@@ -97,10 +103,10 @@ async function openGame(page) {
     check(wasm.headers()['content-type'] === 'application/wasm', 'WASM MIME type');
     check((await wasm.body()).subarray(0,4).equals(Buffer.from([0,97,115,109])), 'WASM decodes once');
     check((await page.request.get(base + '/missing-asset.wasm')).status() === 404, 'missing asset returns 404');
-    await page.mouse.click(650,382); // 準備へ
+    await page.mouse.click(200,431); // 専用タイトルから準備へ
     await page.waitForTimeout(400);
     await page.screenshot({path:path.join(out,'construction.png')});
-    await page.keyboard.press('i');
+    await press(page, 'i');
     await page.waitForTimeout(250);
     await page.mouse.move(1147,244);
     await page.mouse.down();
@@ -109,12 +115,12 @@ async function openGame(page) {
     await page.waitForTimeout(200);
     await page.screenshot({path:path.join(out,'equipment-drag.png')});
     await page.mouse.up();
-    await page.keyboard.press('i');
+    await press(page, 'i');
     await page.waitForTimeout(250);
     await page.mouse.click(1362,408); // Dismantle the stowed uncommon economizer.
     await page.screenshot({path:path.join(out,'equipment-inventory.png')});
-    await page.keyboard.press('i');
-    await page.keyboard.press('Escape');
+    await press(page, 'i');
+    await press(page, 'Escape');
     await page.mouse.click(650,308); // ランを保存
     await page.waitForTimeout(1500);
     const prepared = await readSave(page, 'prepared');
@@ -124,16 +130,16 @@ async function openGame(page) {
       JSON.stringify(prepared.state.gear_items[0].position) === '[0,0]', 'browser drag installs equipment on its reserved footprint');
     check(prepared.state.reserves.scrap === 57 && prepared.state.reserves.coal === 35,
       'browser dismantling turns stowed equipment into construction materials');
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('Space');
+    await press(page, 'Escape');
+    await press(page, 'Space');
     await page.waitForTimeout(16000);
-    await page.keyboard.press('Escape');
+    await press(page, 'Escape');
     await page.mouse.click(650,308);
     await page.waitForTimeout(1500);
-    const stationary = await readSave(page, 'stationary');
+    const stationary = await readSave(page, 'stationary',prepared.bytes);
     check(stationary.state.started && stationary.state.phase === 'travel', 'Space starts combat');
     check(stationary.state.manufactured > 0 && stationary.state.fuel > 0, 'real production supplies combat');
-    await page.keyboard.press('Escape');
+    await press(page, 'Escape');
     await page.keyboard.down('w');
     await page.waitForTimeout(3500);
     const audioPeak = await page.evaluate(async () => {
@@ -151,17 +157,17 @@ async function openGame(page) {
     check(audioPeak > 0, 'audio produces a nonzero signal while driving');
     await page.keyboard.up('w');
     await page.screenshot({path:path.join(out,'combat.png')});
-    await page.keyboard.press('Escape');
+    await press(page, 'Escape');
     await page.mouse.click(650,308);
     await page.waitForTimeout(1500);
     const moved = await readSave(page, 'moved');
     check(Math.hypot(...moved.state.player.map((v,i)=>v-stationary.state.player[i])) > 0.2, 'W moves the tank');
     await openGame(page); // True browser reload, reconstructing IndexedDB user://.
     check(Buffer.from(await savedBytes(page)).equals(Buffer.from(moved.bytes)), 'browser reload retains exact save');
-    await page.mouse.click(650,438); // 続きから
+    await page.mouse.click(200,501); // 続きから
     await page.waitForTimeout(1800);
     await page.screenshot({path:path.join(out,'restored.png')});
-    await page.keyboard.press('Escape');
+    await press(page, 'Escape');
     await page.mouse.click(650,308);
     await page.waitForTimeout(1500);
     const restored = await readSave(page, 'restored');
@@ -171,9 +177,9 @@ async function openGame(page) {
       'browser reload retains equipment identities, rarities and installed positions');
     await page.mouse.click(650,700); // 保存してタイトルへ
     await page.waitForTimeout(2500);
-    await page.mouse.click(650,438); // 続きから still works after scene reload.
+    await page.mouse.click(200,501); // 続きから still works after scene reload.
     await page.waitForTimeout(1500);
-    await page.keyboard.press('Escape');
+    await press(page, 'Escape');
     await page.mouse.click(650,308);
     await page.waitForTimeout(1500);
     const returned = await readSave(page, 'returned');
@@ -192,30 +198,32 @@ async function openGame(page) {
     });
     bulkPage.on('pageerror', e => errors.push(e.message));
     await openGame(bulkPage);
-    await bulkPage.mouse.click(650,382);
-    await bulkPage.keyboard.press('i');
+    await bulkPage.mouse.click(200,431);
+    // The separate title creates gameplay on the next engine frame.
+    await bulkPage.waitForTimeout(600);
+    await press(bulkPage, 'i');
     await bulkPage.waitForTimeout(250);
     await bulkPage.mouse.click(1272,128); // Quality ordering.
     await bulkPage.mouse.click(1200,780); // Review the two normal items.
     await bulkPage.waitForTimeout(250);
     await bulkPage.screenshot({path:path.join(out,'bulk-review.png')});
     await bulkPage.mouse.click(1072,780); // Cancel before any mutation.
-    await bulkPage.keyboard.press('i');
-    await bulkPage.keyboard.press('Escape');
+    await press(bulkPage, 'i');
+    await press(bulkPage, 'Escape');
     await bulkPage.mouse.click(650,308);
     await bulkPage.waitForTimeout(1500);
     const cancelled = await readSave(bulkPage, 'bulk-cancelled');
     check(cancelled.state.gear_items.length === 3 && cancelled.state.reserves.scrap === 48 &&
       cancelled.state.reserves.coal === 32, 'browser bulk cancellation preserves all items and materials');
-    await bulkPage.keyboard.press('Escape');
-    await bulkPage.keyboard.press('i');
+    await press(bulkPage, 'Escape');
+    await press(bulkPage, 'i');
     await bulkPage.waitForTimeout(250);
     await bulkPage.mouse.click(1200,780);
     await bulkPage.waitForTimeout(250);
     await bulkPage.mouse.click(1352,780); // Confirm the reviewed normal items.
     await bulkPage.screenshot({path:path.join(out,'bulk-confirmed.png')});
-    await bulkPage.keyboard.press('i');
-    await bulkPage.keyboard.press('Escape');
+    await press(bulkPage, 'i');
+    await press(bulkPage, 'Escape');
     await bulkPage.mouse.click(650,308);
     await bulkPage.waitForTimeout(1500);
     const salvaged = await readSave(bulkPage, 'bulk-salvaged');
@@ -223,9 +231,9 @@ async function openGame(page) {
       salvaged.state.gear_items[0].rarity === 'uncommon' && salvaged.state.reserves.scrap === 57 &&
       salvaged.state.reserves.coal === 37, 'browser bulk confirmation preserves uncommon equipment and grants exact materials');
     await openGame(bulkPage);
-    await bulkPage.mouse.click(650,438);
+    await bulkPage.mouse.click(200,501);
     await bulkPage.waitForTimeout(1500);
-    await bulkPage.keyboard.press('Escape');
+    await press(bulkPage, 'Escape');
     await bulkPage.mouse.click(650,308);
     await bulkPage.waitForTimeout(1500);
     const bulkRestored = await readSave(bulkPage, 'bulk-restored');

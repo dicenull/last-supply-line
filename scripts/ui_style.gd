@@ -14,6 +14,14 @@ const DANGER = Color("f29c84")
 var font: Font = ThemeDB.fallback_font
 var pixel_icons = preload("res://scripts/pixel_icons.gd").new()
 
+static func create_font() -> Font:
+	if OS.has_feature("web"):
+		return ThemeDB.get_project_theme().default_font
+	var system_font = SystemFont.new()
+	system_font.font_names = PackedStringArray(["Helvetica Neue","Hiragino Sans","sans-serif"])
+	system_font.font_weight = 600
+	return system_font
+
 static func style(color: Color, border: Color = Color.TRANSPARENT) -> StyleBoxFlat:
 	var s = StyleBoxFlat.new()
 	s.bg_color = color

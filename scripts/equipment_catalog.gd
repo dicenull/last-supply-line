@@ -1,15 +1,27 @@
 extends RefCounted
 ## Equipment definitions, rarity and seeded enemy loot. No live game state.
 const Content = preload("res://scripts/content.gd")
+const SECONDARY_HALF_ARC = PI/6.0
 const RARITIES = {
 	"normal":{"name":"ノーマル","color":"b0b7a4","weight":65,"power":1.0,"salvage":1.0},
 	"uncommon":{"name":"アンコモン","color":"87bc80","weight":25,"power":1.1,"salvage":1.5},
 	"rare":{"name":"レア","color":"7dadd2","weight":9,"power":1.25,"salvage":2.5},
 	"legendary":{"name":"レジェンダリー","color":"e4b35c","weight":1,"power":1.5,"salvage":4.0}
 }
-const GENRES = {"secondary":"副砲","protection":"防御装備","engine":"動力装備","support":"支援装備"}
+const GENRES = {"secondary":"副砲","protection":"防御装備","engine":"動力装備","support":"支援装備","vehicle":"車体パーツ"}
+const PART_SLOTS = {"gear":"ギア","engine":"エンジン","tracks":"履帯","cannon":"主砲"}
 const Data = preload("res://scripts/equipment_data.gd")
 const DEFINITIONS = Data.DEFINITIONS
+
+static func footprint(kind: String, direction: int = 0) -> Vector2i:
+	var size: Vector2i = DEFINITIONS[kind].size
+	return Vector2i(size.y,size.x) if posmod(direction,2) == 1 else size
+
+static func part_slot(kind: String) -> String:
+	return Data.ITEMS.get(kind,{}).get("slot","")
+
+static func part_position(kind: String) -> Vector2i:
+	return Vector2i(-2,PART_SLOTS.keys().find(part_slot(kind)))
 const DROP_TABLES = {
 	"frontline":[["left_gun",16],["right_gun",16],["rapid_gun",10],["rear_gun",8],["armor",16],["skirts",12],["supercharger",10],["servo",12]],
 	"artillery":[["long_gun",18],["mortar_gun",18],["scatter_gun",12],["arc_gun",8],["rangefinder",16],["blast_fuse",14],["drum_loader",14]],
@@ -53,7 +65,11 @@ static func roll(seed_value: int, source: int, role: int = 0, boss: bool = false
 			rarity = RARITIES.keys()[i]
 			break
 	# Default preserves old seeded rolls. Modern callers supply the sector cap.
-	if max_level > 0: kind = choose_model(rng,kind,clampi(max_level,1,10))
+	if max_level > 0:
+		if rng.randf() < 0.25:
+			var parts = Data.ITEMS.keys().filter(func(id): return not part_slot(id).is_empty())
+			kind = parts[rng.randi_range(0,parts.size()-1)]
+		else: kind = choose_model(rng,kind,clampi(max_level,1,10))
 	return {"kind":kind,"rarity":rarity}
 
 static func salvage(item: Dictionary) -> Dictionary:
@@ -89,20 +105,24 @@ static func description(item: Dictionary) -> String:
 	var power: float = RARITIES[item.rarity].power
 	if kind in Content.ALL_GUNS:
 		var spec: Dictionary = Content.EQUIPMENT[kind]
-		var lines = ["Lv.%d · %.2f秒間隔 / 射程%.1fm / 砲弾%d発" % [level(kind),spec.interval/power,spec.range,spec.ammo],"旋回 %.2frad/秒" % spec.turn]
+		var lines = ["Lv.%d · %.2f秒間隔 / 射程%.1fm / 砲弾%d発" % [level(kind),spec.interval/power,spec.range,spec.ammo],"前方 ±30° / 旋回 %.2frad/秒" % spec.turn]
 		if spec.get("splash",0) > 0: lines.append("爆発半径 %.2fm" % spec.splash)
 		if spec.get("pellets",1) > 1: lines.append("同時標的 %d両" % spec.pellets)
 		if spec.get("chain",0) > 0: lines.append("追加連鎖 %d回" % spec.chain)
 		return " / ".join(lines)
-	var labels = {"damage_reduction":"被ダメージ","speed_bonus":"走行速度","fuel_bonus":"燃料消費","turn_bonus":"砲塔旋回速度","reload_bonus":"射撃間隔"}
+	var labels = {"damage_reduction":"被ダメージ","speed_bonus":"走行速度","fuel_bonus":"燃料消費","turn_bonus":"砲塔旋回速度","reload_bonus":"射撃間隔","drive_turn_bonus":"車体旋回速度","main_reload_bonus":"主砲の射撃間隔"}
 	var lines = ["装備 Lv.%d" % level(kind)]
+	if not part_slot(kind).is_empty(): lines = [PART_SLOTS[part_slot(kind)]+"交換パーツ"]
 	var values = effect_values(item)
 	for key in values:
 		var value: float = values[key]
 		if key in labels:
-			if key in ["damage_reduction","reload_bonus"]: value = -value
+			if key in ["damage_reduction","reload_bonus","main_reload_bonus"]: value = -value
 			lines.append("%s %s%.1f%%" % [labels[key],"+" if value >= 0 else "−",absf(value)*100])
 		elif key == "range_bonus": lines.append("全砲の射程 +%.2fm" % value)
+		elif key == "main_range_bonus": lines.append("主砲の射程 %+.2fm" % value)
+		elif key == "main_splash_bonus": lines.append("主砲の爆発範囲 +%.2fm" % value)
+		elif key == "offroad_bonus": lines.append("悪路の速度補正 +%.0f%%" % (value*100))
 		elif key == "splash_bonus": lines.append("爆発範囲 +%.2fm" % value)
-		elif key == "salvage_rate": lines.append("敵100体あたり装備 %.1f個を追加回収" % (value*100))
+		elif key == "salvage_rate": lines.append("敵100体あたり素材 %.1f回を追加回収（廃材2・石炭1／回）" % (value*100))
 	return " / ".join(lines)

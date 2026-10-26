@@ -1,0 +1,282 @@
+[
+  {
+    "id": "vehicle_gear",
+    "name": "標準変速機",
+    "slot": "gear",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_gear",
+    "level": 1,
+    "profile": "balanced",
+    "visual": 0,
+    "icon": "rotate",
+    "scrap": 24,
+    "coal": 6,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "drive_turn_bonus": 0.08
+    }
+  },
+  {
+    "id": "vehicle_gear_speed",
+    "name": "高速ギア",
+    "slot": "gear",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_gear",
+    "level": 1,
+    "profile": "power",
+    "visual": 1,
+    "icon": "rotate",
+    "scrap": 32,
+    "coal": 8,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "speed_bonus": 0.1,
+      "drive_turn_bonus": 0.12,
+      "fuel_bonus": 0.08
+    }
+  },
+  {
+    "id": "vehicle_gear_torque",
+    "name": "高トルクギア",
+    "slot": "gear",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_gear",
+    "level": 1,
+    "profile": "efficient",
+    "visual": 2,
+    "icon": "rotate",
+    "scrap": 40,
+    "coal": 10,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "drive_turn_bonus": 0.35,
+      "offroad_bonus": 0.12,
+      "speed_bonus": -0.03
+    }
+  },
+  {
+    "id": "vehicle_engine",
+    "name": "直列エンジン",
+    "slot": "engine",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_engine",
+    "level": 1,
+    "profile": "balanced",
+    "visual": 0,
+    "icon": "engine",
+    "scrap": 24,
+    "coal": 6,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "speed_bonus": 0.08
+    }
+  },
+  {
+    "id": "vehicle_engine_power",
+    "name": "大型過給エンジン",
+    "slot": "engine",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_engine",
+    "level": 1,
+    "profile": "power",
+    "visual": 1,
+    "icon": "engine",
+    "scrap": 32,
+    "coal": 8,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "speed_bonus": 0.28,
+      "fuel_bonus": 0.18
+    }
+  },
+  {
+    "id": "vehicle_engine_efficient",
+    "name": "高効率エンジン",
+    "slot": "engine",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_engine",
+    "level": 1,
+    "profile": "economy",
+    "visual": 2,
+    "icon": "engine",
+    "scrap": 40,
+    "coal": 10,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "speed_bonus": 0.04,
+      "fuel_bonus": -0.18
+    }
+  },
+  {
+    "id": "vehicle_tracks",
+    "name": "標準履帯",
+    "slot": "tracks",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_tracks",
+    "level": 1,
+    "profile": "balanced",
+    "visual": 0,
+    "icon": "move",
+    "scrap": 24,
+    "coal": 6,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "damage_reduction": 0.04
+    }
+  },
+  {
+    "id": "vehicle_tracks_wide",
+    "name": "幅広履帯",
+    "slot": "tracks",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_tracks",
+    "level": 1,
+    "profile": "heavy",
+    "visual": 1,
+    "icon": "move",
+    "scrap": 32,
+    "coal": 8,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "offroad_bonus": 0.3,
+      "damage_reduction": 0.08,
+      "speed_bonus": -0.04
+    }
+  },
+  {
+    "id": "vehicle_tracks_light",
+    "name": "軽量履帯",
+    "slot": "tracks",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_tracks",
+    "level": 1,
+    "profile": "mobile",
+    "visual": 2,
+    "icon": "move",
+    "scrap": 40,
+    "coal": 10,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "speed_bonus": 0.12,
+      "drive_turn_bonus": 0.1
+    }
+  },
+  {
+    "id": "vehicle_cannon",
+    "name": "標準主砲",
+    "slot": "cannon",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_cannon",
+    "level": 1,
+    "profile": "balanced",
+    "visual": 0,
+    "icon": "gun",
+    "scrap": 24,
+    "coal": 6,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "main_reload_bonus": 0.08,
+      "main_range_bonus": 2.0
+    },
+    "ballistics": "heavy"
+  },
+  {
+    "id": "vehicle_cannon_long",
+    "name": "長砲身主砲",
+    "slot": "cannon",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_cannon",
+    "level": 1,
+    "profile": "focus",
+    "visual": 1,
+    "icon": "gun",
+    "scrap": 32,
+    "coal": 8,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "main_range_bonus": 12.0,
+      "main_reload_bonus": -0.18
+    },
+    "ballistics": "sniper"
+  },
+  {
+    "id": "vehicle_cannon_howitzer",
+    "name": "大口径榴弾主砲",
+    "slot": "cannon",
+    "genre": "vehicle",
+    "size": [
+      1,
+      1
+    ],
+    "family": "vehicle_cannon",
+    "level": 1,
+    "profile": "heavy",
+    "visual": 2,
+    "icon": "gun",
+    "scrap": 40,
+    "coal": 10,
+    "shop_price": 32,
+    "effect": "車体パーツ交換",
+    "effects": {
+      "main_splash_bonus": 4.0,
+      "main_reload_bonus": -0.22,
+      "main_range_bonus": -4.0
+    },
+    "ballistics": "demolition"
+  }
+]

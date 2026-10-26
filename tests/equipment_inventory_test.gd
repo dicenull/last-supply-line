@@ -40,15 +40,45 @@ func run():
 	var reserves = game.factory.reserves.duplicate()
 	var enemy = game.battlefield.enemies[0]
 	game.battlefield.kill_enemy(enemy,game.factory,enemy.node.position)
-	check(game.expedition.gear_items.size() == inventory_count+1 and game.factory.reserves == reserves,"enemy awards equipment instead of raw resources")
+	check(game.factory.reserves == reserves and game.battlefield.ground_items.size() == 1,"kill leaves materials on the ground without granting them")
+	collect_near(game,enemy.node.position)
+	check(game.expedition.gear_items.size() == inventory_count and game.factory.reserves.scrap == reserves.scrap+2 and game.factory.reserves.coal == reserves.coal,"ordinary enemy awards scrap without equipment")
+	reserves = game.factory.reserves.duplicate()
 	game.battlefield.kill_enemy(enemy,game.factory,enemy.node.position)
-	check(game.expedition.gear_items.size() == inventory_count+1,"same enemy cannot award twice")
+	check(game.expedition.gear_items.size() == inventory_count and game.factory.reserves == reserves,"same enemy cannot award twice")
 	snapshot = game.checkpoint.snapshot(game)
 	check(game.checkpoint.validate(snapshot),"travel checkpoint includes loot and locked loadout: "+game.checkpoint.error)
 	check(game.checkpoint.apply(game,snapshot) and game.factory.loadout_locked,"reload preserves departure lock")
 	check(not game.place_item(game.expedition.gear_items[1].uid,Vector2i(2,0)),"paused checkpoint cannot install equipment")
+	enemy = game.battlefield.enemies[0]
+	game.battlefield.kill_enemy(enemy,game.factory,enemy.node.position)
+	check(game.factory.reserves == reserves and game.expedition.gear_items.size() == inventory_count,"reload preserves materials and prevents duplicate drops")
+	var b = game.battlefield
+	b.sector_config.boss = true
+	var transport = b.enemies[1]
+	transport.role = 9
+	b.kill_enemy(transport,game.factory,transport.node.position)
+	collect_near(game,transport.node.position)
+	check(game.factory.reserves.scrap == reserves.scrap+8 and game.factory.reserves.coal == reserves.coal+4 and game.expedition.gear_items.size() == inventory_count,"ordinary transport in a boss sector drops its scrap and coal")
+	reserves = game.factory.reserves.duplicate()
+	b.combat_modifiers.equipment_effects = {"salvage_rate":1.0/3.0}
+	var third = b.enemies[2]
+	third.role = 0
+	b.kill_enemy(third,game.factory,third.node.position)
+	collect_near(game,third.node.position)
+	check(game.factory.reserves.scrap == reserves.scrap+4 and game.factory.reserves.coal == reserves.coal+1 and game.expedition.gear_items.size() == inventory_count,"crane adds materials on the third kill without equipment")
+	reserves = game.factory.reserves.duplicate()
+	var boss = b.enemies.back()
+	b.kill_enemy(boss,game.factory,boss.node.position)
+	check(game.expedition.gear_items.size() == inventory_count and b.ground_items.size() == 1,"boss equipment remains at its death location")
+	collect_near(game,boss.node.position)
+	check(game.expedition.gear_items.size() == inventory_count+1 and game.expedition.gear_items.back().rarity != "normal" and game.factory.reserves == reserves,"boss keeps its equipment reward")
 	game.queue_free()
 	await process_frame
 	Fixture.clean("equipment_inventory_test")
 	print("RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)
+
+func collect_near(game, at: Vector3):
+	game.battlefield.drive_poses = [{"position":at,"yaw":0.0}]
+	game.battlefield.update_ground_items(game.factory)

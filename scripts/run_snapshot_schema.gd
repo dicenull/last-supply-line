@@ -2,11 +2,15 @@ extends RefCounted
 ## Data-only checkpoint contract. No file IO, scene creation, or live-state mutation.
 const Factory = preload("res://scripts/factory.gd")
 const RunState = preload("res://scripts/run_state.gd")
-const VERSION = 11
+const VERSION = 13
 const FIELDS = ["cells","clock","elapsed","ticks","fuel","fuel_used","ammo","rate","fire_clock","shots","supplied","injected","manufactured","missed","history","moves","completed","undo_stack","reserves","collected","reserve_capacity","work_multiplier","ammo_capacity"]
 const RUN_FIELDS = ["run_seed","sector","phase","hull","cleared","rewards_taken","modifiers","route_options","reward_options","current"]
 const CRAFT_FIELDS = ["recipes","equipment","stage_recipes"]
-const BATTLE_FIELDS = ["hull","kills","elapsed","cooldown","result","distance","speed","trail_clock","shake","recoil","shot_time","visual_shots","target_angle"]
+const BattleScore = preload("res://scripts/battle_score.gd")
+const BattleProgress = preload("res://scripts/battle_progress.gd")
+const BattleMotion = preload("res://scripts/battle_motion.gd")
+const BATTLE_VIEW_FIELDS = ["cooldown","trail_clock","shake","recoil","shot_time","visual_shots","target_angle"]
+const BATTLE_FIELDS = BattleScore.SAVE_FIELDS+BattleProgress.SAVE_FIELDS+BattleMotion.SAVE_FIELDS+BATTLE_VIEW_FIELDS
 const ENEMY_FIELDS = ["hp","max_hp","cooldown","active","role","wave","locked","aim"]
 const ITEMS = ["scrap","steel","shell","coal","fuel"]
 var error = ""
@@ -39,19 +43,26 @@ func valid_route(route) -> bool:
 	if route.get("terrain","road") not in RunState.CONDITIONS or route.get("formation","patrol") not in RunState.FORMATIONS: return false
 	if not route.get("combat_version",1) is int or route.get("combat_version",1) not in [1,2,3]: return false
 	if route.get("combat_version",1) == 3 or route.has("enemies"):
-		if route.get("difficulty","") not in RunState.Content.DIFFICULTIES or not route.get("enemies") is Array or route.enemies.size() < 6 or route.enemies.size() > 36: return false
+		if route.get("difficulty","") not in RunState.Content.DIFFICULTIES or not route.get("enemies") is Array or route.enemies.size() < 6 or route.enemies.size() > (60 if route.get("defenses_version",0) == 1 else 36): return false
 		for role in route.enemies:
 			if not role is int or role < 0 or role >= RunState.Content.ENEMIES.size(): return false
 		if route.get("wave_size",0) not in [2,3,4,5] or not numeric(route.get("wave_delay"),10,40) or not numeric(route.get("warning_scale"),0.5,2): return false
 	if not route.get("obstacles_version",0) is int or route.get("obstacles_version",0) not in [0,1]: return false
 	if not route.get("field_version",0) is int or route.get("field_version",0) not in [0,1]: return false
 	if not route.get("landscape_version",0) is int or route.get("landscape_version",0) not in [0,1]: return false
+	if not route.get("destination_layout_version",0) is int or route.get("destination_layout_version",0) not in [0,1]: return false
+	if route.get("destination_layout_version",0) == 1 and route.get("field_version",0) != 1: return false
 	if route.get("field_version",0) == 1:
 		if not route.get("destination_count") is int or route.destination_count not in [2,3]: return false
 		if not route.get("destination_index") is int or not numeric(route.destination_index,-1,route.destination_count-1): return false
-	if not route.get("encounters_version",0) is int or route.get("encounters_version",0) not in [0,1]: return false
-	if route.get("encounters_version",0) == 1:
+	if not route.get("encounters_version",0) is int or route.get("encounters_version",0) not in [0,1,2]: return false
+	if route.get("encounters_version",0) in [1,2]:
 		if route.get("encounter") not in RunState.Services.ENCOUNTERS or route.get("field_version",0) != 1: return false
+	if not route.get("defenses_version",0) is int or route.get("defenses_version",0) not in [0,1]: return false
+	if route.get("defenses_version",0) == 1:
+		if route.get("field_version",0) != 1 or route.get("obstacles_version",0) != 1 or not route.get("patrol_count") is int: return false
+		if not numeric(route.patrol_count,6,36) or not route.get("enemies") is Array: return false
+		if route.enemies.size() != route.patrol_count+route.destination_count*RunState.Defenses.GUARDS_PER_SITE+(1 if route.boss else 0): return false
 	if not route.get("shop_done",false) is bool: return false
 	if route.has("shop_offers") or route.has("shop_purchased"):
 		var offers = route.get("shop_offers")
@@ -70,7 +81,7 @@ func valid_route(route) -> bool:
 
 func validate(data) -> bool:
 	if not data is Dictionary or not safe_value(data) or not data.has_all(["version","factory","run","rng_state","started","battle_mode","view","battle"]): return invalid("validation_1")
-	if data.version not in [1,2,3,4,5,6,7,8,9,10,VERSION] or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
+	if data.version not in [1,2,3,4,5,6,7,8,9,10,11,12,VERSION] or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
 	var f = data.factory
 	var r = data.run
 	if not f is Dictionary or not f.has_all(FIELDS) or not r is Dictionary or not r.has_all(RUN_FIELDS): return invalid("validation_5")
@@ -90,9 +101,14 @@ func validate(data) -> bool:
 	var candidate = Factory.new(layout_version)
 	var mounts = f.get("equipment_mounts",{})
 	if not mounts is Dictionary or mounts.size() > Factory.Gear.DEFINITIONS.size() or (layout_version == 1 and not mounts.is_empty()): return invalid("equipment_mounts")
+	var rotations = f.get("equipment_rotations",{})
+	if not rotations is Dictionary or (data.version >= 12 and not f.has("equipment_rotations")): return invalid("equipment_rotations")
+	for id in rotations:
+		if not mounts.has(id) or not rotations[id] is int or not numeric(rotations[id],0,3): return invalid("equipment_rotation")
 	for id in mounts:
-		if id not in r.get("equipment",[]) or not mounts[id] is Vector2i or not candidate.can_place_equipment(id,mounts[id]): return invalid("equipment_footprint")
+		if id not in r.get("equipment",[]) or not mounts[id] is Vector2i or not candidate.can_place_equipment(id,mounts[id],rotations.get(id,0)): return invalid("equipment_footprint")
 		candidate.equipment_mounts[id] = mounts[id]
+		candidate.equipment_rotations[id] = rotations.get(id,0)
 	var item_mode = r.get("item_mode",false)
 	var items = r.get("gear_items",[])
 	var next_uid = r.get("next_item_uid",1)
@@ -100,14 +116,28 @@ func validate(data) -> bool:
 	if item_mode != (layout_version == 2) or (not item_mode and not items.is_empty()): return invalid("item_layout")
 	var seen_uids = []
 	var installed = {}
+	var empty_slots = r.get("empty_part_slots",[])
+	if not empty_slots is Array or empty_slots.size() > 4 or (data.version >= 13 and not r.has("empty_part_slots")): return invalid("empty_part_slots")
+	var unique_empty = []
+	for slot in empty_slots:
+		if not slot is String or slot not in Factory.Gear.PART_SLOTS or slot in unique_empty: return invalid("empty_part_slots")
+		unique_empty.append(slot)
+	var part_slots: Array = []
 	for item in items:
 		if not Factory.Gear.valid(item) or not item.get("uid") is int or item.uid < 1 or item.uid >= next_uid or item.uid in seen_uids or not item.get("position") is Vector2i: return invalid("item_instance")
 		var rounds = item.get("ammo",0)
+		var facing = item.get("direction",0)
+		if not facing is int or not numeric(facing,0,3): return invalid("item_direction")
 		if not rounds is int or rounds < 0 or rounds > 28 or (rounds > 0 and (item.kind not in Factory.AUXILIARY or item.position != Vector2i(-1,-1))): return invalid("stored_equipment_ammo")
 		seen_uids.append(item.uid)
 		if item.kind not in r.get("recipes",[]): return invalid("item_recipe")
 		if item.position == Vector2i(-1,-1): continue
-		if installed.has(item.kind) or mounts.get(item.kind,Vector2i(-1,-1)) != item.position: return invalid("item_installation")
+		var slot = Factory.Gear.part_slot(item.kind)
+		if not slot.is_empty():
+			if slot in empty_slots or slot in part_slots or item.position != Factory.Gear.part_position(item.kind) or item.kind in r.get("equipment",[]): return invalid("vehicle_part_slot")
+			part_slots.append(slot)
+			continue
+		if installed.has(item.kind) or mounts.get(item.kind,Vector2i(-1,-1)) != item.position or rotations.get(item.kind,0) != facing: return invalid("item_installation")
 		installed[item.kind] = item.position
 	if item_mode and (installed != mounts or mounts.size() != r.get("equipment",[]).size()): return invalid("item_mounts")
 	if not numeric(r.sector,1,5) or not numeric(r.hull,0,100) or not numeric(r.cleared,0,5) or not numeric(r.rewards_taken,0,5) or not r.run_seed is int: return invalid("validation_6")
@@ -122,7 +152,7 @@ func validate(data) -> bool:
 	if r.get("difficulty","normal") not in RunState.Content.DIFFICULTIES: return invalid("difficulty")
 	if r.phase not in ["prepare","travel","craft","reward","route","shop","won","lost","retreated"] or not valid_route(r.current): return invalid("validation_7")
 	if r.phase == "shop":
-		if r.cleared != r.sector or not r.current.has("shop_offers") or r.current.get("shop_done",false) or r.current.get("encounters_version",0) != 1 or r.current.get("destination_index",-1) < 0: return invalid("shop_state")
+		if r.cleared != r.sector or not r.current.has("shop_offers") or r.current.get("shop_done",false) or r.current.get("encounters_version",0) not in [1,2] or r.current.get("destination_index",-1) < 0: return invalid("shop_state")
 		if RunState.FieldCourse.new(r.current).destinations[r.current.destination_index].get("encounter","") != "shop": return invalid("shop_destination")
 	if r.phase == "craft" and r.cleared != r.sector: return invalid("craft_clear")
 	if not r.modifiers is Dictionary or not r.modifiers.has_all(["work","fuel","magazine"]): return invalid("validation_8")
@@ -220,13 +250,15 @@ func validate(data) -> bool:
 		if Factory.W*Factory.H-f.cells.size() < required: return invalid("legacy_mount_space")
 	var v = data.view
 	if not v is Dictionary or not v.has_all(["yaw","pitch","zoom","roof"]) or not numeric(v.yaw,-100000,100000) or not numeric(v.pitch,0.5,1.5) or not numeric(v.zoom,8,50) or not v.roof is bool: return invalid("validation_48")
+	var offset = v.get("camera_offset",Vector3.ZERO)
+	if not offset is Vector3 or not offset.is_finite() or offset.length() > 28.3 or not is_zero_approx(offset.y): return invalid("camera_offset")
 	return validate_battle(data.battle,data.started,r)
 
 func validate_battle(b, started: bool, run: Dictionary) -> bool:
 	if not b is Dictionary: return invalid("validation_52")
 	if b.is_empty(): return not started and run.phase == "prepare"
 	if not b.has_all(BATTLE_FIELDS) or not b.has_all(["player","turret","enemies","sites","projectiles","bolts","trails","impacts"]): return invalid("validation_54")
-	var mine_count = preload("res://scripts/course_obstacles.gd").layout(run.current).size()*3
+	var mine_count = preload("res://scripts/course_obstacles.gd").mine_count(run.current)
 	var mines = b.get("mines",[])
 	if not mines is Array or mines.size() != mine_count: return invalid("mine_count")
 	for spent in mines:
@@ -242,6 +274,16 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 		var local: Vector3 = b.player.origin-course.destinations[selected].position
 		if local.x < 0 or local.x > 16 or absf(local.z) > 8: return invalid("field_arrival")
 	if run.phase in ["craft","shop"] and b.result != 1: return invalid("craft_battle")
+	# Optional for version-11 saves written before ground loot was introduced.
+	var drops = b.get("ground_items",[])
+	if not drops is Array or drops.size() > 256: return invalid("ground_items")
+	for drop in drops:
+		if not drop is Dictionary or not drop.get("position") is Vector3 or not drop.get("item") is Dictionary: return invalid("ground_item")
+		var item: Dictionary = drop.item
+		if item.has("rarity"):
+			if not Factory.Gear.valid(item) or item.size() != 2: return invalid("ground_equipment")
+		elif item.get("kind") not in ["scrap","coal","shell"] or not item.get("amount") is int or not numeric(item.amount,1,10000) or item.size() != 2:
+			return invalid("ground_material")
 	var gun_ids = []
 	for id in RunState.Content.ALL_GUNS:
 		if id in run.get("equipment",[]): gun_ids.append(id)

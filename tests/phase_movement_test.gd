@@ -123,8 +123,9 @@ func run():
 	await key(KEY_D)
 	before = b.player.position
 	var prior_yaw = b.player.rotation.y
+	var prior_pan = game.world.camera_offset
 	game._process(0.1)
-	check(b.player.position == before and b.player.rotation.y != prior_yaw,"pivot remains available while inspecting the locked interior")
+	check(b.player.position == before and b.player.rotation.y == prior_yaw and game.world.camera_offset != prior_pan,"WASD pans the construction camera without pivoting the tank")
 	await tap(KEY_SPACE)
 	before = b.player.position
 	game.paint(Vector2i(13,7),false)

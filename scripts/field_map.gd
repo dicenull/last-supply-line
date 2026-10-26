@@ -24,7 +24,7 @@ func _process(_delta):
 		course = battle.field_course
 		player_position = battle.player.position
 		player_forward = Vector2(battle.player.basis.x.x,battle.player.basis.x.z).normalized()
-		arrived_destination = battle.arrived_destination
+		arrived_destination = battle.progress.arrived_destination
 		queue_redraw()
 	else:
 		course = null

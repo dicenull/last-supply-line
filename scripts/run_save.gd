@@ -9,6 +9,7 @@ const FIELDS = SnapshotSchema.FIELDS
 const RUN_FIELDS = SnapshotSchema.RUN_FIELDS
 const CRAFT_FIELDS = SnapshotSchema.CRAFT_FIELDS
 const BATTLE_FIELDS = SnapshotSchema.BATTLE_FIELDS
+const BATTLE_VIEW_FIELDS = SnapshotSchema.BATTLE_VIEW_FIELDS
 const ENEMY_FIELDS = SnapshotSchema.ENEMY_FIELDS
 var error = ""
 
@@ -25,14 +26,20 @@ func snapshot(game) -> Dictionary:
 	data.factory.wrecks = game.factory.wrecks.duplicate()
 	data.factory.layout_version = game.factory.layout_version
 	data.factory.equipment_mounts = game.factory.equipment_mounts.duplicate()
+	data.factory.equipment_rotations = game.factory.equipment_rotations.duplicate()
 	data.factory.wreck_directions = game.factory.wreck_directions.duplicate()
 	data.run.difficulty = game.expedition.difficulty
 	data.run.item_mode = game.expedition.item_mode
+	data.run.empty_part_slots = game.expedition.empty_part_slots.duplicate()
+	data.view.camera_offset = game.world.camera_offset
 	data.run.gear_items = game.expedition.gear_items.duplicate(true)
 	data.run.next_item_uid = game.expedition.next_item_uid
 	if game.battlefield == null: return data
 	var b = game.battlefield
-	var state = fields(b,BATTLE_FIELDS)
+	var state = fields(b,BATTLE_VIEW_FIELDS)
+	state.merge(b.score.snapshot())
+	state.merge(b.progress.snapshot())
+	state.merge(b.motion.snapshot())
 	state.player = b.player.transform
 	state.turret = b.turret.rotation.y
 	state.auxiliary = []
@@ -47,6 +54,7 @@ func snapshot(game) -> Dictionary:
 		e.mark_position = enemy.mark.position
 		e.mark_visible = enemy.mark.visible
 		state.enemies.append(e)
+	state.ground_items = b.ground_item_snapshot()
 	state.sites = []
 	for site in b.resource_sites: state.sites.append(site.taken)
 	state.mines = []
@@ -138,6 +146,7 @@ func apply(game, data: Dictionary) -> bool:
 	if game.world.feedback != null: game.world.feedback.clear()
 	var restored_factory = Factory.new(data.factory.get("layout_version",1))
 	restored_factory.equipment_mounts = data.factory.get("equipment_mounts",{}).duplicate()
+	restored_factory.equipment_rotations = data.factory.get("equipment_rotations",{}).duplicate()
 	restored_factory.loadout_locked = data.started
 	for key in FIELDS: restored_factory.set(key,data.factory[key].duplicate(true) if data.factory[key] is Array or data.factory[key] is Dictionary else data.factory[key])
 	restored_factory.wrecks = data.factory.get("wrecks",{}).duplicate()
@@ -168,6 +177,7 @@ func apply(game, data: Dictionary) -> bool:
 		if data.version == 1: restored_factory.install_auxiliary(id)
 		else: restored_factory.auxiliary_ids.append(id)
 	restored_run.item_mode = data.run.get("item_mode",false)
+	restored_run.empty_part_slots = data.run.get("empty_part_slots",[]).duplicate()
 	restored_run.gear_items = data.run.get("gear_items",[]).duplicate(true)
 	restored_run.next_item_uid = data.run.get("next_item_uid",1)
 	restored_run.rng.state = data.rng_state
@@ -184,7 +194,10 @@ func apply(game, data: Dictionary) -> bool:
 	game.world.old_shots = restored_factory.shots
 	game.world.pending_shots = 0
 	game.world.set_layout_version(restored_factory.layout_version)
-	game.world.configure_equipment(restored_run.equipment,restored_factory.auxiliary_positions(),restored_factory.equipment_mounts)
+	game.clear_equipment_selection()
+	game.world.configure_equipment(restored_run.equipment,restored_factory.auxiliary_positions(),restored_factory.equipment_mounts,restored_factory.equipment_rotations)
+	game.world.configure_vehicle_parts(preload("res://scripts/equipment_inventory.gd").vehicle_parts(restored_run),restored_run.empty_part_slots)
+	game.world.camera_offset = data.view.get("camera_offset",Vector3.ZERO)
 	for key in ["yaw","pitch","zoom"]: game.world.set(key,data.view[key])
 	if game.world.roof_closed != data.view.roof: game.world.toggle_roof()
 	game.world.update_camera()
@@ -201,11 +214,15 @@ func apply(game, data: Dictionary) -> bool:
 	return true
 
 func apply_battle(b, state: Dictionary):
-	for key in BATTLE_FIELDS: b.set(key,state[key])
+	for key in BATTLE_VIEW_FIELDS: b.set(key,state[key])
+	b.score.restore(state)
+	b.progress.restore(state)
+	b.motion.restore(state)
 	b.player.transform = state.player
-	if b.result == 1:
+	b.restore_ground_items(state.get("ground_items",[]))
+	if b.progress.has_won():
 		for i in range(b.goals.size()):
-			if b.goals[i].contains_position(b.player.position): b.arrived_destination = i
+			if b.goals[i].contains_position(b.player.position): b.progress.arrived_destination = i
 	b.turret.rotation.y = state.turret
 	b.barrel.position.x = b.BARREL_REST-b.recoil
 	b.muzzle.visible = b.shot_time > 0
@@ -213,7 +230,7 @@ func apply_battle(b, state: Dictionary):
 		var gun = b.auxiliary_guns[i]
 		var saved = state.auxiliary[i]
 		for key in ["cooldown","flash","recoil"]: gun[key] = saved[key]
-		gun.pivot.rotation.y = saved.angle
+		gun.pivot.rotation.y = b.clamp_gun_angle(gun,saved.angle)
 		gun.barrel.position.x = 0.6-gun.recoil
 		gun.muzzle.visible = gun.flash > 0
 	for i in range(b.enemies.size()):
@@ -253,5 +270,5 @@ func apply_battle(b, state: Dictionary):
 		b.update_impact(b.impacts.back())
 	b.update_camera()
 	var target = b.nearest_enemy()
-	b.target_marker.visible = target != null and b.result == 0
+	b.target_marker.visible = target != null and not b.progress.is_finished()
 	if target != null: b.target_marker.position = target.node.position+Vector3(0,0.12,0)

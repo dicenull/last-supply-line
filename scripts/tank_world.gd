@@ -1,5 +1,11 @@
 extends Node3D
 ## Native low-poly 3D diorama. Grid coordinates are on the exposed tank deck.
+const EquipmentModels = preload("res://scripts/item_model.gd")
+const MOUNTED_GUN_Y = 0.62
+const EXTERIOR_GUN_HEIGHT = 1.15
+const MAIN_BARREL_HEIGHT = 1.9
+const MAIN_BARREL_SCALE = Vector3(1.3,1.5,1.5)
+var equipment_models = EquipmentModels.new()
 const F = preload("res://scripts/factory.gd")
 const DECK_Y = 2.72
 const TURRET_CENTER = Vector3(2.6,4.08,0)
@@ -26,6 +32,10 @@ var damage_layer: Node3D
 var rendered_damage = ""
 var goods_pool: Array = []
 var machines: Dictionary = {}
+var camera_offset = Vector3.ZERO
+var empty_part_slots: Array = []
+var track_belts: Array[Node3D] = []
+var engine_shell: Array[Node3D] = []
 var yaw = 0.65
 var pitch = 0.92
 var zoom = 17.8
@@ -45,24 +55,154 @@ var installed_equipment: Array = []
 var configured_layout_version = -1
 var upgrade_mount: Node3D
 var mounted_positions: Dictionary = {}
+var mounted_rotations: Dictionary = {}
+var equipment_marks: Node3D
+var equipment_marks_key = ""
 var mounted_models: Dictionary = {}
 var equipment_preview: Node3D
 var equipment_preview_key = ""
 var auxiliary_guns: Array = []
 var feedback: Node3D
+var vehicle_part_visuals: Node3D
+var vehicle_part_signature = ""
+var vehicle_parts: Dictionary = {}
 
-func feedback_effect(kind: String, at: Vector3, strength: float = 1.0):
+func configure_vehicle_parts(parts: Dictionary, empty_slots: Array = []):
+	var signature = str(parts)+str(empty_slots)
+	if signature == vehicle_part_signature: return
+	vehicle_part_signature = signature
+	vehicle_parts = parts.duplicate(true)
+	empty_part_slots = empty_slots.duplicate()
+	barrel.visible = "cannon" not in empty_slots
+	for belt in track_belts: belt.visible = "tracks" not in empty_slots
+	for piece in engine_shell: piece.visible = "engine" not in empty_slots
+	if vehicle_part_visuals != null:
+		vehicle_part_visuals.get_parent().remove_child(vehicle_part_visuals)
+		vehicle_part_visuals.queue_free()
+	vehicle_part_visuals = Node3D.new()
+	vehicle_part_visuals.name = "VehicleParts"
+	turret.get_parent().add_child(vehicle_part_visuals)
+	barrel.scale = MAIN_BARREL_SCALE
+	if not mats.track.has_meta("part_base_color"): mats.track.set_meta("part_base_color",mats.track.albedo_color)
+	mats.track.albedo_color = mats.track.get_meta("part_base_color")
+	if parts.has("cannon"):
+		var variant = int(F.Gear.Data.ITEMS[parts.cannon.kind].visual)
+		barrel.scale = Vector3(1.65,1.35,1.35) if variant == 1 else Vector3(1.1,1.8,1.8) if variant == 2 else MAIN_BARREL_SCALE
+		# A colored breech ring follows the actual recoiling main barrel.
+		var collar = equipment_models.cylinder(vehicle_part_visuals,Vector3.ZERO,0.43,0.25,F.Gear.RARITIES[parts.cannon.rarity].color)
+		collar.name = "MainGunCollar"
+		collar.rotation.z = PI/2
+		collar.set_meta("follow_barrel",true)
+		var fittings = Node3D.new()
+		fittings.name = "CannonFittings"
+		fittings.set_meta("kind",parts.cannon.kind)
+		vehicle_part_visuals.add_child(fittings)
+		for x in ([1.7,3.1] if variant == 1 else [1.5]):
+			var band = equipment_models.cylinder(fittings,Vector3(x,0,0),0.34 if variant != 2 else 0.42,0.18,F.Gear.RARITIES[parts.cannon.rarity].color)
+			band.rotation.z = PI/2
+		if variant == 2:
+			for side in [-1,1]: equipment_models.box(fittings,Vector3(3.8,0,side*0.36),Vector3(0.5,0.34,0.14),"iron")
+	for slot in ["gear","engine"]:
+		if not parts.has(slot): continue
+		var model = equipment_models.build(parts[slot].kind,parts[slot].rarity)
+		vehicle_part_visuals.add_child(model)
+		# Rear chassis fittings sit beyond the deck's X=-7 edge, keeping every
+		# accessory reservation clear even when its limited-traverse gun turns.
+		model.position = Vector3(-8.0,3.65,0) if slot == "engine" else Vector3(-7.9,3.65,3.2)
+		model.rotation.y = PI/2
+		model.scale = Vector3.ONE*(1.4 if slot == "engine" else 1.25)
+	if parts.has("tracks"):
+		var item: Dictionary = parts.tracks
+		mats.track.albedo_color = Color(mats.track.get_meta("part_base_color")).lerp(Color(F.Gear.RARITIES[item.rarity].color),0.5)
+		var variant = int(F.Gear.Data.ITEMS[item.kind].visual)
+		for side in [-1,1]:
+			for i in range(5):
+				var at = Vector3(-5.8+i*2.9,2.4,side*5.95)
+				var plate = equipment_models.box(vehicle_part_visuals,at,Vector3(2.2 if variant == 1 else 1.4,0.65 if variant == 1 else 0.35,0.14),F.Gear.RARITIES[item.rarity].color)
+				plate.set_meta("part_kind",item.kind)
+				if variant == 2: plate.rotation.z = 0.18
+			for i in range(6):
+				var tread = equipment_models.box(vehicle_part_visuals,Vector3(-6.2+i*2.4,3.05,side*5.65),Vector3(1.6,0.18,0.9 if variant == 1 else 0.45),F.Gear.RARITIES[item.rarity].color)
+				tread.set_meta("part_kind",item.kind)
+	if parts.has("gear"):
+		var gear: Dictionary = parts.gear
+		for side in [-1,1]:
+			var housing = equipment_models.cylinder(vehicle_part_visuals,Vector3(-6.5,1.7,side*5.95),0.72 if int(F.Gear.Data.ITEMS[gear.kind].visual) == 2 else 0.5,0.18,F.Gear.RARITIES[gear.rarity].color)
+			housing.rotation.x = PI/2
+			housing.set_meta("part_kind",gear.kind)
+	for slot in empty_slots:
+		if slot == "tracks": continue
+		var empty = equipment_models.build_empty(slot)
+		vehicle_part_visuals.add_child(empty)
+		if slot != "cannon":
+			empty.position = Vector3(-8.0,3.65,0) if slot == "engine" else Vector3(-7.9,3.65,3.2)
+			empty.rotation.y = PI/2
+			empty.scale = Vector3.ONE*(1.4 if slot == "engine" else 1.25)
+	update_vehicle_part_visuals()
+
+func update_vehicle_part_visuals():
+	if vehicle_part_visuals == null: return
+	var empty = vehicle_part_visuals.get_node_or_null("Empty_cannon")
+	if empty != null: empty.global_transform = barrel.global_transform
+	var collar = vehicle_part_visuals.get_node_or_null("MainGunCollar")
+	if collar != null:
+		collar.global_transform = barrel.global_transform*Transform3D(Basis(Vector3.FORWARD,PI/2),Vector3(0.55,0,0))
+	var fittings = vehicle_part_visuals.get_node_or_null("CannonFittings")
+	if fittings != null: fittings.global_transform = barrel.global_transform
+
+func equipped_model_at(screen_position: Vector2) -> String:
+	var candidates: Dictionary = mounted_models.duplicate()
+	for gun in auxiliary_guns: candidates[gun.id] = gun.pivot
+	if vehicle_part_visuals != null:
+		for model in vehicle_part_visuals.get_children():
+			var kind: String = model.get_meta("kind",model.get_meta("part_kind",""))
+			if kind.is_empty(): continue
+			if not candidates.has(kind): candidates[kind] = []
+			candidates[kind].append(model)
+	if roof_closed and vehicle_parts.has("cannon"): candidates[vehicle_parts.cannon.kind] = turret
+	var origin = camera.project_ray_origin(screen_position)
+	var direction = camera.project_ray_normal(screen_position)
+	var nearest = INF
+	var selected_kind = ""
+	for kind in candidates:
+		var nodes: Array = candidates[kind] if candidates[kind] is Array else [candidates[kind]]
+		for node in nodes:
+			var distance = model_ray_distance(node,origin,direction)
+			if distance < nearest:
+				nearest = distance
+				selected_kind = kind
+	return selected_kind
+
+static func model_ray_distance(node: Node3D, origin: Vector3, direction: Vector3) -> float:
+	if not node.is_visible_in_tree(): return INF
+	var nearest = INF
+	if node is MeshInstance3D:
+		var local_origin = node.to_local(origin)
+		var local_direction = (node.global_basis.inverse()*direction).normalized()
+		var faces = node.mesh.get_faces()
+		for i in range(0,faces.size(),3):
+			var hit = Geometry3D.ray_intersects_triangle(local_origin,local_direction,faces[i],faces[i+1],faces[i+2])
+			if hit != null: nearest = minf(nearest,origin.distance_squared_to(node.to_global(hit)))
+	for child in node.get_children():
+		if child is Node3D: nearest = minf(nearest,model_ray_distance(child,origin,direction))
+	return nearest
+
+func ensure_feedback():
 	if feedback == null:
 		feedback = preload("res://scripts/feedback_fx.gd").new()
 		add_child(feedback)
 		feedback.setup(self)
+
+func feedback_effect(kind: String, at: Vector3, strength: float = 1.0):
+	ensure_feedback()
 	return feedback.burst(kind,at,strength)
 
 func tick_feedback(delta: float):
 	if feedback != null: feedback.tick(delta)
 
-func configure_equipment(ids: Array, positions: Dictionary = {}, mounts: Dictionary = {}):
+func configure_equipment(ids: Array, positions: Dictionary = {}, mounts: Dictionary = {}, rotations: Dictionary = {}):
 	mounted_positions = mounts.duplicate()
+	mounted_rotations = rotations.duplicate()
 	if installed_equipment == ids and configured_layout_version == layout_version:
 		position_auxiliary_guns(positions)
 		position_mounted_models()
@@ -78,6 +218,9 @@ func configure_equipment(ids: Array, positions: Dictionary = {}, mounts: Diction
 	turret.get_parent().add_child(upgrade_mount)
 	for id in F.Content.ALL_GUNS:
 		if id not in ids: continue
+		if layout_version == 2:
+			build_equipment_gun(id)
+			continue
 		var family = F.Gear.family(id)
 		var side = -1 if family == "left_gun" else 1
 		var pivot = Node3D.new()
@@ -156,11 +299,31 @@ func position_auxiliary_guns(positions: Dictionary):
 			var at = cell_position(positions[gun.id])
 			gun.pivot.position = Vector3(at.x,3.2,at.z)
 			if layout_version == 2:
-				gun.pivot.position = Vector3(at.x+0.5,4.18 if roof_closed else DECK_Y+0.28,at.z+0.5)
-				# The entire rotating barrel and muzzle fit inside the 2×2 reservation.
-				gun.pivot.scale = Vector3(0.8,(0.2 if F.Gear.family(gun.id) == "mortar_gun" else 0.4) if roof_closed else 0.65,0.8)
-				var profile: String = F.Content.EQUIPMENT[gun.id].profile
-				gun.barrel.scale = Vector3(0.12 if profile == "rapid" else 0.15,0.65,0.65)
+				var facing = -int(mounted_rotations.get(gun.id,0))*PI/2
+				if not is_equal_approx(gun.get("rest_yaw",0.0),facing): gun.pivot.rotation.y = facing
+				gun.rest_yaw = facing
+				gun.pivot.position = Vector3(at.x+0.5,4.18 if roof_closed else DECK_Y+MOUNTED_GUN_Y,at.z+0.5)
+				gun.pivot.position += Vector3(gun.mount_offset.x,0,gun.mount_offset.y).rotated(Vector3.UP,facing)
+				var factor: float = gun.mount_scale
+				gun.pivot.scale = Vector3(factor,EXTERIOR_GUN_HEIGHT/gun.model_height if roof_closed else factor,factor)
+				gun.pivot.rotation.y = clamp_gun_angle(gun,gun.pivot.rotation.y)
+
+static func clamp_gun_angle(gun: Dictionary, angle: float) -> float:
+	if not gun.has("half_arc"): return angle
+	var rest: float = gun.get("rest_yaw",0.0)
+	return rest+clampf(angle_difference(rest,angle),-gun.half_arc,gun.half_arc)
+
+func build_equipment_gun(id: String):
+	var pivot = equipment_models.build(id)
+	upgrade_mount.add_child(pivot)
+	var gun_barrel: Node3D = pivot.get_node("Barrel")
+	var tip: Vector3 = pivot.get_meta("muzzle")
+	var flash = box(gun_barrel,tip-Vector3(EquipmentModels.BARREL_REST,0,0),Vector3(0.45,0.28,0.28),"arc_light" if F.Gear.family(id) == "arc_gun" else "fire")
+	flash.visible = false
+	var mount = equipment_models.weapon_mount(pivot,id)
+	var height = 0.0
+	for point in EquipmentModels.vertices(pivot): height = maxf(height,point.y)
+	auxiliary_guns.append({"id":id,"pivot":pivot,"barrel":gun_barrel,"muzzle":flash,"mount_scale":mount.scale,"mount_offset":mount.offset,"half_arc":mount.half_arc,"model_height":height,"cooldown":0.0,"flash":0.0,"recoil":0.0})
 
 func material(name: String, color: String, metal: float = 0.0, glow: float = 0.0) -> StandardMaterial3D:
 	var m = StandardMaterial3D.new()
@@ -363,10 +526,16 @@ func _ready():
 		preview_materials[id] = mat
 
 func update_camera():
-	var target = Vector3(0,1.7,0)
+	var target = Vector3(0,1.7,0)+camera_offset
 	camera.position = target+Vector3(sin(yaw)*cos(pitch),sin(pitch),cos(yaw)*cos(pitch))*34
 	camera.look_at(target,Vector3.UP)
 	camera.size = zoom
+
+func pan_camera(axis: Vector2, delta: float):
+	var right = Vector3(cos(yaw),0,-sin(yaw))
+	var back = Vector3(sin(yaw),0,cos(yaw))
+	camera_offset = (camera_offset+(right*axis.x+back*axis.y)*zoom*0.55*delta).clamp(Vector3(-20,0,-20),Vector3(20,0,20))
+	update_camera()
 
 func cell_position(p: Vector2i) -> Vector3:
 	return Vector3(p.x-6.5,DECK_Y,p.y-3.5)
@@ -381,6 +550,9 @@ func screen_cell(local: Vector2) -> Vector2i:
 func toggle_roof():
 	roof_closed = not roof_closed
 	roof.visible = roof_closed
+	# Give the exterior turret and secondary guns height without widening their
+	# reserved footprints. The elevated main barrel sweeps safely above them.
+	turret.scale.y = 1.25 if roof_closed else 1.0
 	for key in ["turret_armor","turret_edge","turret_dark"]:
 		var mat: StandardMaterial3D = mats[key]
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED if roof_closed else BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -428,6 +600,7 @@ func tank():
 		box(self,Vector3(0,DECK_Y+0.15,z),Vector3(14.4,0.3,0.25),"armor")
 		box(self,Vector3(0,DECK_Y+0.32,z),Vector3(14.6,0.08,0.3),"edge")
 
+	var before_engine = get_child_count()
 	# A rear engine compartment, exhaust stacks and front driver's armored cabin.
 	armor_block(self,Vector3(-7.85,3.0,0),Vector3(1.55,1.0,6.0),0.18,"armor")
 	for z in [-1.8,1.8]:
@@ -438,6 +611,7 @@ func tank():
 	for z in [-0.7,0.7]:
 		armor_block(self,Vector3(-7.85,3.53,z),Vector3(1.05,0.15,0.9),0.05,"edge")
 		for x in [-8.15,-7.9,-7.65]: box(self,Vector3(x,3.62,z),Vector3(0.09,0.04,0.65),"dark")
+	for i in range(before_engine,get_child_count()): engine_shell.append(get_child(i))
 	# Beveled driver's housing, individual vision ports and a bolted front plate.
 	armor_block(self,Vector3(7.6,3.13,0),Vector3(1.85,0.82,3.7),0.16,"armor")
 	for z in [-0.85,0.85]:
@@ -545,14 +719,18 @@ func track(side: int):
 	plate.rotation.x = PI/2
 	plate.scale.z = -1
 	track_housing(side,profile)
+	var belts = Node3D.new()
+	belts.name = "TrackBelt"+str(side)
+	add_child(belts)
+	track_belts.append(belts)
 	# Continuous backing under the individually spaced tread links.
 	for i in profile.size():
 		var a = profile[i]
 		var b = profile[(i+1)%profile.size()]
 		var midpoint = (a+b)/2
-		var tread = box(self,Vector3(midpoint.x,midpoint.y,side*5.05),Vector3(a.distance_to(b),0.18,1.2),"track")
+		var tread = box(belts,Vector3(midpoint.x,midpoint.y,side*5.05),Vector3(a.distance_to(b),0.18,1.2),"track")
 		tread.rotation.z = atan2(b.y-a.y,b.x-a.x)
-	track_links(self,profile,side*5.05,1.28,0.52,true)
+	track_links(belts,profile,side*5.05,1.28,0.52,true)
 	for i in range(5):
 		var wheel = cylinder(self,Vector3(-5.8+i*2.9,1.32,side*5.83),0.72,0.18,"dark",24)
 		wheel.rotation.x = PI/2
@@ -649,9 +827,10 @@ func build_turret():
 		beam(turret,Vector3(-1.65,2.02,z),Vector3(-1.65,2.24,z),0.055,"turret_edge",12)
 		beam(turret,Vector3(-0.55,2.02,z),Vector3(-0.55,2.24,z),0.055,"turret_edge",12)
 		beam(turret,Vector3(-1.65,2.24,z),Vector3(-0.55,2.24,z),0.055,"turret_edge",12)
-	armor_block(turret,Vector3(3.12,1.05,0),Vector3(0.6,1.15,1.35),0.16,"turret_armor")
+	armor_block(turret,Vector3(3.12,MAIN_BARREL_HEIGHT,0),Vector3(0.8,1.35,1.7),0.16,"turret_armor")
 	barrel = Node3D.new()
-	barrel.position = Vector3(BARREL_REST,1.0,0)
+	barrel.position = Vector3(BARREL_REST,MAIN_BARREL_HEIGHT,0)
+	barrel.scale = MAIN_BARREL_SCALE
 	turret.add_child(barrel)
 	beam(barrel,Vector3.ZERO,Vector3(4.0,0,0),0.25,"turret_dark",24)
 	var sleeve = cylinder(barrel,Vector3(0.5,0,0),0.45,1.5,"turret_armor",24,0.34)
@@ -671,12 +850,13 @@ func build_turret():
 	muzzle.visible = false
 
 func fire_visual():
+	if "cannon" in empty_part_slots: return
 	var direction = Vector3(cos(turret.rotation.y),0,-sin(turret.rotation.y))
 	var origin = muzzle.global_position
 	var shot = Node3D.new()
 	add_child(shot)
 	shot.global_position = origin
-	beam(shot,Vector3.ZERO,-direction*1.8,0.085,"fire")
+	beam(shot,Vector3.ZERO,-direction*3.06,0.204,"fire")
 	projectiles.append({"node":shot,"origin":origin,"dir":direction,"age":0.0})
 	recoil = 0.25
 	shot_time = 0.14
@@ -1037,7 +1217,7 @@ func fixed_fitting(kind: String, parent: Node3D, inputs: Array, cell: Vector2i) 
 func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: float, preview_enabled: bool = true):
 	set_layout_version(factory.layout_version)
 	sync_damage(factory)
-	var signature = str(factory.layout_version)+str(factory.equipment_mounts)+str(factory.layout())
+	var signature = str(factory.layout_version)+str(factory.equipment_mounts)+str(factory.equipment_rotations)+str(factory.layout())
 	if signature != rendered_layout:
 		rendered_layout = signature
 		for child in equipment.get_children():
@@ -1058,7 +1238,13 @@ func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: f
 			n.position = cell_position(p)
 			n.rotation.y = -c.dir*PI/2
 			var topology = factory.connection_sides(p)
-			if factory.layout_version == 2 and c.kind in ["gun","engine"]:
+			if factory.layout_version == 2 and factory.equipment_mounts.has(c.kind) and F.AUXILIARY.has(c.kind):
+				# The shared weapon above this socket is the only gun model. The
+				# old tall magazine occupied the same space as its rotating body.
+				flow_ports(c.kind,n,topology.display_inputs)
+				cylinder(n,Vector3(0.5,0.42,0.5),0.22,0.4,"dark",12)
+				machines[p] = {"root":n}
+			elif factory.layout_version == 2 and c.kind in ["gun","engine"]:
 				machines[p] = fixed_fitting(c.kind,n,topology.display_inputs,p)
 			else: machines[p] = machine(c.kind,n,topology.display_inputs)
 			if factory.equipment_mounts.has(c.kind) and F.AUXILIARY.has(c.kind):
@@ -1099,32 +1285,19 @@ func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: f
 		marker.material_override = mats.red if hovered in factory.blocks or factory.ports.has(hovered) or unavailable else mats.green
 	sync_placement_preview(factory,hovered,selected,direction,preview_enabled)
 	update_gun(factory,delta)
+	update_vehicle_part_visuals()
 
 func position_mounted_models():
 	for id in mounted_models:
 		if not mounted_positions.has(id): continue
-		var size: Vector2i = F.Gear.DEFINITIONS[id].size
+		var facing = int(mounted_rotations.get(id,0))
+		var size: Vector2i = F.Gear.footprint(id,facing)
 		mounted_models[id].position = cell_position(mounted_positions[id])+Vector3((size.x-1)*0.5,0,(size.y-1)*0.5)
+		mounted_models[id].rotation.y = -facing*PI/2
 		mounted_models[id].visible = not roof_closed
 
 func build_mounted_model(parent: Node3D, id: String):
-	var size: Vector2i = F.Gear.DEFINITIONS[id].size
-	box(parent,Vector3(0,0.09,0),Vector3(size.x-0.12,0.18,size.y-0.12),"dark")
-	match F.Gear.DEFINITIONS[id].genre:
-		"protection":
-			armor_block(parent,Vector3(0,0.37,0),Vector3(size.x-0.24,0.46,size.y-0.24),0.1,"turret_armor")
-			for x in [-0.5,0.5]: box(parent,Vector3(x,0.62,0),Vector3(0.12,0.04,0.5),"edge")
-		"engine":
-			for x in [-0.5,0,0.5]: cylinder(parent,Vector3(x,0.43,0),0.23,0.5,"machine_fuel",12)
-			box(parent,Vector3(0,0.72,0),Vector3(1.6,0.08,0.55),"edge")
-		_:
-			cylinder(parent,Vector3(0,0.38,0),0.32,0.4,"machine_bronze",16)
-			if F.Gear.family(id) == "salvage_arm":
-				beam(parent,Vector3(0,0.5,0),Vector3(0,1.2,0),0.12,"edge",12)
-				beam(parent,Vector3(0,1.2,0),Vector3(0.7,1.2,0.6),0.1,"edge",12)
-			elif F.Gear.family(id) == "rangefinder": beam(parent,Vector3(-0.7,0.8,0),Vector3(0.7,0.8,0),0.12,"edge",12)
-			else: box(parent,Vector3(0,0.65,0),Vector3(0.6,0.14,0.6),"machine_fuel")
-	equipment_markings(parent,id,0.22,Vector2(size.x-0.25,size.y-0.2))
+	parent.add_child(equipment_models.build_mounted(id))
 
 func equipment_markings(parent: Node3D, id: String, height: float, area: Vector2):
 	var spec: Dictionary = F.Content.EQUIPMENT[id]
@@ -1139,12 +1312,13 @@ func equipment_markings(parent: Node3D, id: String, height: float, area: Vector2
 	elif spec.visual == 2:
 		box(parent,Vector3(0,height+0.02,area.y*0.2),Vector3(area.x*0.55,0.05,0.12),"machine_fuel")
 
-func preview_equipment(factory, item: Dictionary, at: Vector2i, allowed: bool = true):
+func preview_equipment(factory, item: Dictionary, at: Vector2i, allowed: bool = true, facing: int = -1):
 	if item.is_empty() or roof_closed or not factory.inside(at):
 		if equipment_preview != null: equipment_preview.hide()
 		return
-	var valid = allowed and factory.can_place_equipment(item.kind,at)
-	var key = item.kind+str(valid)
+	if facing < 0: facing = item.get("direction",0)
+	var valid = allowed and factory.can_place_equipment(item.kind,at,facing)
+	var key = item.kind+str(valid)+str(facing)
 	if equipment_preview == null:
 		equipment_preview = Node3D.new()
 		add_child(equipment_preview)
@@ -1153,11 +1327,63 @@ func preview_equipment(factory, item: Dictionary, at: Vector2i, allowed: bool = 
 		for child in equipment_preview.get_children():
 			equipment_preview.remove_child(child)
 			child.queue_free()
-		var size: Vector2i = F.Gear.DEFINITIONS[item.kind].size
+		var size: Vector2i = F.Gear.footprint(item.kind,facing)
 		for y in range(size.y):
 			for x in range(size.x): box(equipment_preview,Vector3(x,0.06,y),Vector3(0.94,0.035,0.94),"green" if valid else "red")
+		var ghost = equipment_models.build_mounted(item.kind)
+		equipment_preview.add_child(ghost)
+		ghost.position = Vector3((size.x-1)*0.5,0.15,(size.y-1)*0.5)
+		ghost.rotation.y = -facing*PI/2
+		fade_equipment_preview(ghost)
+		if item.kind in F.Content.ALL_GUNS:
+			var center = Vector3((size.x-1)*0.5,0.12,(size.y-1)*0.5)
+			for relative in [-F.Gear.SECONDARY_HALF_ARC,0.0,F.Gear.SECONDARY_HALF_ARC]:
+				var angle = -facing*PI/2+relative
+				beam(equipment_preview,center,center+Vector3(cos(angle),0,-sin(angle))*0.7,0.035,"green" if valid else "red",6)
 	equipment_preview.position = cell_position(at)
 	equipment_preview.show()
+
+func fade_equipment_preview(node: Node):
+	if node is MeshInstance3D and node.material_override is StandardMaterial3D:
+		var ghost_material: StandardMaterial3D = node.material_override.duplicate()
+		ghost_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		ghost_material.albedo_color.a = 0.45
+		node.material_override = ghost_material
+	for child in node.get_children(): fade_equipment_preview(child)
+
+func mark_equipment(factory, selected_kind: String, enabled: bool):
+	if equipment_marks == null:
+		equipment_marks = Node3D.new()
+		equipment_marks.name = "EquipmentStateMarks"
+		add_child(equipment_marks)
+	equipment_marks.visible = enabled and not roof_closed
+	if not equipment_marks.visible: return
+	var key = str(factory.equipment_mounts)+str(factory.equipment_rotations)+selected_kind
+	if key == equipment_marks_key: return
+	equipment_marks_key = key
+	for child in equipment_marks.get_children():
+		equipment_marks.remove_child(child)
+		child.queue_free()
+	if not mats.has("selection_gold"):
+		material("selection_gold","f6d273",0,0.45)
+		material("installed_green","87bc80",0,0.25)
+	for id in factory.equipment_mounts:
+		var facing = int(factory.equipment_rotations.get(id,0))
+		var size: Vector2i = F.Gear.footprint(id,facing)
+		var mark = Node3D.new()
+		mark.name = id
+		equipment_marks.add_child(mark)
+		mark.position = cell_position(factory.equipment_mounts[id])+Vector3((size.x-1)*0.5,0.14,(size.y-1)*0.5)
+		var tint = "selection_gold" if id == selected_kind else "installed_green"
+		var width = 0.10 if id == selected_kind else 0.05
+		for side in [-1,1]:
+			box(mark,Vector3(0,0,side*size.y*0.48),Vector3(size.x*0.96,width,width),tint)
+			box(mark,Vector3(side*size.x*0.48,0,0),Vector3(width,width,size.y*0.96),tint)
+		var heading = Vector3.RIGHT.rotated(Vector3.UP,-facing*PI/2)
+		var side = Vector3(-heading.z,0,heading.x)
+		var tip = heading*(size.x*0.35 if facing%2 == 0 else size.y*0.35)+Vector3(0,0.02,0)
+		beam(mark,tip-heading*0.35-side*0.18,tip,0.045,tint,6)
+		beam(mark,tip-heading*0.35+side*0.18,tip,0.045,tint,6)
 
 func solid_mounted_materials(node: Node):
 	if node is MeshInstance3D:

@@ -23,7 +23,8 @@ PROFILES = {
     'support': [('balanced', '標準'), ('focus', '高性能'), ('efficient', '省力')],
 }
 EFFECT_KEYS = ['damage_reduction', 'speed_bonus', 'fuel_bonus', 'range_bonus',
-               'turn_bonus', 'reload_bonus', 'splash_bonus', 'salvage_rate']
+               'turn_bonus', 'reload_bonus', 'splash_bonus', 'salvage_rate',
+               'drive_turn_bonus', 'offroad_bonus', 'main_reload_bonus', 'main_range_bonus', 'main_splash_bonus']
 PRIMARY = {'armor': ('damage_reduction', .25), 'skirts': ('damage_reduction', .20),
            'supercharger': ('speed_bonus', .20), 'economizer': ('fuel_bonus', -.20),
            'rangefinder': ('range_bonus', 6.0), 'servo': ('turn_bonus', .60),
@@ -112,6 +113,10 @@ def build():
         if item['genre'] == 'secondary':
             assert .4 < item['interval'] < 4 and 15 <= item['range'] <= 65
             assert 1 <= item['ammo'] <= 2 and 2 <= item['turn'] <= 9
+    parts = json.loads((ROOT / 'data/vehicle_parts.json').read_text())
+    assert len(parts) == 12 and {p['slot'] for p in parts} == {'gear', 'engine', 'tracks', 'cannon'}
+    items += parts
+    assert len({i['id'] for i in items}) == len(items)
     return archetypes, items
 
 
@@ -161,7 +166,7 @@ def main():
         if args.check:
             if not path.exists() or path.read_text() != text: raise SystemExit(f'Out of date: {path.relative_to(ROOT)}')
         else: path.write_text(text)
-    print('EQUIPMENT DATA: 300 unique designs / 120 weapons / 180 passive devices; all performance signatures distinct')
+    print('EQUIPMENT DATA: 300 accessory designs + 12 replaceable vehicle parts')
 
 
 if __name__ == '__main__': main()

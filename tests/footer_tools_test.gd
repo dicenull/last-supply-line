@@ -4,7 +4,10 @@ const Content = preload("res://scripts/content.gd")
 var game
 var checks = 0
 var failures = 0
-func _initialize(): call_deferred("run")
+func _initialize():
+	root.set_flag(Window.FLAG_NO_FOCUS,true)
+	root.set_flag(Window.FLAG_MOUSE_PASSTHROUGH,true)
+	call_deferred("run")
 func check(ok: bool, label: String):
 	checks += 1
 	if ok: print("PASS footer tools: ",label)
@@ -35,7 +38,8 @@ func click(button):
 func capture(label):
 	game.queue_redraw()
 	await process_frame
-	await RenderingServer.frame_post_draw
+	await process_frame
+	RenderingServer.force_draw()
 	root.get_texture().get_image().save_png("res://build/tabs-audit/"+label+".png")
 func run():
 	game = load("res://main.tscn").instantiate()
@@ -52,7 +56,7 @@ func run():
 		game.refresh_view()
 		game._process(0)
 		check(game.available_tools().size() == 7 and game.tool_page_count() == 5 and "erase" not in game.available_tools(),"seven starter blocks use five categories; erase is separate")
-		check(game.tool_buttons.keys() == ["belt"] and game.icon_buttons.slice(4,10).all(func(entry): return not entry.button.visible),"transport tab hides locked filters and unused slots")
+		check(game.tool_buttons.keys() == ["belt"] and game.icon_buttons.slice(4,8).all(func(entry): return not entry.button.visible) and game.icon_buttons.slice(8,10).all(func(entry): return entry.button.visible),"transport tab hides locked filters and unused slots while keeping storage and roof controls")
 		var erase_rect = game.erase_button.get_rect()
 		check(game.erase_button.visible and game.icon_buttons[11].key == "0","erase has a dedicated visible zero shortcut")
 		await capture("footer-start-"+str(dimensions.x))

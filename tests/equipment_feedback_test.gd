@@ -48,8 +48,18 @@ func run():
 	var stock = game.factory.reserves.duplicate()
 	var enemy = game.battlefield.enemies[0]
 	game.battlefield.kill_enemy(enemy,game.factory,enemy.node.position)
+	game.battlefield.drive_poses = [{"position":enemy.node.position,"yaw":0.0}]
+	game.battlefield.update_ground_items(game.factory)
 	game._process(0)
-	check(game.expedition.gear_items.size() == count+1 and game.factory.reserves == stock and game.loot_feed.entries.size() == 1,"actual enemy loot appears as equipment feedback without raw-material awards")
+	check(game.expedition.gear_items.size() == count and game.factory.reserves.scrap == stock.scrap+2 and game.loot_feed.entries.is_empty(),"ordinary enemy grants materials without an equipment receipt")
+	check(game.logistics.notices.scrap.accepted == 2,"enemy material gain appears in the resource header")
+	game.battlefield.sector_config.boss = true
+	enemy = game.battlefield.enemies.back()
+	game.battlefield.kill_enemy(enemy,game.factory,enemy.node.position)
+	game.battlefield.drive_poses = [{"position":enemy.node.position,"yaw":0.0}]
+	game.battlefield.update_ground_items(game.factory)
+	game._process(0)
+	check(game.expedition.gear_items.size() == count+1 and game.loot_feed.entries.size() == 1,"boss equipment appears in the loot feed")
 	game.factory.running = false
 	var receipt = game.loot_feed.entries.duplicate(true)
 	game._process(2)

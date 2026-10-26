@@ -31,6 +31,9 @@ var previous_volume = 0.35
 var difficulty_select: Button
 var difficulty_popup: Control
 var difficulty_buttons: Array = []
+var standalone_title = false
+var framed = false
+var title_shade: GradientTexture2D
 
 func configure(visuals, read_state: Callable):
 	ui = visuals
@@ -44,7 +47,14 @@ func _ready():
 	position = Vector2.ZERO
 	size = Vector2(1440,940)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	if standalone_title:
+		title_shade = GradientTexture2D.new()
+		title_shade.width = 1440
+		title_shade.height = 1
+		title_shade.gradient = Gradient.new()
+		title_shade.gradient.offsets = PackedFloat32Array([0,0.26,0.62,1])
+		title_shade.gradient.colors = PackedColorArray([Color("111713"),Color(0.067,0.09,0.075,0.94),Color(0.067,0.09,0.075,0.15),Color(0.067,0.09,0.075,0)])
 	for i in range(5):
 		var index = i
 		actions.append(small_button(row_rect(104+i*ROW_HEIGHT),func(): action_selected.emit(index)))
@@ -161,7 +171,9 @@ func go_back() -> bool:
 	return true
 
 func arrange():
-	for button in actions+blueprint_buttons+layout_buttons.values()+utility_buttons.values()+navigation.values(): button.hide()
+	for button in actions+blueprint_buttons+layout_buttons.values()+utility_buttons.values()+navigation.values():
+		button.hide()
+		button.size = Vector2(ROW_WIDTH,ROW_HEIGHT)
 	volume_slider.visible = page == "settings"
 	mute_button.visible = page == "settings"
 	difficulty_select.visible = page == "settings"
@@ -169,6 +181,18 @@ func arrange():
 	match page:
 		"start":
 			place_rows([actions[0],actions[1],navigation.settings,navigation.history,actions[4]],360,56)
+			if standalone_title:
+				size = get_viewport_rect().size
+				var screen_scale = maxf(0.01,get_viewport().get_final_transform().get_scale().x)
+				var row_height = maxf(58,44/screen_scale)
+				var gap = row_height+12
+				var y = size.y*0.55 if size.x < size.y else minf(402,maxf(340,size.y-((4 if OS.has_feature("web") else 5)*gap)-100))
+				var entries = [actions[0],actions[1],navigation.settings,navigation.history,actions[4]]
+				for i in range(entries.size()):
+					entries[i].position = Vector2(60,y+i*gap)
+					entries[i].size = Vector2(maxf(320,200/screen_scale),row_height)
+					entries[i].focus_mode = Control.FOCUS_ALL
+					entries[i].add_theme_stylebox_override("focus",StyleBoxEmpty.new())
 			if OS.has_feature("web"): actions[4].hide()
 		"pause":
 			place_rows([actions[0],actions[2],actions[1],navigation.workshop,navigation.settings,navigation.history,actions[3],utility_buttons.retreat,actions[4]],230,56)
@@ -177,6 +201,18 @@ func arrange():
 			place_rows(blueprint_buttons,464,44)
 			place_rows([utility_buttons.camera,utility_buttons.roof],646,44)
 		"settings": mute_button.position = Vector2(ROW_X,274)
+
+func frame_bounds() -> Rect2:
+	if standalone_title and page == "start": return Rect2(Vector2.ZERO,get_viewport_rect().size)
+	return Rect2(480,176,480,588) if page == "start" else Rect2(480,96,480,748)
+
+func _notification(what: int):
+	if what == NOTIFICATION_RESIZED and is_node_ready(): queue_redraw()
+
+func _process(_delta):
+	if standalone_title and page == "start" and visible and size != get_viewport_rect().size:
+		arrange()
+		queue_redraw()
 
 func place_rows(buttons: Array, y: float, gap: float):
 	for i in range(buttons.size()):
@@ -195,6 +231,11 @@ func small_button(rect: Rect2, action: Callable) -> Button:
 	for button_state in ["normal","hover","pressed","disabled"]:
 		button.add_theme_stylebox_override(button_state,ui.style(Color(1,1,1,0.08) if button_state in ["hover","pressed"] else Color.TRANSPARENT))
 	button.pressed.connect(action)
+	if standalone_title:
+		button.mouse_entered.connect(queue_redraw)
+		button.mouse_exited.connect(queue_redraw)
+		button.focus_entered.connect(queue_redraw)
+		button.focus_exited.connect(queue_redraw)
 	add_child(button)
 	return button
 
@@ -256,8 +297,11 @@ func section(label: String, y: float):
 	draw_line(Vector2(start,y+11),Vector2(ROW_X+ROW_WIDTH-PADDING,y+11),ui.EDGE,1)
 
 func _draw():
-	draw_rect(Rect2(0,0,1440,940),Color(0.045,0.055,0.04,0.88))
-	var panel = Rect2(480,176,480,588) if page == "start" else Rect2(480,96,480,748)
+	if standalone_title and page == "start":
+		draw_title()
+		return
+	if not framed: draw_rect(Rect2(0,0,1440,940),Color(0.045,0.055,0.04,0.88))
+	var panel = frame_bounds()
 	plate(panel,ui.PANEL,ui.EDGE)
 	draw_rect(Rect2(panel.position,Vector2(panel.size.x,3)),ui.GOLD)
 	if page == "start":
@@ -282,6 +326,31 @@ func _draw():
 	if state.audio_error: status += " 音量保存失敗"
 	if state.history_error: status += " 履歴保存失敗"
 	line_text(status,Rect2(520,panel.end.y-44,400,24),14,ui.GOLD if state.status == "victory" else ui.DANGER)
+
+func draw_title():
+	var screen_scale = maxf(0.01,get_viewport().get_final_transform().get_scale().x)
+	var portrait = size.x < size.y
+	draw_texture_rect(title_shade,Rect2(Vector2.ZERO,size),false)
+	draw_line(Vector2(64,76),Vector2(104,76),ui.GOLD,3)
+	line_text("MOBILE FOUNDRY VEHICLE / 1918",Rect2(120,60,size.x-180,32),maxi(16,roundi(11/screen_scale)),ui.GOLD)
+	line_text("M.F.V. 03",Rect2(58,106,1000,134),112,ui.INK)
+	line_text("自走工廠",Rect2(66,244,1000,100 if portrait else 58),maxi(38,roundi(18/screen_scale)),ui.INK)
+	if not portrait: line_text("生産をつなげ。戦場を走り抜けろ。",Rect2(68,312,1000,36),18,ui.MUTED)
+	var entries = [actions[0],actions[1],navigation.settings,navigation.history,actions[4]]
+	var labels = ["はじめる","続きから","設定","出撃履歴","終了"]
+	for i in range(entries.size()):
+		var button: Button = entries[i]
+		if not button.visible: continue
+		var active = button.is_hovered() or button.has_focus()
+		var color = ui.MUTED.darkened(0.48) if button.disabled else ui.GOLD if active or i == 0 else ui.INK
+		var rect = button.get_rect()
+		line_text(labels[i],Rect2(rect.position+Vector2(34,0),rect.size-Vector2(34,0)),maxi(28,roundi(18/screen_scale)),color)
+		if active and not button.disabled:
+			draw_line(rect.position+Vector2(4,29),rect.position+Vector2(18,29),ui.GOLD,2)
+			draw_line(rect.position+Vector2(12,23),rect.position+Vector2(18,29),ui.GOLD,2)
+			draw_line(rect.position+Vector2(12,35),rect.position+Vector2(18,29),ui.GOLD,2)
+	if state.status != "": line_text(state.status,Rect2(68,size.y-118,1000,50),maxi(17,roundi(14/screen_scale)),ui.DANGER)
+	line_text("BUILD.  SUPPLY.  SURVIVE.",Rect2(68,size.y-78,size.x-120,32),maxi(16,roundi(11/screen_scale)),ui.GOLD)
 
 func draw_workshop():
 	section("ライン配置",210)

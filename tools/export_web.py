@@ -54,6 +54,7 @@ def main():
     (staging / 'index.wasm.gz').write_bytes(gzip.compress(raw, compresslevel=9, mtime=0))
     wasm.unlink()
     shutil.copyfile(ROOT / 'assets/fonts/OFL.txt', staging / 'NotoSansJP-LICENSE.txt')
+    shutil.copyfile(ROOT / 'web/fonts/NotoSansJP.woff2', staging / 'NotoSansJP.woff2')
     files = {}
     for path in sorted(staging.iterdir()):
         if path.stat().st_size > 25 * 1024 * 1024:

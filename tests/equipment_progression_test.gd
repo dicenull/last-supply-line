@@ -23,7 +23,7 @@ func _initialize():
 			level_sum += Gear.level(item.kind)
 			valid = valid and Gear.level(item.kind) <= sector*2 and item == Gear.roll(5197,source,source%16,false,sector*2)
 			var table = Gear.DROP_TABLES[Gear.ROLE_TABLES[source%16]]
-			valid = valid and table.any(func(row): return row[0] == Gear.family(item.kind))
+			valid = valid and (not Gear.part_slot(item.kind).is_empty() or table.any(func(row): return row[0] == Gear.family(item.kind)))
 		var average = level_sum/6000.0
 		check(valid,"sector %d drops respect level cap, enemy family and seeded reload" % sector)
 		check(average > previous_average+0.5,"average dropped level grows at sector %d: %.2f" % [sector,average])
@@ -39,6 +39,7 @@ func _initialize():
 			r.current = r.make_route("scrapyard")
 			r.offer_rewards()
 			for id in r.reward_options:
+				if not Gear.part_slot(id.trim_prefix("gear:")).is_empty(): continue
 				var level = Gear.level(id.trim_prefix("gear:"))
 				rewards_valid = rewards_valid and level <= mini(10,(sector+1)*2) and level >= maxi(1,mini(10,(sector+1)*2)-3)
 			var course = Run.FieldCourse.new(r.current)
@@ -54,8 +55,8 @@ func _initialize():
 					shop_valid = shop_valid and Gear.level(id) <= sector*2 and Run.Services.price(offer) == 28+4*Gear.level(id)
 				shop_valid = shop_valid and families.size() == 3
 		check(rewards_valid,"clear rewards offer useful current or next-sector levels")
-		check(shop_valid and shops > 20,"shops sell three distinct families at level-appropriate prices")
-	check(seen.size() == 300,"all 300 designs are obtainable through real enemy drop tables")
+		check(shop_valid and shops > 10,"reduced-frequency shops sell three distinct families at level-appropriate prices: shops=%d, offers_valid=%s" % [shops,shop_valid])
+	check(seen.size() == Gear.DEFINITIONS.size(),"all accessories and vehicle parts are obtainable through real enemy drop tables")
 	var boss_valid = true
 	for source in range(500): boss_valid = boss_valid and Gear.roll(42,source,0,true,10).rarity != "normal"
 	check(boss_valid,"boss quality never falls below uncommon at maximum level")

@@ -65,10 +65,17 @@ var dragging_auxiliary = ""
 const Inventory = preload("res://scripts/equipment_inventory.gd")
 var inventory_panel
 var dragging_item = -1
+var selected_item_uid = -1
+var item_direction = 0
 var suppress_item_paint = false
+var suppress_stow_drag = false
 var inventory_button: Button
 var loot_feed
 var movement_keys: Dictionary = {}
+var touch_enabled = DisplayServer.is_touchscreen_available()
+var touch_controls
+var touch_movement = Vector2.ZERO
+var footer_layout = preload("res://scripts/gameplay_footer.gd").new()
 var tool_page = 0
 const TOOL_TABS = [
 	{"name":"搬送・選別","icon":"belt","kinds":["belt","scrap_filter","shell_filter","fuel_filter"]},
@@ -92,7 +99,7 @@ var notice_bad = false
 var last_message = ""
 
 func _ready():
-	get_window().min_size = Vector2i(960,628)
+	get_window().min_size = Vector2i(320,320) if touch_enabled else Vector2i(960,628)
 	history.load_file(history_path)
 	get_tree().auto_accept_quit = false
 	if factory.layout_version == 2: expedition.enable_items()
@@ -102,16 +109,7 @@ func _ready():
 	factory.example(false)
 	factory.undo_stack.clear()
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	if OS.has_feature("web"):
-		var web_font = FontVariation.new()
-		web_font.base_font = load("res://assets/fonts/NotoSansJP.ttf")
-		web_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("weight"):600}
-		font = web_font
-	else:
-		var system_font = SystemFont.new()
-		system_font.font_names = PackedStringArray(["Helvetica Neue","Hiragino Sans","sans-serif"])
-		system_font.font_weight = 600
-		font = system_font
+	font = UIStyle.create_font()
 	var ui = UIStyle.new()
 	ui.font = font
 	ui.pixel_icons = pixel_icons
@@ -127,8 +125,8 @@ func _ready():
 	battle_retry.visible = false
 	for i in range(7):
 		icon_button("",Rect2(110+i*68,880,62,44),func(): pass,str(i+1))
-	icon_button("rotate",Rect2(610,880,74,44),func(): direction = (direction+1)%4,"R")
-	erase_button = icon_button("erase",Rect2(32,862,64,52),func(): selected = "erase","0")
+	icon_button("rotate",Rect2(610,880,74,44),rotate_selection,"R")
+	erase_button = icon_button("erase",Rect2(32,862,64,52),func(): select_building("erase"),"0")
 	erase_button.tooltip_text = "撤去（0）"
 	for i in range(TOOL_TABS.size()):
 		var index = i
@@ -153,7 +151,7 @@ func _ready():
 	field_map.state_provider = func(): return {"battle":battlefield,"visible":battle_mode and not menu.visible}
 	logistics_layer.add_child(field_map)
 	var actions_layer = CanvasLayer.new()
-	actions_layer.layer = 4
+	actions_layer.layer = 9
 	add_child(actions_layer)
 	field_actions = preload("res://scripts/field_actions.gd").new()
 	field_actions.icons = pixel_icons
@@ -178,9 +176,16 @@ func _ready():
 	inventory_panel.state_provider = inventory_state
 	inventory_panel.drag_requested.connect(begin_item_drag)
 	inventory_panel.stow_requested.connect(stow_item)
+	inventory_panel.equip_part_requested.connect(equip_vehicle_part)
+	inventory_panel.empty_slot_requested.connect(empty_vehicle_slot)
 	inventory_panel.dismantle_requested.connect(dismantle_item)
 	inventory_panel.normal_dismantle_requested.connect(dismantle_normal_items)
-	inventory_layer.add_child(inventory_panel)
+	var inventory_frame = preload("res://scripts/responsive_frame.gd").new()
+	inventory_frame.align_right = true
+	inventory_frame.expand_viewport = true
+	inventory_frame.reference_position = Vector2(16,100)
+	inventory_layer.add_child(inventory_frame)
+	inventory_frame.mount(inventory_panel,inventory_panel.frame_bounds)
 	choice_popup = preload("res://scripts/run_choice_popup.gd").new()
 	choice_popup.configure(ui,choice_models,can_claim_reward)
 	choice_popup.option_selected.connect(choose_run_option)
@@ -201,14 +206,27 @@ func _ready():
 	menu = RunMenu.new()
 	menu_presenter = preload("res://scripts/run_menu_presenter.gd").new(self)
 	menu_presenter.bind(menu,ui)
-	menu_layer.add_child(menu)
+	menu.framed = true
+	var menu_frame = preload("res://scripts/responsive_frame.gd").new()
+	menu_frame.expand_viewport = true
+	menu_frame.shade = true
+	menu_layer.add_child(menu_frame)
+	menu_frame.mount(menu,menu.frame_bounds)
+	var touch_layer = CanvasLayer.new()
+	touch_layer.layer = 5
+	add_child(touch_layer)
+	touch_controls = preload("res://scripts/touch_controls.gd").new()
+	touch_controls.game = self
+	touch_layer.add_child(touch_controls)
+	sync_tools()
+	footer_layout.arrange(self)
 	if show_start_menu: open_menu(true)
 
 func toggle_running():
 	if quitting: return
 	if expedition.phase not in ["prepare","travel"]: return
 	ensure_battle()
-	if battlefield.result != 0: return
+	if battlefield.progress.is_finished(): return
 	if not started:
 		expedition.start_sector()
 		started = true
@@ -224,6 +242,7 @@ func toggle_running():
 
 func toggle_battle():
 	ensure_battle()
+	clear_movement()
 	battle_mode = not battle_mode
 	refresh_view()
 
@@ -246,9 +265,9 @@ func ensure_battle():
 		battlefield = BattleWorld.new()
 		battlefield.layout_version = factory.layout_version
 		battlefield.item_mode = expedition.item_mode
-		battlefield.item_dropped.connect(receive_item)
+		battlefield.item_collected.connect(receive_item)
 		battlefield.sector_config = expedition.current.duplicate(true)
-		battlefield.hull = expedition.hull
+		battlefield.progress.hull = expedition.hull
 		battlefield.fuel_multiplier = expedition.modifiers.fuel
 		battlefield.reload_multiplier = expedition.modifiers.get("reload",1.0)
 		battle_viewport.add_child(battlefield)
@@ -256,10 +275,12 @@ func ensure_battle():
 
 func sync_equipment():
 	var positions = factory.auxiliary_positions()
-	world.configure_equipment(expedition.equipment,positions,factory.equipment_mounts)
+	world.configure_equipment(expedition.equipment,positions,factory.equipment_mounts,factory.equipment_rotations)
+	world.configure_vehicle_parts(Inventory.vehicle_parts(expedition),expedition.empty_part_slots)
 	world.sync_damage(factory)
 	if battlefield != null:
-		battlefield.configure_equipment(expedition.equipment,positions,factory.equipment_mounts)
+		battlefield.configure_equipment(expedition.equipment,positions,factory.equipment_mounts,factory.equipment_rotations)
+		battlefield.configure_vehicle_parts(Inventory.vehicle_parts(expedition),expedition.empty_part_slots)
 		battlefield.sync_damage(factory)
 		battlefield.combat_modifiers = expedition.modifiers.duplicate()
 		battlefield.combat_modifiers.equipment_power = Inventory.powers(expedition)
@@ -283,7 +304,10 @@ func finish_crafting():
 	refresh_view()
 
 func footer_rect() -> Rect2:
-	return FOOTER_RECT
+	return footer_layout.rect
+
+func world_rect() -> Rect2:
+	return Rect2(WORLD_RECT.position,factory_container.size)
 
 func refresh_view():
 	cancel_item_drag()
@@ -299,6 +323,7 @@ func refresh_view():
 	for entry in icon_buttons:
 		entry.button.visible = entry.icon == "menu" or ((expedition.phase in ["prepare","travel"]) and ((not battle_mode and can_manage_layout()) or entry.icon in ["battle","play","cargo"]))
 	sync_tools()
+	footer_layout.arrange(self)
 	start_button.tooltip_text = "出撃" if not started else "一時停止 / 再開"
 	if choice_popup != null: choice_popup.refresh()
 	if shop_panel != null: shop_panel.refresh()
@@ -311,6 +336,7 @@ func reset_battle(seed_value: int = -1):
 	if world.feedback != null: world.feedback.clear()
 	if battlefield == null: return
 	new_blueprints.clear()
+	clear_equipment_selection()
 	choice_popup.craft_page = 0
 	inventory_panel.reset_view()
 	loot_feed.clear()
@@ -368,6 +394,7 @@ func tool_kinds() -> Array:
 
 func select_tool_tab(index: int):
 	if index not in available_tool_tabs(): return
+	if touch_controls != null: touch_controls.cancel_placement()
 	tool_page = index
 	if selected != "erase": selected = tool_kinds()[0]
 	sync_tools()
@@ -376,6 +403,10 @@ func select_tool_tab(index: int):
 func cycle_tools():
 	var tabs = available_tool_tabs()
 	if not tabs.is_empty(): select_tool_tab(tabs[(tabs.find(tool_page)+1)%tabs.size()])
+
+func select_building(kind: String):
+	if touch_controls != null: touch_controls.cancel_placement()
+	selected = kind
 
 func sync_tools():
 	if inventory_button != null: inventory_button.visible = expedition.item_mode and expedition.phase in ["prepare","travel","reward","shop"]
@@ -394,13 +425,24 @@ func sync_tools():
 			continue
 		entry.icon = kinds[i]
 		var kind: String = kinds[i]
-		entry.button.pressed.connect(func(): selected = kind)
+		entry.button.pressed.connect(func(): select_building(kind))
 		entry.button.disabled = false
 		entry.button.tooltip_text = Factory.Content.BLOCKS[kind].name+"："+Factory.Content.BLOCKS[kind].effect if Factory.Content.BLOCKS.has(kind) else NAMES.get(kind,kind)
 		tool_buttons[kind] = entry.button
 	erase_button.visible = shown
 	for i in range(tool_tabs.size()):
 		tool_tabs[i].visible = shown and i in available_tool_tabs()
+	# The last two existing slots are shared utility icons; equipment categories
+	# contain at most five entries, so these never hide an available building.
+	for i in range(2):
+		var entry = icon_buttons[8+i]
+		entry.icon = "stow" if i == 0 else "roof"
+		entry.key = "" if i == 0 else "Tab"
+		entry.button.visible = shown
+		entry.button.tooltip_text = "倉庫に戻す装備を選択" if i == 0 else "装甲の開閉（Tab）"
+		if changed:
+			if i == 0: entry.button.pressed.connect(func(): touch_controls.action("stow"))
+			else: entry.button.pressed.connect(func(): world.toggle_roof())
 
 func set_difficulty(mode: String) -> bool:
 	if started or mode not in RunState.Content.DIFFICULTIES or not can_manage_layout() or expedition.sector != 1: return false
@@ -426,20 +468,33 @@ func can_manage_layout() -> bool:
 
 func clear_movement():
 	movement_keys.clear()
-	if battlefield != null: battlefield.movement_direction = Vector3.ZERO
+	touch_movement = Vector2.ZERO
+	if touch_controls != null: touch_controls.release_stick()
+	if battlefield != null: battlefield.motion.clear_command()
 
 func update_movement():
 	if battlefield == null: return
 	var horizontal = int(movement_keys.has(KEY_D) or movement_keys.has(KEY_RIGHT))-int(movement_keys.has(KEY_A) or movement_keys.has(KEY_LEFT))
 	var vertical = int(movement_keys.has(KEY_S) or movement_keys.has(KEY_DOWN))-int(movement_keys.has(KEY_W) or movement_keys.has(KEY_UP))
+	if not battle_mode:
+		battlefield.motion.clear_command()
+		return
 	# Independent throttle and steering; the battle applies the current hull heading.
-	battlefield.movement_direction = Vector3(-vertical,0,horizontal)
+	battlefield.motion.command = Vector3(clampf(-vertical-touch_movement.y,-1,1),0,clampf(horizontal+touch_movement.x,-1,1))
 
 func reset_camera():
+	world.camera_offset = Vector3.ZERO
 	world.yaw = 0.65
 	world.pitch = 0.92
 	world.zoom = 17.8
 	world.update_camera()
+
+func pan_construction_camera(delta: float):
+	if battle_mode or menu.visible or choice_popup.visible or shop_panel.visible or not can_manage_layout(): return
+	var axis = Vector2(int(movement_keys.has(KEY_D))-int(movement_keys.has(KEY_A)),int(movement_keys.has(KEY_S))-int(movement_keys.has(KEY_W)))
+	if axis.is_zero_approx(): return
+	world.pan_camera(axis.limit_length(),minf(delta,0.1))
+	hover = cell_at(get_viewport().get_mouse_position())
 
 func icon_button(icon: String, rect: Rect2, action: Callable, keycap: String = "") -> Button:
 	var b = add_button("",rect,func():
@@ -448,7 +503,7 @@ func icon_button(icon: String, rect: Rect2, action: Callable, keycap: String = "
 	b.add_theme_stylebox_override("normal",style(Color.TRANSPARENT))
 	b.add_theme_stylebox_override("hover",style(Color(1,1,1,0.06),GOLD))
 	b.add_theme_stylebox_override("pressed",style(Color(1,0.8,0.4,0.12),GOLD))
-	icon_buttons.append({"icon":icon,"rect":rect,"key":keycap,"button":b})
+	icon_buttons.append({"icon":icon,"rect":rect,"original_rect":rect,"key":keycap,"button":b})
 	return b
 
 func style(color: Color, border: Color = Color.TRANSPARENT) -> StyleBoxFlat:
@@ -503,6 +558,7 @@ func load_layout() -> bool:
 
 func _process(delta):
 	if quitting: return
+	pan_construction_camera(delta)
 	sync_equipment()
 	factory.step(minf(delta,0.1))
 	notice_time = maxf(0,notice_time-delta)
@@ -523,18 +579,18 @@ func _process(delta):
 			tool_buttons[kind].tooltip_text = "%s　スクラップ %d / 石炭 %d%s" % [RunState.Content.reward_info("block:"+kind).name,cost.scrap,cost.coal,"" if kind in factory.unlocked_blocks else "　未解放：死亡時に設計図を獲得"]
 			if kind == "armor_block": tool_buttons[kind].tooltip_text += "\n"+RunState.Content.BASIC_BLOCKS[kind].effect
 	if started: battlefield.tick_battle(factory,minf(delta,0.1))
-	if started and battlefield.result != 0 and expedition.phase == "travel":
+	if started and battlefield.progress.is_finished() and expedition.phase == "travel":
 		factory.combat_editing = false
-		factory.layout_locked = battlefield.result < 0
+		factory.layout_locked = battlefield.progress.has_lost()
 		# Restore occupied cells before drafting equipment so wrecks cannot
 		# masquerade as spare mounting space.
-		if battlefield.result == 1 and battlefield.hull > 0:
+		if battlefield.progress.has_won() and battlefield.progress.hull > 0:
 			factory.repair_line()
-		expedition.finish_sector(battlefield.result == 1,battlefield.hull,factory.inventory,has_mount_space(),battlefield.arrived_destination if battlefield.arrived_destination >= 0 else 0)
+		expedition.finish_sector(battlefield.progress.has_won(),battlefield.progress.hull,factory.inventory,has_mount_space(),battlefield.progress.arrived_destination if battlefield.progress.arrived_destination >= 0 else 0)
 		clear_movement()
-		if battlefield.result == 1 and expedition.phase != "lost":
+		if battlefield.progress.has_won() and expedition.phase != "lost":
 			factory.layout_locked = false
-			battlefield.hull = expedition.hull
+			battlefield.progress.hull = expedition.hull
 			world.sync_damage(factory)
 			battlefield.sync_damage(factory)
 			factory.message = "コースクリア。車体とラインを一括修復しました。"
@@ -544,9 +600,13 @@ func _process(delta):
 		if expedition.phase == "prepare": prepare_next_sector()
 		else: battle_mode = true
 		refresh_view()
+	if selected_item_uid >= 0 and (battle_mode or not Inventory.editable(expedition,factory) or Inventory.find_item(expedition,selected_item_uid).is_empty()): clear_equipment_selection()
 	if not battle_mode:
-		world.sync(factory,hover,selected,direction,delta,can_manage_layout() and not menu.visible and not choice_popup.visible and dragging_auxiliary == "" and dragging_item < 0 and not suppress_item_paint)
-		world.preview_equipment(factory,Inventory.find_item(expedition,dragging_item),hover,Inventory.can_place(expedition,factory,dragging_item,hover))
+		world.sync(factory,hover,selected,direction,delta,can_manage_layout() and not menu.visible and not choice_popup.visible and dragging_auxiliary == "" and dragging_item < 0 and selected_item_uid < 0 and not suppress_item_paint)
+		var placement_uid = dragging_item if dragging_item >= 0 else (touch_controls.selected_uid if touch_controls != null and touch_controls.mode == "place" else -1)
+		world.preview_equipment(factory,Inventory.find_item(expedition,placement_uid),hover,Inventory.can_place(expedition,factory,placement_uid,hover,item_direction),item_direction)
+		var marked = Inventory.find_item(expedition,selected_item_uid)
+		world.mark_equipment(factory,marked.get("kind",""),expedition.item_mode and not menu.visible)
 		if dragging_auxiliary != "" and world.marker.visible:
 			world.marker.material_override = world.mats.green if factory.can_move_auxiliary(dragging_auxiliary,hover) else world.mats.red
 		if started:
@@ -567,9 +627,12 @@ func _process(delta):
 	shop_panel.refresh()
 	inventory_panel.refresh()
 	loot_feed.advance(delta if not menu.visible and (factory.running or expedition.phase == "prepare") else 0.0,not menu.visible and expedition.phase in ["prepare","travel"])
+	footer_layout.arrange(self)
 	queue_redraw()
 
 func present_feedback(delta: float):
+	world.update_vehicle_part_visuals()
+	if battlefield != null: battlefield.update_vehicle_part_visuals()
 	var animate = not menu.visible and (factory.running or not factory.layout_locked)
 	world.tick_feedback(delta if animate else 0.0)
 	# Battle particles are driven here too so end-of-course fireworks can finish.
@@ -581,8 +644,8 @@ func present_feedback(delta: float):
 		var at: Vector3 = target_world.cell_position(event.cell)+Vector3(0,0.55,0)
 		if target_world == battlefield:
 			if event.kind in ["place","connect","production"]: continue
-			var turret_offset = Vector2(at.x-battlefield.TURRET_CENTER.x,at.z-battlefield.TURRET_CENTER.z)
-			var surface_height = battlefield.TURRET_CENTER.y+2.7 if turret_offset.length() < 3.7 else 4.5
+			var turret_offset = Vector2(at.x-battlefield.turret.position.x,at.z-battlefield.turret.position.z)
+			var surface_height = battlefield.turret.position.y+2.7*battlefield.turret.scale.y if turret_offset.length() < 3.7 else 4.5
 			at.y = maxf(at.y,surface_height)
 			at = battlefield.player.to_global(at)
 		target_world.feedback_effect(event.kind,at,1.4 if event.kind == "armor" else 1.0)
@@ -593,7 +656,7 @@ func present_feedback(delta: float):
 func cell_at(pos: Vector2) -> Vector2i:
 	if battle_mode: return Vector2i(-1,-1)
 	var canvas_pos = get_canvas_transform().affine_inverse()*pos
-	if not WORLD_RECT.has_point(canvas_pos) or world == null: return Vector2i(-1,-1)
+	if not world_rect().has_point(canvas_pos) or world == null: return Vector2i(-1,-1)
 	return world.screen_cell(canvas_pos-WORLD_RECT.position)
 
 func paint(p: Vector2i, erase: bool):
@@ -604,26 +667,54 @@ func paint(p: Vector2i, erase: bool):
 	factory.edit(p,"erase" if erase else selected,direction)
 	if started: factory.running = was_running
 
+func stow_at_screen(screen_position: Vector2) -> bool:
+	if menu.visible or not expedition.item_mode: return false
+	var canvas_position = get_canvas_transform().affine_inverse()*screen_position
+	if not world_rect().has_point(canvas_position): return false
+	var source = battlefield if battle_mode else world
+	if source == null: return false
+	var kind: String = source.equipped_model_at(canvas_position-WORLD_RECT.position)
+	if kind.is_empty() and not battle_mode and not world.roof_closed: kind = factory.mounted_at(cell_at(screen_position))
+	if kind.is_empty(): return false
+	for item in expedition.gear_items:
+		if item.kind == kind and item.position != Inventory.STOWED:
+			if stow_item(item.uid): factory.message = "装備を倉庫に戻しました。"
+			else: factory.message = "出撃後は倉庫に戻せません。次の出撃準備で変更できます。"
+			return true
+	return false
+
 func _input(event):
+	if touch_controls != null and touch_controls.swallow_mouse(event):
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R and selected_item_uid >= 0 and not menu.visible:
+		rotate_selection()
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+		suppress_stow_drag = false
+		if event.pressed and dragging_item < 0: suppress_item_paint = false
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed and dragging_item < 0: suppress_item_paint = false
 		elif not event.pressed: suppress_item_paint = false
 	if dragging_item >= 0 and event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-		cancel_item_drag()
+		clear_equipment_selection()
 		get_viewport().set_input_as_handled()
 		return
 	if dragging_item >= 0 and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
 		var uid = dragging_item
 		var destination = cell_at(event.position)
 		cancel_item_drag()
-		if not place_item(uid,destination): factory.message = "ここには装備を配置できません。空いている設置枠へ移動してください。"
+		if not place_item(uid,destination):
+			item_direction = int(Inventory.find_item(expedition,uid).get("direction",0))
+			factory.message = "ここには装備を配置できません。空いている設置枠へ移動してください。"
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventKey:
 		var key = event.physical_keycode if event.physical_keycode != 0 else event.keycode
 		if key in [KEY_W,KEY_A,KEY_S,KEY_D,KEY_UP,KEY_DOWN,KEY_LEFT,KEY_RIGHT]:
 			if not event.pressed: movement_keys.erase(key)
-			elif expedition.phase == "travel" and factory.running and not menu.visible and not event.echo: movement_keys[key] = true
+			elif not menu.visible and not event.echo and ((battle_mode and expedition.phase == "travel" and factory.running) or (not battle_mode and can_manage_layout() and key in [KEY_W,KEY_A,KEY_S,KEY_D])): movement_keys[key] = true
 			update_movement()
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
 		hover = cell_at(event.position)
@@ -640,6 +731,7 @@ func move_auxiliary(id: String, destination: Vector2i) -> bool:
 	return true
 
 func _unhandled_input(event):
+	if touch_controls != null and touch_controls.handle_world_input(event): return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_I and not menu.visible:
 		toggle_inventory()
 		return
@@ -655,6 +747,12 @@ func _unhandled_input(event):
 		else: open_menu(false)
 		return
 	if menu.visible: return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		if stow_at_screen(event.position):
+			suppress_stow_drag = true
+			get_viewport().set_input_as_handled()
+			return
+	if event is InputEventMouseMotion and event.button_mask & MOUSE_BUTTON_MASK_RIGHT and suppress_stow_drag: return
 	if expedition.phase not in ["prepare","travel"]:
 		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R and expedition.phase in ["won","lost","retreated"]: reset_battle()
 		return
@@ -692,14 +790,19 @@ func _unhandled_input(event):
 				if started: return
 				world.pitch = clampf(world.pitch-0.08,0.65,1.35)
 				world.update_camera()
-			KEY_R: direction = (direction+1)%4
+			KEY_R: rotate_selection()
 			KEY_Q:
 				var was_running = factory.running
-				factory.rotate(hover)
+				var kind = factory.mounted_at(hover)
+				if kind != "":
+					for item in expedition.gear_items:
+						if item.kind == kind and item.position != Inventory.STOWED:
+							if select_equipment(item.uid): rotate_selection()
+				else: factory.rotate(hover)
 				if started: factory.running = was_running
 			KEY_Z:
 				factory.undo()
-			KEY_0: selected = "erase"
+			KEY_0: select_building("erase")
 			KEY_8: cycle_tools()
 			KEY_9:
 				if "armor_block" in factory.unlocked_blocks:
@@ -707,7 +810,7 @@ func _unhandled_input(event):
 					selected = "armor_block"
 		if event.keycode >= KEY_1 and event.keycode <= KEY_7:
 			var index = event.keycode-KEY_1
-			if index < tool_kinds().size(): selected = tool_kinds()[index]
+			if index < tool_kinds().size(): select_building(tool_kinds()[index])
 	if event is InputEventMouseMotion:
 		if event.button_mask & MOUSE_BUTTON_MASK_MIDDLE:
 			world.yaw -= event.relative.x*0.007
@@ -718,7 +821,7 @@ func _unhandled_input(event):
 		if event.button_mask & MOUSE_BUTTON_MASK_LEFT: paint(hover,false)
 		elif event.button_mask & MOUSE_BUTTON_MASK_RIGHT: paint(hover,true)
 	if event is InputEventMouseButton:
-		if event.pressed and WORLD_RECT.has_point(event.position) and event.button_index in [MOUSE_BUTTON_WHEEL_UP,MOUSE_BUTTON_WHEEL_DOWN]:
+		if event.pressed and world_rect().has_point(get_canvas_transform().affine_inverse()*event.position) and event.button_index in [MOUSE_BUTTON_WHEEL_UP,MOUSE_BUTTON_WHEEL_DOWN]:
 			world.zoom = clampf(world.zoom+(-0.8 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.8),11,24)
 			world.update_camera()
 		hover = cell_at(event.position)
@@ -727,6 +830,9 @@ func _unhandled_input(event):
 			if expedition.item_mode and event.button_index == MOUSE_BUTTON_LEFT and factory.mounted_at(hover) != "":
 				for item in expedition.gear_items:
 					if item.kind == factory.mounted_at(hover) and item.position != Inventory.STOWED: begin_item_drag(item.uid)
+				return
+			if event.button_index == MOUSE_BUTTON_LEFT and selected_item_uid >= 0:
+				clear_equipment_selection()
 				return
 			if event.button_index == MOUSE_BUTTON_LEFT and factory.cells.has(hover) and Factory.AUXILIARY.has(factory.cells[hover].kind):
 				dragging_auxiliary = factory.cells[hover].kind
@@ -785,10 +891,12 @@ func keycap(value: String, at: Vector2):
 func draw_control(entry: Dictionary):
 	var rect: Rect2 = entry.rect
 	var picked = selected == entry.icon or (entry.icon == "roof" and world.roof_closed)
+	if selected_item_uid >= 0 and entry.icon in tool_buttons: picked = false
+	if entry.icon == "stow": picked = touch_controls != null and touch_controls.mode == "stow"
 	if entry.has("tab_index"): picked = tool_page == entry.tab_index
 	var primary = entry.icon == "play"
 	panel(rect,Color("51563b") if picked else SURFACE,GOLD if picked or primary else EDGE)
-	if entry.icon == "cargo":
+	if entry.icon == "cargo" and not footer_layout.compact:
 		symbol("cargo",rect.position+Vector2(16,18),0.5)
 		keycap("I",rect.position+Vector2(33,5))
 		var count = str(expedition.gear_items.size())
@@ -796,15 +904,20 @@ func draw_control(entry: Dictionary):
 		return
 	if picked: panel(Rect2(rect.position+Vector2(12,rect.size.y-5),Vector2(rect.size.x-24,3)),GOLD)
 	var icon = entry.icon
+	if icon == "stow": icon = "cargo"
 	if icon == "play": icon = "pause" if factory.running else "play"
 	if icon == "battle": icon = "example" if battle_mode else "battle"
 	if icon == "roof": icon = "roof" if world.roof_closed else "roof_open"
 	var center = rect.get_center()
-	if primary: center.x = rect.position.x+104
+	if primary: center.x = rect.position.x+(rect.size.x*0.3 if footer_layout.compact else 104.0)
 	if entry.key != "": center.x += 10
-	symbol(icon,center,minf(1.05 if entry.icon in tool_buttons else 0.82,(rect.size.y-4)/44.0))
-	if primary: text_at("出撃" if not started else "停止" if factory.running else "再開",rect.position+Vector2(160,34),20,INK)
+	var icon_scale = maxf(0.82,28.0/(44.0*get_viewport().get_final_transform().get_scale().x)) if footer_layout.compact else (1.05 if entry.icon in tool_buttons else 0.82)
+	symbol(icon,center,minf(icon_scale,(rect.size.y-12)/44.0))
+	if primary:
+		text_at("出撃" if not started else "停止" if factory.running else "再開",rect.position+Vector2(rect.size.x*0.53,rect.size.y*0.62) if footer_layout.compact else rect.position+Vector2(160,34),26 if footer_layout.compact else 20,INK)
 	if entry.key != "": keycap(entry.key,rect.position+Vector2(5,5))
+	if entry.icon == "cargo":
+		text_at(str(expedition.gear_items.size()),rect.position+Vector2(rect.size.x-34,rect.size.y-9),24,INK)
 	if Factory.LIMITS.has(entry.icon) and not entry.has("tab_index"):
 		var remaining = factory.available(entry.icon)
 		panel(Rect2(rect.position+Vector2(rect.size.x-27,rect.size.y-21),Vector2(25,19)),SURFACE)
@@ -816,13 +929,24 @@ func _draw():
 	metal_panel(footer_rect())
 	for entry in icon_buttons:
 		if entry.button.visible: draw_control(entry)
-	if expedition.phase == "travel" and battle_mode:
+	if expedition.phase == "travel" and battle_mode and not footer_layout.compact:
 		text_at("W 前進   S 後退   A/D 旋回",Vector2(40,895),20,INK)
 		symbol("belt",Vector2(445,888),0.65)
 		text_at("B 車内で編集",Vector2(470,895),20,MUTED)
 	if battle_retry.visible:
 		symbol("reset",battle_retry.get_rect().get_center()+Vector2(12,0),1.0)
 		keycap("R",battle_retry.position+Vector2(12,12))
+
+func draw_equipment_selection(canvas: Control):
+	var item = Inventory.find_item(expedition,selected_item_uid)
+	if item.is_empty() or battle_mode or menu.visible or inventory_panel.visible: return
+	if not Inventory.Catalog.part_slot(item.kind).is_empty(): return
+	var compact: bool = footer_layout.compact
+	var at = Vector2(28,92)
+	canvas.draw_style_box(UIStyle.style(PANEL,GOLD),Rect2(at,Vector2(950 if compact else 680,92 if compact else 64)))
+	var state = "選択中・未設置" if item.position == Inventory.STOWED else "選択中・設置済み"
+	canvas.draw_string(font,at+Vector2(12,32 if compact else 25),state+"  "+RunState.EQUIPMENT[item.kind].name,HORIZONTAL_ALIGNMENT_LEFT,920 if compact else 650,28 if compact else 20,GOLD)
+	canvas.draw_string(font,at+Vector2(12,70 if compact else 50),"向き "+["→","↓","←","↑"][item_direction]+"  回転 / R：90°  "+("空き枠をタップで移動" if touch_enabled else "ドラッグで移動"),HORIZONTAL_ALIGNMENT_LEFT,-1,24 if compact else 17,INK)
 
 func meter(rect: Rect2, fraction: float, color: Color):
 	panel(rect,BG)
@@ -866,7 +990,7 @@ func draw_header():
 		text_at("%d/5" % expedition.sector,Vector2(157,49),19,MUTED)
 		symbol(expedition.current.get("terrain","road"),Vector2(218,42),0.55)
 		symbol(expedition.current.get("formation","patrol"),Vector2(250,42),0.55)
-	var hull = battlefield.hull if battlefield != null else expedition.hull
+	var hull = battlefield.progress.hull if battlefield != null else expedition.hull
 	header_stat(Rect2(274,22,100,40),"shield",str(hull),DANGER if hull <= 25 else GOLD,hull/100.0)
 	header_stat(Rect2(384,22,128,40),"shell",stock_text("shell",factory.ammo,factory.ammo_capacity),DANGER if factory.ammo == 0 else INK,float(factory.ammo)/factory.ammo_capacity)
 	header_stat(Rect2(522,22,138,40),"fuel","%.1f/12" % factory.fuel,DANGER if factory.fuel < 0.01 else INK,factory.fuel/12.0)
@@ -877,7 +1001,7 @@ func draw_header():
 	var length = float(expedition.current.length)
 	var remaining = battlefield.remaining_distance() if battlefield != null else length
 	header_stat(Rect2(1028,22,270,40),"move",destination_text(),INK,clampf(1.0-remaining/length,0,1))
-	header_stat(Rect2(1308,22,100,40),"battle","%d/%d" % [battlefield.kills if battlefield != null else 0,RunState.enemy_count(expedition.current)])
+	header_stat(Rect2(1308,22,100,40),"battle","%d/%d" % [battlefield.score.kills if battlefield != null else 0,battlefield.score.total if battlefield != null else RunState.enemy_count(expedition.current)])
 
 func draw_inspector():
 	if factory.wrecks.has(hover):
@@ -992,7 +1116,7 @@ func choose_run_option(index: int):
 					for id in factory.auxiliary_ids:
 						var cell = factory.cells[factory.auxiliary_position(id)]
 						for i in range(mini(2,factory.ammo_capacity-cell.items.size())): cell.items.append("shell")
-			if battlefield != null: battlefield.hull = expedition.hull
+			if battlefield != null: battlefield.progress.hull = expedition.hull
 			factory.work_multiplier = expedition.modifiers.work
 			factory.ammo_capacity = expedition.modifiers.magazine
 			factory.reserve_capacity = expedition.modifiers.get("cargo",100)
@@ -1020,7 +1144,7 @@ func prepare_next_sector():
 	battle_mode = false
 
 func open_menu(title: bool = false):
-	cancel_item_drag()
+	clear_equipment_selection()
 	if inventory_panel != null: inventory_panel.hide()
 	dragging_auxiliary = ""
 	clear_movement()
@@ -1081,6 +1205,7 @@ func menu_action(index: int):
 func _notification(what: int):
 	if quitting: return
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		suppress_stow_drag = false
 		clear_movement()
 		cancel_item_drag()
 		if inventory_panel != null: inventory_panel.cancel_pending_drag()
@@ -1100,7 +1225,7 @@ func finish_quit():
 	if OS.has_feature("web"):
 		# A browser tab cannot be closed by the game. Keep the saved run and
 		# return to a fresh title scene without shutting down the WebAssembly engine.
-		get_tree().reload_current_scene()
+		get_tree().change_scene_to_file("res://scenes/start_screen.tscn")
 		return
 	menu.hide()
 	sound.queue_free()
@@ -1109,7 +1234,7 @@ func finish_quit():
 	get_tree().quit()
 
 func repair_state() -> Dictionary:
-	var hull = battlefield.hull if battlefield != null else expedition.hull
+	var hull = battlefield.progress.hull if battlefield != null else expedition.hull
 	var cost = RunState.Services.repair_cost(factory,hull)
 	var active = can_manage_layout() and hull > 0
 	return {"visible":active and cost > 0 and menu != null and not menu.visible,"allowed":active and cost > 0 and factory.reserves.scrap >= cost,"cost":cost,
@@ -1121,7 +1246,7 @@ func repair_vehicle() -> bool:
 	factory.reserves.scrap -= cost
 	factory.repair_line()
 	expedition.hull = 100
-	if battlefield != null: battlefield.hull = 100
+	if battlefield != null: battlefield.progress.hull = 100
 	sync_equipment()
 	field_actions.refresh()
 	return true
@@ -1187,6 +1312,9 @@ func begin_item_drag(uid: int):
 		return
 	var item = Inventory.find_item(expedition,uid)
 	if item.is_empty(): return
+	if not Inventory.Catalog.part_slot(item.kind).is_empty():
+		equip_vehicle_part(uid)
+		return
 	if item.position == Inventory.STOWED and expedition.equipment.any(func(id): return Inventory.Catalog.family(id) == Inventory.Catalog.family(item.kind)):
 		factory.message = "同じ系統の装備は1基までです。先に取り外してください。"
 		return
@@ -1194,6 +1322,7 @@ func begin_item_drag(uid: int):
 	if world.roof_closed: world.toggle_roof()
 	refresh_view()
 	inventory_panel.hide()
+	select_equipment(uid)
 	dragging_item = uid
 	last_paint = Vector2i(-1,-1)
 
@@ -1202,16 +1331,72 @@ func cancel_item_drag():
 	if is_instance_valid(world): world.preview_equipment(factory,{},Vector2i(-1,-1))
 
 func place_item(uid: int, at: Vector2i) -> bool:
-	if menu.visible or battle_mode or world.roof_closed or not Inventory.place(expedition,factory,uid,at): return false
+	var facing = item_direction if uid == selected_item_uid else -1
+	if menu.visible or battle_mode or world.roof_closed or not Inventory.place(expedition,factory,uid,at,facing): return false
 	sync_equipment()
 	world.rendered_layout = ""
 	return true
 
+func select_equipment(uid: int) -> bool:
+	var item = Inventory.find_item(expedition,uid)
+	if item.is_empty() or not Inventory.editable(expedition,factory): return false
+	selected_item_uid = uid
+	item_direction = int(item.get("direction",0))
+	queue_redraw()
+	return true
+
+func clear_equipment_selection():
+	selected_item_uid = -1
+	item_direction = 0
+	cancel_item_drag()
+	if touch_controls != null:
+		touch_controls.selected_uid = -1
+		touch_controls.mode = "build"
+
+func rotate_selection():
+	if menu.visible: return
+	var item = Inventory.find_item(expedition,selected_item_uid)
+	if item.is_empty():
+		direction = (direction+1)%4
+		return
+	if not Inventory.editable(expedition,factory): return
+	if not Inventory.Catalog.part_slot(item.kind).is_empty(): return
+	var next = (item_direction+1)%4
+	if item.position != Inventory.STOWED and dragging_item < 0:
+		if not Inventory.place(expedition,factory,item.uid,item.position,next):
+			factory.message = "回転できません。周囲の設備・装備と重なるか、車体の外にはみ出します。"
+			return
+		sync_equipment()
+		world.rendered_layout = ""
+	elif dragging_item < 0: item.direction = next
+	item_direction = next
+	inventory_panel.refresh()
+	queue_redraw()
+
 func stow_item(uid: int) -> bool:
 	if menu.visible or not Inventory.stow(expedition,factory,uid): return false
+	if uid == selected_item_uid: clear_equipment_selection()
 	sync_equipment()
 	world.rendered_layout = ""
 	inventory_panel.refresh()
+	return true
+
+func equip_vehicle_part(uid: int) -> bool:
+	if menu.visible or not Inventory.equip_part(expedition,factory,uid):
+		factory.message = "換装は出撃準備中に、未装備のパーツを選んで行ってください。"
+		return false
+	select_equipment(uid)
+	sync_equipment()
+	inventory_panel.refresh()
+	factory.message = "車体パーツを交換しました。取り外したパーツは所持一覧に戻ります。"
+	return true
+
+func empty_vehicle_slot(slot: String) -> bool:
+	if menu.visible or not Inventory.empty_slot(expedition,factory,slot): return false
+	clear_equipment_selection()
+	sync_equipment()
+	inventory_panel.refresh()
+	factory.message = Inventory.Catalog.PART_SLOTS[slot]+"を外しました。部品は倉庫に保管されます。"
 	return true
 
 func dismantle_item(uid: int) -> bool:
@@ -1233,4 +1418,17 @@ func show_dismantle_receipt(before: Dictionary):
 
 func inventory_state() -> Dictionary:
 	return {"enabled":expedition.item_mode,"menu_visible":menu != null and menu.visible,"items":expedition.gear_items,
-		"editable":Inventory.editable(expedition,factory),"phase":expedition.phase,"reserves":factory.reserves}
+		"editable":Inventory.editable(expedition,factory),"phase":expedition.phase,"reserves":factory.reserves,"vehicle_parts":Inventory.vehicle_parts(expedition),"empty_slots":expedition.empty_part_slots,"selected_uid":selected_item_uid,"parameters":vehicle_parameters()}
+
+func vehicle_parameters() -> Dictionary:
+	var effects = Inventory.effects(expedition)
+	var terrain = RunState.condition(expedition.current)
+	var speed = float(terrain.speed)*expedition.modifiers.get("speed",1.0)*effects.speed
+	return {"speed":"%.2f m/s" % speed,
+		"turn":"%.1f °/s" % rad_to_deg(BattleWorld.TURN_SPEED*speed/3.3*effects.drive_turn),
+		"fuel":"%.3f" % (BattleWorld.FUEL_PER_METER*expedition.modifiers.fuel*terrain.fuel*effects.fuel),
+		"reload":"装備なし" if "cannon" in expedition.empty_part_slots else "%.2f 秒" % (60.0/factory.rate*expedition.modifiers.get("reload",1.0)*effects.reload*effects.main_reload),
+		"range":"—" if "cannon" in expedition.empty_part_slots else "%.1f m" % (BattleWorld.ENGAGEMENT_RANGE+expedition.modifiers.get("range",0.0)+effects.range+effects.main_range),
+		"splash":"—" if "cannon" in expedition.empty_part_slots else "%.1f m" % (effects.splash+effects.main_splash),
+		"damage":"%.0f %%" % (effects.damage*expedition.modifiers.get("damage",1.0)*100),
+		"offroad":"%.0f %%" % (minf(1.0,0.65+effects.offroad)*100)}

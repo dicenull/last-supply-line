@@ -31,6 +31,10 @@ func scenario(sample: Dictionary):
 	game.expedition.current = game.expedition.make_route(sample.kind,false,sample.encounter)
 	game.expedition.current.seed = sample.route_seed
 	game.expedition.current.terrain = sample.terrain
+	# Recorded regressions retain the original road and scenery generation.
+	var recorded = game.expedition.current.duplicate(true)
+	game.expedition.enable_items()
+	game.expedition.current = recorded
 	root.add_child(game)
 	game.set_process(false)
 	await process_frame
@@ -58,7 +62,7 @@ func scenario(sample: Dictionary):
 		if i%20 == 0: Pilot.maintain(game)
 		if game.expedition.phase != "travel": break
 	check(game.expedition.phase == "reward" and b.arrived_destination == 1 and b.hull == 100,"recovered pilot reaches the selected destination without removing scenery")
-	check(b.resource_sites.all(func(site): return site.taken) and game.expedition.next_item_uid-next_uid == (3-sample.taken)*(6 if sample.encounter == "rich" else 3),"recovery collects remaining areas exactly once without replaying collected supplies")
+	check(b.resource_sites.all(func(site): return site.taken) and game.expedition.next_item_uid-next_uid+b.ground_items.size() == (3-sample.taken)*(6 if sample.encounter == "rich" else 3),"opened supplies are collected or remain on the ground, without replaying old supplies")
 	check(game.factory.fuel_used > 0 and game.factory.injected > 0,"recovery consumes fuel supplied by real production")
 	game.reset_battle(1333)
 	game.toggle_running()

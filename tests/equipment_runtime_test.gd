@@ -34,6 +34,7 @@ func run():
 		b.enemies[index].node.position = Vector3(48+index*2,0,0)
 	game.expedition.gear_items.clear()
 	for id in Gear.DEFINITIONS:
+		if not Gear.part_slot(id).is_empty(): continue
 		var valid = true
 		for rarity in Gear.RARITIES:
 			var uid = game.expedition.add_item({"kind":id,"rarity":rarity})
@@ -53,9 +54,9 @@ func run():
 				var gun = b.auxiliary_guns[0]
 				var offset = b.enemies[0].node.position-gun.pivot.global_position
 				var angle = atan2(-offset.z,offset.x)
-				gun.pivot.rotation.y = angle-0.5
+				gun.pivot.rotation.y = angle-0.2
 				b.update_auxiliary_guns(f,0.01)
-				valid = valid and is_equal_approx(gun.pivot.rotation.y,angle-0.5+spec.turn*0.01)
+				valid = valid and is_equal_approx(gun.pivot.rotation.y,angle-0.2+spec.turn*0.01)
 				gun.pivot.rotation.y = angle
 				f.cells[Vector2i(0,0)].items = ["shell","shell"]
 				b.update_auxiliary_guns(f,0.001)
@@ -100,6 +101,8 @@ func run():
 	var last = b.enemies.size()-1
 	var expected = Gear.roll(b.sector_config.seed,last,b.enemies[last].role,true,10)
 	b.kill_enemy(b.enemies[last],game.factory,b.enemies[last].node.position)
+	b.drive_poses = [{"position":b.enemies[last].node.position,"yaw":0.0}]
+	b.update_ground_items(game.factory)
 	var loot = game.expedition.gear_items.back()
 	check(loot.kind == expected.kind and loot.rarity == expected.rarity and loot.rarity != "normal","actual last enemy uses boss quality and sector-five model pool")
 	game.queue_free()

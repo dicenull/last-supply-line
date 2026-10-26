@@ -2,11 +2,19 @@ extends Control
 ## Inventory presentation; all mutations go through the owner's commands.
 const Catalog = preload("res://scripts/equipment_catalog.gd")
 const Inventory = preload("res://scripts/equipment_inventory.gd")
+const ModelPreview = preload("res://scripts/item_model_preview.gd")
 const Style = preload("res://scripts/ui_style.gd")
 const PANEL = Rect2(1016,100,392,716)
-const GENRE_ICONS = {"":"cargo","secondary":"gun","protection":"shield","engine":"fuel","support":"camera"}
+const GENRE_ICONS = {"":"cargo","secondary":"gun","protection":"shield","engine":"fuel","support":"camera","vehicle":"engine"}
+const TAB_LABELS = {"":"設置物","gear":"ギア","engine":"エンジン","tracks":"履帯","cannon":"主砲"}
+const TAB_ICONS = {"":"cargo","gear":"rotate","engine":"engine","tracks":"move","cannon":"gun"}
 signal drag_requested(uid: int)
+signal item_selected(uid: int)
+var touch_mode = false
+var page_size = 6
 signal stow_requested(uid: int)
+signal equip_part_requested(uid: int)
+signal empty_slot_requested(slot: String)
 signal dismantle_requested(uid: int)
 signal normal_dismantle_requested(uids: Array)
 var state_provider: Callable
@@ -17,6 +25,7 @@ var genre = ""
 var page = 0
 var rows: Array = []
 var row_buttons: Array = []
+var model_previews: Array = []
 var stow_buttons: Array = []
 var salvage_buttons: Array = []
 var tabs: Array = []
@@ -34,6 +43,21 @@ var bulk_quote: Dictionary = {}
 var filtered_items: Array = []
 var display_items: Array = []
 var list_signature = -1
+var loadout_panel: Control
+var stacked = false
+var frame_width = 704.0
+
+func select_tab(id: String):
+	genre = id
+	page = 0
+	cancel_bulk()
+	refresh()
+
+func frame_bounds() -> Rect2:
+	return Rect2(0,0,392,1444) if stacked else Rect2(392-frame_width,0,frame_width,716)
+
+func occupied_rect() -> Rect2:
+	return get_global_transform()*frame_bounds()
 
 func button(rect: Rect2, hint: String, callback: Callable) -> Button:
 	var b = Button.new()
@@ -55,26 +79,48 @@ func item_button(rect: Rect2, hint: String, action: StringName, index: int) -> B
 	b.pressed.connect(func():
 		var uid = int(b.get_meta("pressed_uid",-1))
 		if b.has_meta("pressed_uid"): b.remove_meta("pressed_uid")
-		if uid >= 0: emit_signal(action,uid))
+		if uid >= 0:
+			if action == "stow_requested":
+				for item in state.get("items",[]):
+					if item.uid == uid and not Catalog.part_slot(item.kind).is_empty() and item.position == Inventory.STOWED:
+						equip_part_requested.emit(uid)
+						return
+			emit_signal(action,uid))
 	return b
 
 func _ready():
 	position = PANEL.position
 	size = PANEL.size
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	for i in range(GENRE_ICONS.size()):
-		var id: String = GENRE_ICONS.keys()[i]
-		tabs.append(button(Rect2(16+i*60,54,54,38),Catalog.GENRES.get(id,"すべて"),func(): genre = id; page = 0; cancel_bulk(); refresh()))
+	loadout_panel = preload("res://scripts/equipment_loadout_panel.gd").new()
+	loadout_panel.font = font
+	loadout_panel.slot_selected.connect(select_tab)
+	loadout_panel.remove_requested.connect(func(slot): empty_slot_requested.emit(slot))
+	add_child(loadout_panel)
+	for i in range(TAB_LABELS.size()):
+		var id: String = TAB_LABELS.keys()[i]
+		tabs.append(button(Rect2(16+i*72,54,68,44),TAB_LABELS[id],func(): select_tab(id)))
 	button(Rect2(336,10,40,36),"閉じる",hide)
 	sort_button = button(Rect2(236,10,40,36),"品質の高い順に並べる",func(): quality_order = not quality_order; page = 0; cancel_bulk(); refresh())
 	for i in range(6):
 		var index = i
 		var row = button(Rect2(16,108+i*82,230,72),"",func(): pass)
 		row.gui_input.connect(func(event):
+			if bulk_quote.is_empty() and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed and index < rows.size():
+				if state.editable and rows[index].position != Inventory.STOWED: stow_requested.emit(rows[index].uid)
+				accept_event()
+				return
 			if bulk_quote.is_empty() and event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and index < rows.size():
 				pending_uid = rows[index].uid
 				drag_origin = row.get_global_transform()*event.position)
+		row.pressed.connect(func():
+			if bulk_quote.is_empty() and index < rows.size(): item_selected.emit(rows[index].uid))
 		row_buttons.append(row)
+		var preview = ModelPreview.new()
+		preview.position = row.position+Vector2(8,4)
+		preview.size = Vector2(64,64)
+		add_child(preview)
+		model_previews.append(preview)
 		stow_buttons.append(item_button(Rect2(254,108+i*82,54,72),"装備を外して一覧に戻す（出撃準備のみ）","stow_requested",index))
 		salvage_buttons.append(item_button(Rect2(316,108+i*82,60,72),"","dismantle_requested",index))
 	previous = button(Rect2(16,660,80,40),"前のページ",func(): page = maxi(0,page-1); refresh())
@@ -90,7 +136,7 @@ func _ready():
 	hide()
 
 func begin_bulk():
-	bulk_uids = Inventory.normal_candidates(state.items,genre)
+	bulk_uids = Inventory.normal_candidates(filtered_items)
 	page = 0
 	refresh()
 
@@ -102,7 +148,7 @@ func _input(event):
 	if not visible:
 		pending_uid = -1
 		return
-	if event is InputEventMouseMotion and pending_uid >= 0 and event.button_mask & MOUSE_BUTTON_MASK_LEFT and (get_canvas_transform().affine_inverse()*event.position).distance_to(drag_origin) > 8:
+	if not touch_mode and event is InputEventMouseMotion and pending_uid >= 0 and event.button_mask & MOUSE_BUTTON_MASK_LEFT and (get_canvas_transform().affine_inverse()*event.position).distance_to(drag_origin) > 8:
 		var uid = pending_uid
 		pending_uid = -1
 		drag_requested.emit(uid)
@@ -115,10 +161,20 @@ func refresh():
 	if not state.get("enabled",false) or state.get("menu_visible",false):
 		hide()
 	if not visible: return
+	var screen_scale = get_viewport().get_final_transform().get_scale().x
+	frame_width = maxf(704,(get_viewport_rect().size.x-32/screen_scale)/maxf(1,0.9/screen_scale))
+	stacked = get_viewport_rect().size.x*get_viewport().get_final_transform().get_scale().x < 700
+	loadout_panel.position = Vector2(0,728) if stacked else Vector2(392-frame_width,0)
+	loadout_panel.size = Vector2(392 if stacked else 300,716)
+	loadout_panel.update_state(state)
 	var signature = [state.items.hash(),genre,quality_order].hash()
 	if signature != list_signature:
 		list_signature = signature
-		filtered_items = state.items.filter(func(item): return genre == "" or Catalog.DEFINITIONS[item.kind].genre == genre)
+		filtered_items = state.items.filter(func(item):
+			var slot = Catalog.part_slot(item.kind)
+			if genre == "": return slot.is_empty()
+			if genre in Catalog.PART_SLOTS: return slot == genre
+			return Catalog.DEFINITIONS[item.kind].genre == genre)
 		if quality_order:
 			filtered_items.sort_custom(func(a,b):
 				var a_power: float = Catalog.RARITIES[a.rarity].power
@@ -131,10 +187,10 @@ func refresh():
 	if bulk_quote.is_empty() or state.phase in ["lost","won","retreated"]: cancel_bulk()
 	var previewing = not bulk_quote.is_empty()
 	display_items = filtered_items.filter(func(item): return item.uid in bulk_uids) if previewing else filtered_items
-	page = clampi(page,0,maxi(0,ceili(display_items.size()/6.0)-1))
-	rows = display_items.slice(page*6,page*6+6)
+	page = clampi(page,0,maxi(0,ceili(float(display_items.size())/page_size)-1))
+	rows = display_items.slice(page*page_size,page*page_size+page_size)
 	previous.disabled = page == 0
-	next.disabled = (page+1)*6 >= display_items.size()
+	next.disabled = (page+1)*page_size >= display_items.size()
 	previous.position = Vector2(148,10) if previewing else Vector2(16,660)
 	next.position = Vector2(192,10) if previewing else Vector2(296,660)
 	previous.size = Vector2(40,36) if previewing else Vector2(80,40)
@@ -142,26 +198,39 @@ func refresh():
 	sort_button.tooltip_text = "入手順に戻す" if quality_order else "品質の高い順に並べる"
 	bulk_button.visible = not previewing
 	for b in [cancel_button,confirm_button]: b.visible = previewing
-	var candidates = Inventory.normal_candidates(state.items,genre)
+	var candidates = Inventory.normal_candidates(filtered_items)
 	bulk_button.disabled = candidates.is_empty() or state.phase in ["lost","won","retreated"]
 	bulk_button.tooltip_text = "このジャンルのノーマル %d個をまとめて解体\n未設置・弾なしのみ。次に対象数と素材量を確認します。" % candidates.size()
 	if previewing: confirm_button.tooltip_text = "%d個を解体：スクラップ +%d / 石炭 +%d（元に戻せません）" % [bulk_quote.count,bulk_quote.scrap,bulk_quote.coal]
 	for i in range(6):
-		for b in [row_buttons[i],stow_buttons[i],salvage_buttons[i]]: b.visible = i < rows.size()
+		for b in [row_buttons[i],stow_buttons[i],salvage_buttons[i],model_previews[i]]: b.visible = i < rows.size()
 		if i >= rows.size(): continue
 		var item: Dictionary = rows[i]
+		model_previews[i].show_item(item)
 		var definition = Catalog.DEFINITIONS[item.kind]
 		var rarity = Catalog.RARITIES[item.rarity]
 		var mounted = item.position != Inventory.STOWED
+		var slot = Catalog.part_slot(item.kind)
 		var materials = Catalog.salvage(item)
 		row_buttons[i].tooltip_text = "%s · %s\n%s / %d×%d\n%s\n%s" % [rarity.name,Catalog.Content.EQUIPMENT[item.kind].name,Catalog.GENRES[definition.genre],definition.size.x,definition.size.y,Catalog.description(item),"D&Dで配置（同じ系統は1基まで）" if state.editable else "出撃中：装備変更不可"]
 		if item.kind in Catalog.Content.ALL_GUNS:
 			row_buttons[i].tooltip_text += "\n主砲の旋回範囲外に設置 / 2×2枠の外周から給弾"
 			if item.get("ammo",0) > 0: row_buttons[i].tooltip_text += "\n保管弾 %d発" % item.ammo
-		stow_buttons[i].disabled = previewing or not mounted or not state.editable
+		# Set the final state once. Disabling then re-enabling a held swap
+		# button cancels its press before the mouse/touch release arrives.
+		stow_buttons[i].disabled = previewing or not state.editable or (not mounted if slot.is_empty() else mounted)
+		stow_buttons[i].tooltip_text = "装備を外して一覧に戻す（出撃準備のみ）"
+		if not slot.is_empty():
+			var current: Dictionary = state.get("vehicle_parts",{}).get(slot,{})
+			var current_name: String = Catalog.Data.ITEMS[current.kind].name if not current.is_empty() else "標準装備"
+			row_buttons[i].tooltip_text = "%s · %s\n%s\n現在の%s：%s\n出撃準備中に換装ボタンで交換" % [rarity.name,Catalog.Data.ITEMS[item.kind].name,Catalog.description(item),Catalog.PART_SLOTS[slot],current_name]
+			stow_buttons[i].tooltip_text = "装備中（左ペインの「外す」で標準装備に戻す）" if mounted else Catalog.PART_SLOTS[slot]+"を換装："+current_name+" → "+Catalog.Data.ITEMS[item.kind].name
 		salvage_buttons[i].disabled = previewing or mounted or state.phase in ["lost","won","retreated"]
 		salvage_buttons[i].tooltip_text = "解体：スクラップ +%d / 石炭 +%d（元に戻せません）" % [materials.scrap,materials.coal]
 		if item.get("ammo",0) > 0: salvage_buttons[i].tooltip_text += "\n保管弾 %d発も失います" % item.ammo
+		if mounted: row_buttons[i].tooltip_text += "\n右クリックで倉庫へ戻す（出撃準備のみ）"
+		row_buttons[i].tooltip_text += "\n"+("設置済み" if mounted else "未設置・倉庫")+(" / 選択中" if item.uid == state.get("selected_uid",-1) else "")
+		if slot.is_empty(): row_buttons[i].tooltip_text += " / 選択してR・回転ボタンで90°回転"
 	queue_redraw()
 
 func icon(id: String, rect: Rect2, tint: Color = Color.WHITE):
@@ -175,37 +244,51 @@ func _draw():
 	icon("close",Rect2(344,16,24,24))
 	icon("sort",Rect2(244,16,24,24),Style.GOLD if quality_order else Style.MUTED)
 	for i in range(tabs.size()):
-		var id: String = GENRE_ICONS.keys()[i]
-		icon(GENRE_ICONS[id],Rect2(tabs[i].position+Vector2(14,6),Vector2(26,26)),Style.GOLD if genre == id else Style.MUTED)
+		var id: String = TAB_LABELS.keys()[i]
+		icon(TAB_ICONS[id],Rect2(tabs[i].position+Vector2(24,3),Vector2(20,20)),Style.GOLD if genre == id else Style.MUTED)
+		draw_string(font,tabs[i].position+Vector2(2,38),TAB_LABELS[id],HORIZONTAL_ALIGNMENT_CENTER,64,12,Style.GOLD if genre == id else Style.MUTED)
 	for i in range(rows.size()):
 		var item: Dictionary = rows[i]
 		var at: Vector2 = row_buttons[i].position
+		if item.uid == state.get("selected_uid",-1): draw_style_box(Style.style(Color(0.9,0.7,0.35,0.12),Style.GOLD),Rect2(at,row_buttons[i].size))
 		var rarity = Catalog.RARITIES[item.rarity]
 		var rank = Catalog.RARITIES.keys().find(item.rarity)+1
 		draw_rect(Rect2(at+Vector2(1,1),Vector2(5,70)),Color(rarity.color))
-		icon(Catalog.Content.EQUIPMENT[item.kind].icon,Rect2(at+Vector2(14,10),Vector2(44,44)))
-		icon(GENRE_ICONS[Catalog.DEFINITIONS[item.kind].genre],Rect2(at+Vector2(80,12),Vector2(24,24)),Color(rarity.color))
+		var slot = Catalog.part_slot(item.kind)
+		icon(Catalog.Data.ITEMS[item.kind].icon if not slot.is_empty() else GENRE_ICONS[Catalog.DEFINITIONS[item.kind].genre],Rect2(at+Vector2(80,12),Vector2(24,24)),Color(rarity.color))
 		icon(Catalog.profile_icon(item.kind),Rect2(at+Vector2(112,12),Vector2(24,24)))
 		for j in range(rank): draw_rect(Rect2(at+Vector2(80+j*14,46),Vector2(10,8)),Color(rarity.color))
-		var footprint: Vector2i = Catalog.DEFINITIONS[item.kind].size
+		var footprint: Vector2i = Catalog.footprint(item.kind,item.get("direction",0))
 		draw_string(font,at+Vector2(148,30),"Lv.%d" % Catalog.level(item.kind),HORIZONTAL_ALIGNMENT_LEFT,-1,18,Style.INK)
-		draw_string(font,at+Vector2(152,55),"%d×%d" % [footprint.x,footprint.y],HORIZONTAL_ALIGNMENT_LEFT,-1,16,Style.MUTED)
+		draw_string(font,at+Vector2(148,55),Catalog.PART_SLOTS[slot] if not slot.is_empty() else "%d×%d" % [footprint.x,footprint.y],HORIZONTAL_ALIGNMENT_LEFT,-1,14 if not slot.is_empty() else 16,Style.MUTED)
 		if item.position != Inventory.STOWED: icon("victory",Rect2(at+Vector2(206,5),Vector2(18,18)))
-		icon("cargo",Rect2(stow_buttons[i].position+Vector2(13,23),Vector2(28,28)),Style.MUTED if stow_buttons[i].disabled else Style.INK)
+		var status = ("設置済み" if slot.is_empty() else "装備中") if item.position != Inventory.STOWED else ("未設置" if slot.is_empty() else "未装備")
+		if item.uid == state.get("selected_uid",-1): status = "選択中 / "+status
+		if slot.is_empty(): status += " "+["→","↓","←","↑"][int(item.get("direction",0))]
+		draw_string(font,at+Vector2(80,68),status,HORIZONTAL_ALIGNMENT_LEFT,145,12,Style.GOLD if item.uid == state.get("selected_uid",-1) else Style.MINT if item.position != Inventory.STOWED else Style.MUTED)
+		icon("ready" if not slot.is_empty() and item.position == Inventory.STOWED else "cargo",Rect2(stow_buttons[i].position+Vector2(13,12 if not slot.is_empty() else 23),Vector2(28,28)),Style.MUTED if stow_buttons[i].disabled else Style.INK)
+		if not slot.is_empty(): draw_string(font,stow_buttons[i].position+Vector2(4,60),"装備中" if item.position != Inventory.STOWED else "換装",HORIZONTAL_ALIGNMENT_CENTER,46,14,Style.MUTED if stow_buttons[i].disabled else Style.INK)
 		icon("scrap",Rect2(salvage_buttons[i].position+Vector2(16,12),Vector2(28,28)),Style.MUTED if salvage_buttons[i].disabled else Style.GOLD)
 		draw_string(font,salvage_buttons[i].position+Vector2(15,60),str(Catalog.salvage(item).scrap),HORIZONTAL_ALIGNMENT_LEFT,-1,18,Style.MUTED if salvage_buttons[i].disabled else Style.INK)
-	icon("scrap",Rect2(16,612,24,24))
-	draw_string(font,Vector2(48,633),"+"+str(bulk_quote.scrap) if not bulk_quote.is_empty() else str(state.reserves.scrap),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
-	icon("coal",Rect2(162,612,24,24))
-	draw_string(font,Vector2(194,633),"+"+str(bulk_quote.coal) if not bulk_quote.is_empty() else str(state.reserves.coal),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
-	draw_string(font,Vector2(310,633),"%d/%d" % [page+1,maxi(1,ceili(display_items.size()/6.0))],HORIZONTAL_ALIGNMENT_LEFT,-1,16,Style.MUTED)
+	if genre == "vehicle" and bulk_quote.is_empty():
+		for i in range(4):
+			var slot: String = Catalog.PART_SLOTS.keys()[i]
+			var part: Dictionary = state.get("vehicle_parts",{}).get(slot,{})
+			var label: String = Catalog.PART_SLOTS[slot]+"："+(Catalog.Data.ITEMS[part.kind].name if not part.is_empty() else "標準")
+			draw_string(font,Vector2(16+(i%2)*184,610+(i/2)*21),label,HORIZONTAL_ALIGNMENT_LEFT,178,12,Style.INK)
+	else:
+		icon("scrap",Rect2(16,612,24,24))
+		draw_string(font,Vector2(48,633),"+"+str(bulk_quote.scrap) if not bulk_quote.is_empty() else str(state.reserves.scrap),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
+		icon("coal",Rect2(162,612,24,24))
+		draw_string(font,Vector2(194,633),"+"+str(bulk_quote.coal) if not bulk_quote.is_empty() else str(state.reserves.coal),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
+	draw_string(font,Vector2(310,650 if genre == "vehicle" and bulk_quote.is_empty() else 633),"%d/%d" % [page+1,maxi(1,ceili(float(display_items.size())/page_size))],HORIZONTAL_ALIGNMENT_LEFT,-1,16,Style.MUTED)
 	if not bulk_quote.is_empty():
 		icon("rotate",Rect2(previous.position+Vector2(8,6),Vector2(24,24)),Style.MUTED if previous.disabled else Style.INK)
 		icon("play",Rect2(next.position+Vector2(8,6),Vector2(24,24)),Style.MUTED if next.disabled else Style.INK)
 	icon("close" if not bulk_quote.is_empty() else "rotate",Rect2(44,668,24,24))
 	icon("ready" if not bulk_quote.is_empty() else "play",Rect2(324,668,24,24))
 	icon("scrap",Rect2(126,668,24,24),Style.MUTED if bulk_button.disabled else Style.GOLD)
-	var count = bulk_quote.count if not bulk_quote.is_empty() else Inventory.normal_candidates(state.items,genre).size()
+	var count = bulk_quote.count if not bulk_quote.is_empty() else Inventory.normal_candidates(filtered_items).size()
 	draw_string(font,Vector2(166,688),"×"+str(count),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
 	draw_rect(Rect2(254,676,10,8),Color(Catalog.RARITIES.normal.color))
 

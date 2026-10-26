@@ -11,28 +11,36 @@ static func find_item(run, uid: int) -> Dictionary:
 static func editable(run, factory) -> bool:
 	return run.item_mode and run.phase == "prepare" and not factory.loadout_locked and not factory.layout_locked
 
-static func can_place(run, factory, uid: int, at: Vector2i) -> bool:
+static func can_place(run, factory, uid: int, at: Vector2i, direction: int = -1) -> bool:
 	var item = find_item(run,uid)
 	if item.is_empty() or not editable(run,factory): return false
+	if not Catalog.part_slot(item.kind).is_empty(): return false
 	if item.position == STOWED and run.equipment.any(func(id): return Catalog.family(id) == Catalog.family(item.kind)): return false
-	return factory.can_place_equipment(item.kind,at)
+	return factory.can_place_equipment(item.kind,at,item.get("direction",0) if direction == -1 else direction)
 
-static func place(run, factory, uid: int, at: Vector2i) -> bool:
-	if not can_place(run,factory,uid,at): return false
+static func place(run, factory, uid: int, at: Vector2i, direction: int = -1) -> bool:
+	if not can_place(run,factory,uid,at,direction): return false
 	var item = find_item(run,uid)
+	if direction == -1: direction = item.get("direction",0)
 	var was_stowed: bool = item.position == STOWED
-	if not factory.place_equipment(item.kind,at): return false
+	if not factory.place_equipment(item.kind,at,direction): return false
 	if was_stowed and item.kind in factory.AUXILIARY:
 		factory.cells[at].items.resize(int(item.get("ammo",0)))
 		factory.cells[at].items.fill("shell")
 		item.ammo = 0
 	item.position = at
+	item.direction = direction
 	if item.kind not in run.equipment: run.equipment.append(item.kind)
 	return true
 
 static func stow(run, factory, uid: int) -> bool:
 	var item = find_item(run,uid)
 	if item.is_empty() or not editable(run,factory) or item.position == STOWED: return false
+	if not Catalog.part_slot(item.kind).is_empty():
+		item.position = STOWED
+		var slot = Catalog.part_slot(item.kind)
+		if slot not in run.empty_part_slots: run.empty_part_slots.append(slot)
+		return true
 	# Loaded rounds stay with the removed weapon, so a full main magazine never
 	# prevents changing the loadout between departures or discards ammunition.
 	var rounds = factory.auxiliary_ammo(item.kind) if item.kind in factory.auxiliary_ids else 0
@@ -40,6 +48,35 @@ static func stow(run, factory, uid: int) -> bool:
 	item.ammo = rounds
 	item.position = STOWED
 	run.equipment.erase(item.kind)
+	return true
+
+static func vehicle_parts(run) -> Dictionary:
+	var result: Dictionary = {}
+	for item in run.gear_items:
+		var slot = Catalog.part_slot(item.kind)
+		if not slot.is_empty() and item.position == Catalog.part_position(item.kind): result[slot] = item
+	return result
+
+static func empty_slot(run, factory, slot: String) -> bool:
+	if not editable(run,factory) or slot not in Catalog.PART_SLOTS or slot in run.empty_part_slots: return false
+	var current: Dictionary = vehicle_parts(run).get(slot,{})
+	if not current.is_empty(): return stow(run,factory,current.uid)
+	# The built-in standard component becomes a real inventory item on removal.
+	if run.gear_items.size() >= 2000: return false
+	if run.add_item({"kind":"vehicle_"+slot,"rarity":"normal"}) < 0: return false
+	run.empty_part_slots.append(slot)
+	return true
+
+static func equip_part(run, factory, uid: int) -> bool:
+	var item = find_item(run,uid)
+	if item.is_empty() or not editable(run,factory): return false
+	var slot = Catalog.part_slot(item.kind)
+	if slot.is_empty() or item.position != STOWED: return false
+	# The old component returns to inventory in the same atomic command.
+	for previous in run.gear_items:
+		if Catalog.part_slot(previous.kind) == slot and previous.position != STOWED: previous.position = STOWED
+	run.empty_part_slots.erase(slot)
+	item.position = Catalog.part_position(item.kind)
 	return true
 
 static func dismantle(run, factory, uid: int) -> bool:
@@ -90,7 +127,7 @@ static func powers(run) -> Dictionary:
 	return result
 
 static func effects(run) -> Dictionary:
-	var result = {"damage":1.0,"speed":1.0,"fuel":1.0,"turn":1.0,"reload":1.0,"range":0.0,"splash":0.0,"salvage_rate":0.0}
+	var result = {"damage":1.0,"speed":1.0,"fuel":1.0,"turn":1.0,"reload":1.0,"range":0.0,"splash":0.0,"salvage_rate":0.0,"drive_turn":1.0,"offroad":0.0,"main_reload":1.0,"main_range":0.0,"main_splash":0.0}
 	for item in run.gear_items:
 		if item.position == STOWED: continue
 		var values = Catalog.effect_values(item)
@@ -102,6 +139,12 @@ static func effects(run) -> Dictionary:
 		result.range += values.get("range_bonus",0.0)
 		result.splash += values.get("splash_bonus",0.0)
 		result.salvage_rate += values.get("salvage_rate",0.0)
+		result.drive_turn *= 1.0+values.get("drive_turn_bonus",0.0)
+		result.offroad += values.get("offroad_bonus",0.0)
+		result.main_reload *= 1.0-values.get("main_reload_bonus",0.0)
+		result.main_range += values.get("main_range_bonus",0.0)
+		result.main_splash += values.get("main_splash_bonus",0.0)
 	var bounds = {"damage":Vector2(0.2,1),"speed":Vector2(0.5,2),"fuel":Vector2(0.25,2),"turn":Vector2(0.25,4),"reload":Vector2(0.35,1.5),"range":Vector2(0,20),"splash":Vector2(0,12),"salvage_rate":Vector2(0,0.75)}
 	for key in bounds: result[key] = clampf(result[key],bounds[key].x,bounds[key].y)
+	if run.empty_part_slots.any(func(slot): return slot in ["gear","engine","tracks"]): result.speed = 0.0
 	return result

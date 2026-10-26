@@ -1,5 +1,6 @@
 extends RefCounted
 ## Seeded five-sector expedition. No rendering or file IO.
+const Defenses = preload("res://scripts/destination_defenses.gd")
 const Services = preload("res://scripts/field_services.gd")
 const FieldCourse = preload("res://scripts/field_course.gd")
 const SECTORS = 5
@@ -46,12 +47,14 @@ var equipment: Array = []
 var stage_recipes: Array = []
 var item_mode = false
 var gear_items: Array = []
+var empty_part_slots: Array = []
 var next_item_uid = 1
 const Gear = preload("res://scripts/equipment_catalog.gd")
 
 func enable_items():
 	if item_mode: return
 	item_mode = true
+	fortify_route(current)
 	add_item({"kind":"left_gun","rarity":"normal"})
 	add_item({"kind":"armor","rarity":"normal"})
 	add_item({"kind":"economizer","rarity":"uncommon"})
@@ -95,11 +98,25 @@ func make_route(kind: String, opening: bool = false, encounter: String = "standa
 		for i in range(6): roster.append(roster[i%roster.size()])
 		scrap += 18
 		coal += 12
-	return {"kind":kind,"difficulty":difficulty,"enemies":roster,"wave_size":3 if difficulty == "easy" else 5 if difficulty == "hard" else 4,"wave_delay":18.0*settings.period,"warning_scale":settings.warning,"seed":route_seed,"terrain":terrain,"formation":formation,"sector":sector,"length":length,
+	var route = {"kind":kind,"difficulty":difficulty,"enemies":roster,"wave_size":3 if difficulty == "easy" else 5 if difficulty == "hard" else 4,"wave_delay":18.0*settings.period,"warning_scale":settings.warning,"seed":route_seed,"terrain":terrain,"formation":formation,"sector":sector,"length":length,
 		"scrap":scrap,"coal":coal,"shells":12 if kind == "arsenal" else 0,"enemy_hp":1,"combat_version":3,"obstacles_version":1,
 		"encounters_version":1,"encounter":encounter,"field_version":1,"landscape_version":1,"destination_count":int(modifiers.get("routes",2)),"destination_index":-1,
 		"damage":int(round((10+(sector-1)*2)*settings.damage)),"attack_period":maxf(4,8-(sector-1)*0.5)*settings.period,
 		"boss":sector == SECTORS,"opening":opening}
+	if item_mode: fortify_route(route)
+	return route
+
+static func fortify_route(route: Dictionary):
+	if route.get("defenses_version",0) == 1: return
+	route.defenses_version = 1
+	route.destination_layout_version = 1
+	route.encounters_version = 2
+	# Keep the final enemy as the boss for loot and checkpoint compatibility.
+	var boss_role = route.enemies.pop_back() if route.boss else -1
+	route.patrol_count = route.enemies.size()
+	var roles = [0,1,2,0,3,2]
+	for i in range(route.destination_count*Defenses.GUARDS_PER_SITE): route.enemies.append(roles[i%roles.size()])
+	if boss_role >= 0: route.enemies.append(boss_role)
 
 func start_sector() -> bool:
 	if phase != "prepare": return false
@@ -159,7 +176,7 @@ func finish_sector(won: bool, remaining_hull: int, inventory: Dictionary = {}, m
 func reward_pool(inventory: Dictionary = {}, mount_space: bool = true) -> Array:
 	var pool: Array = []
 	for id in (EQUIPMENT if item_mode else Content.BASE_EQUIPMENT):
-		if item_mode and (Gear.level(id) > mini(10,(sector+1)*2) or Gear.level(id) < maxi(1,mini(10,(sector+1)*2)-3)): continue
+		if item_mode and Gear.part_slot(id).is_empty() and (Gear.level(id) > mini(10,(sector+1)*2) or Gear.level(id) < maxi(1,mini(10,(sector+1)*2)-3)): continue
 		if item_mode or (id not in equipment and (mount_space or id not in Content.GUNS)): pool.append("gear:"+id)
 	return pool
 
@@ -207,7 +224,7 @@ func choose_reward(index: int) -> bool:
 	return true
 
 func advance_after_reward():
-	if current.get("encounters_version",0) == 1 and not current.get("shop_done",false):
+	if current.get("encounters_version",0) in [1,2] and not current.get("shop_done",false):
 		var site = FieldCourse.new(current).destinations[maxi(0,int(current.destination_index))]
 		if site.get("encounter","") == "shop":
 			phase = "shop"

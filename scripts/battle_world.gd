@@ -1,5 +1,11 @@
 extends "res://scripts/tank_world.gd"
 ## Moving encounter: coal-derived fuel powers travel; enemy shells target marked ground.
+const Score = preload("res://scripts/battle_score.gd")
+const Progress = preload("res://scripts/battle_progress.gd")
+const Motion = preload("res://scripts/battle_motion.gd")
+var score: Score = Score.new()
+var progress: Progress = Progress.new()
+var motion: Motion = Motion.new()
 const RunState = preload("res://scripts/run_state.gd")
 const FieldCourse = preload("res://scripts/field_course.gd")
 const CourseGoal = preload("res://scripts/course_goal.gd")
@@ -7,7 +13,11 @@ const SupplyPoint = preload("res://scripts/supply_point.gd")
 const CourseObstacles = preload("res://scripts/course_obstacles.gd")
 const SUPPLY_DISTANCES = [18.0,52.0,86.0]
 signal enemy_destroyed(role: int)
-signal item_dropped(item: Dictionary)
+signal item_collected(item: Dictionary)
+const ItemModels = preload("res://scripts/item_model.gd")
+const PICKUP_RADIUS = 12.0
+var ground_items: Array = []
+var item_models = ItemModels.new()
 var item_mode = false
 const Gear = preload("res://scripts/equipment_catalog.gd")
 var reload_multiplier = 1.0
@@ -17,15 +27,15 @@ const FUEL_PER_METER = 0.12
 const ENGAGEMENT_RANGE = 36.0
 # Readable heavy-shell pacing for this compressed battlefield.
 const BALLISTICS = RunState.Content.BALLISTICS
+const SHELL_WIDTH_SCALE = 2.4
+const SHELL_LENGTH_SCALE = 1.7
 const VEHICLE_CLEARANCE = 0.35
 var sector_config: Dictionary = {}
 var route_length = ROUTE_LENGTH
 var goal: Node3D
 var goals: Array = []
 var field_course
-var arrived_destination = -1
 var obstacles: Node3D
-var drive_poses: Array = []
 var fuel_multiplier = 1.0
 var resource_sites: Array = []
 var collection_events: Array = []
@@ -35,26 +45,59 @@ var bolts: Array = []
 var impacts: Array = []
 var impact_serial = 0
 var trails: Array = []
-var hull = 100
-var kills = 0
-var total = 6
-var elapsed = 0.0
 var cooldown = 0.0
-var result = 0
-var distance = 0.0
-var speed = 0.0
 const BATTLE_HALF_WIDTH = 18.0
 # Input axes: X is forward/reverse throttle; Z is right/left steering.
 const TURN_SPEED = 1.2
 const TRACK_HALF_WIDTH = 5.05
-var movement_direction = Vector3.ZERO
-var velocity = Vector3.ZERO
 var trail_clock = 0.0
 var shake = 0.0
 var target_marker: MeshInstance3D
-var combo = 0
-var combo_time = 0.0
-var best_combo = 0
+
+# Compatibility facade for existing scene clients. Runtime systems use the
+# state objects above; setters support old fixtures without a second copy.
+var kills: int:
+	get: return score.kills
+	set(value): score.kills = value
+var total: int:
+	get: return score.total
+	set(value): score.total = value
+var combo: int:
+	get: return score.combo
+	set(value): score.combo = value
+var combo_time: float:
+	get: return score.combo_time
+	set(value): score.combo_time = value
+var best_combo: int:
+	get: return score.best_combo
+	set(value): score.best_combo = value
+var hull: int:
+	get: return progress.hull
+	set(value): progress.hull = value
+var elapsed: float:
+	get: return progress.elapsed
+	set(value): progress.elapsed = value
+var result: int:
+	get: return progress.result
+	set(value): progress.result = value
+var arrived_destination: int:
+	get: return progress.arrived_destination
+	set(value): progress.arrived_destination = value
+var movement_direction: Vector3:
+	get: return motion.command
+	set(value): motion.command = value
+var velocity: Vector3:
+	get: return motion.velocity
+	set(value): motion.velocity = value
+var distance: float:
+	get: return motion.distance
+	set(value): motion.distance = value
+var speed: float:
+	get: return motion.speed
+	set(value): motion.speed = value
+var drive_poses: Array:
+	get: return motion.poses
+	set(value): motion.poses = value
 
 func tank():
 	var before = get_children()
@@ -156,14 +199,14 @@ func update_camera():
 	var at = player.position if player != null else Vector3.ZERO
 	var target = at+Vector3(24,1.7,0)
 	camera.position = target+Vector3(sin(yaw)*cos(pitch),sin(pitch),cos(yaw)*cos(pitch))*42
-	camera.position += Vector3(sin(elapsed*71),cos(elapsed*59),0)*shake
+	camera.position += Vector3(sin(progress.elapsed*71),cos(progress.elapsed*59),0)*shake
 	camera.look_at(target,Vector3.UP)
 	camera.size = zoom
 
 func _ready():
 	route_length = float(sector_config.get("length",ROUTE_LENGTH))
 	if sector_config.get("field_version",0) == 1: field_course = FieldCourse.new(sector_config)
-	total = RunState.enemy_count(sector_config)
+	score.total = RunState.enemy_count(sector_config)
 	super._ready()
 	zoom = 52.0
 	yaw = -0.65
@@ -196,11 +239,11 @@ func _ready():
 			var shells = int(sector_config.get("shells",0)/3)
 			site.build(self,sector_config.get("kind","scrapyard"),i,shells)
 			resource_sites.append({"node":site,"distance":route_length*[0.14,0.30,0.46][i] if field_course != null else SUPPLY_DISTANCES[i],"taken":false,"shells":shells,"scrap":int(sector_config.scrap/3)+(1 if i < int(sector_config.scrap)%3 else 0),"coal":int(sector_config.coal/3)+(1 if i < int(sector_config.coal)%3 else 0)})
-	for i in range(total):
+	for i in range(score.total):
 		var unit = Node3D.new()
 		add_child(unit)
 		unit.visible = false
-		var boss = bool(sector_config.get("boss",false)) and i == total-1
+		var boss = bool(sector_config.get("boss",false)) and i == score.total-1
 		var hp = RunState.enemy_health(sector_config,i)
 		var role = RunState.enemy_role(sector_config,i)
 		var profile = RunState.Content.ENEMIES[role]
@@ -280,6 +323,30 @@ func _ready():
 		if sector_config.get("opening",false) and i < int(sector_config.get("wave_size",2)): warmup += 3.0
 		var collision_radius = (4.2 if role == 4 else 3.5 if heavy else 3.0)*maxf(unit.scale.x,unit.scale.z)
 		enemies.append({"node":unit,"collision_radius":collision_radius,"health":health,"pivot":pivot,"hp":hp,"max_hp":hp,"cooldown":warmup if sector_config.has("enemies") else 7.0+i,"active":false,"role":role,"wave":int(i/int(sector_config.get("wave_size",2))),"mark":mark,"locked":false,"aim":Vector3.ZERO})
+
+	place_destination_guards()
+
+func guard_destination(index: int) -> int:
+	if field_course == null or sector_config.get("defenses_version",0) != 1: return -1
+	var slot = index-int(sector_config.patrol_count)
+	return slot/RunState.Defenses.GUARDS_PER_SITE if slot >= 0 and slot < int(sector_config.destination_count)*RunState.Defenses.GUARDS_PER_SITE else -1
+
+func place_destination_guards():
+	for i in range(enemies.size()):
+		var destination = guard_destination(i)
+		if destination < 0: continue
+		var enemy: Dictionary = enemies[i]
+		var slot = (i-int(sector_config.patrol_count))%RunState.Defenses.GUARDS_PER_SITE
+		var home = RunState.Defenses.guard_position(field_course.destinations[destination].position,slot)
+		# Shift along the approach if a seeded scenery object occupies a post.
+		for attempt in range(20):
+			if enemy_position_clear(enemy,home): break
+			home.x -= 2
+		enemy.guard_home = home
+		enemy.node.position = home
+		enemy.node.rotation.y = PI
+		enemy.active = true
+		enemy.node.visible = true
 
 func enemy_position_clear(enemy: Dictionary, at: Vector3, allow_escape: bool = false) -> bool:
 	var terrain_clear = obstacles.clear_enemy_path(enemy.node.position,at,float(enemy.collision_radius)) if allow_escape else obstacles.circle_clear(at,float(enemy.collision_radius))
@@ -372,16 +439,17 @@ func receive_shell(factory, target: Vector3, radius: float, damage: float) -> bo
 	# Ignore decorative pitch/roll: X/Z grid follows the vehicle's current yaw.
 	var local_hit = Basis(Vector3.UP,player.rotation.y).inverse()*(target-player.position)
 	factory.damage_at(Vector2(local_hit.x,local_hit.z))
-	hull = maxi(0,hull-ceili(damage*(factory.ARMOR_DAMAGE_MULTIPLIER if factory.last_damage_blocked else 1.0)))
+	progress.take_damage(damage*(factory.ARMOR_DAMAGE_MULTIPLIER if factory.last_damage_blocked else 1.0))
 	shake = 0.3
 	sync_damage(factory)
 	return true
 
 func build_shell(node: Node3D, heading: Vector3, style: String = "heavy"):
 	var spec = BALLISTICS[style]
-	# A short solid round with a warm tail, rather than a long luminous streak.
-	beam(node,Vector3.ZERO,-heading*0.65,spec.width,"shell_body",12)
-	beam(node,-heading*0.65,-heading*(0.65+spec.tail),spec.width*0.65,"electric_flash" if style == "electric" else "shell_tracer",8)
+	var body_length = 0.65*SHELL_LENGTH_SCALE
+	var width: float = spec.width*SHELL_WIDTH_SCALE
+	beam(node,Vector3.ZERO,-heading*body_length,width,"shell_body",12)
+	beam(node,-heading*body_length,-heading*(body_length+spec.tail*SHELL_LENGTH_SCALE),width*0.65,"electric_flash" if style == "electric" else "shell_tracer",8)
 
 func impact(pos: Vector3, style: String = "heavy", feedback: bool = true):
 	impact_serial += 1
@@ -451,24 +519,42 @@ func drive_plan(travel: float, turn: float) -> Dictionary:
 	var yaw_value = player.rotation.y
 	var effort = 0.0
 	var poses = [{"position":at,"yaw":yaw_value}]
+	var contacts: Array = []
 	var steps = maxi(1,ceili(maxf(absf(travel)/0.25,absf(turn)/0.02)))
 	var step_travel = travel/steps
 	var step_turn = turn/steps
 	for i in range(steps):
 		var candidate = drive_step(at,yaw_value,step_travel,step_turn)
 		if not obstacles.clear_pose(candidate.position,yaw_value+step_turn):
-			# A stationary pivot remains available when forward motion is blocked.
-			if absf(step_turn) > 0 and obstacles.clear_pose(at,yaw_value+step_turn):
-				yaw_value += step_turn
-				effort += absf(step_turn)*TRACK_HALF_WIDTH
-				poses.append({"position":at,"yaw":yaw_value})
-				continue
-			break
+			var slide = obstacles.slide_hull(at,yaw_value,candidate.position-at)
+			at = slide.position
+			if not slide.contacts.is_empty(): contacts = slide.contacts
+			# Preserve the actual bent path for mines, pickups and supply crossings.
+			for point in slide.positions: poses.append({"position":point,"yaw":yaw_value})
+			var allowed_turn = step_turn
+			if not obstacles.clear_pose(at,yaw_value+step_turn):
+				for rect in obstacles.barriers:
+					if CourseObstacles.overlaps(at,yaw_value+step_turn,rect):
+						var point = CourseObstacles.contact_point(at,yaw_value,rect)
+						contacts = [{"position":point,"normal":Vector3(at.x-point.x,0,at.z-point.z).normalized()}]
+						break
+				var low = 0.0
+				var high = 1.0
+				for j in range(12):
+					var mid = (low+high)/2
+					if obstacles.clear_pose(at,yaw_value+step_turn*mid): low = mid
+					else: high = mid
+				allowed_turn *= low
+			yaw_value += allowed_turn
+			effort += maxf(slide.distance,absf(allowed_turn)*TRACK_HALF_WIDTH)
+			poses.append({"position":at,"yaw":yaw_value})
+			if slide.distance < 0.000001 and absf(allowed_turn) < 0.000001: break
+			continue
 		at = candidate.position
 		yaw_value += step_turn
 		effort += candidate.effort
 		poses.append({"position":at,"yaw":yaw_value})
-	return {"position":at,"yaw":yaw_value,"effort":effort,"poses":poses}
+	return {"position":at,"yaw":yaw_value,"effort":effort,"poses":poses,"contacts":contacts}
 
 func drive_step(at: Vector3, yaw_value: float, travel: float, turn: float) -> Dictionary:
 	# Integrate the arc, so driving while steering is independent of frame rate.
@@ -488,11 +574,12 @@ func drive_step(at: Vector3, yaw_value: float, travel: float, turn: float) -> Di
 	return {"position":destination,"effort":maxf(arc,absf(turn)*TRACK_HALF_WIDTH)}
 
 func move_player(factory, delta: float) -> float:
+	if empty_part_slots.any(func(slot): return slot in ["gear","engine","tracks"]): return 0.0
 	var surface = RunState.condition(sector_config)
 	var engine_speed = combat_modifiers.get("speed",1.0)*equipment_effect("speed",(1.0+0.2*equipment_power("supercharger") if "supercharger" in installed_equipment else 1.0))
-	var road_factor = 0.65 if field_course != null and field_course.road_distance(player.position) > FieldCourse.ROAD_HALF_WIDTH else 1.0
-	var travel = road_factor*clampf(movement_direction.x,-1,1)*delta*surface.speed*engine_speed
-	var turn = -clampf(movement_direction.z,-1,1)*delta*TURN_SPEED*engine_speed*surface.speed/3.3
+	var road_factor = minf(1.0,0.65+equipment_effect("offroad",0.0)) if field_course != null and field_course.road_distance(player.position) > FieldCourse.ROAD_HALF_WIDTH else 1.0
+	var travel = road_factor*clampf(motion.command.x,-1,1)*delta*surface.speed*engine_speed
+	var turn = -clampf(motion.command.z,-1,1)*delta*TURN_SPEED*engine_speed*surface.speed/3.3*equipment_effect("drive_turn",1.0)
 	var consumption = FUEL_PER_METER*fuel_multiplier*surface.fuel*equipment_effect("fuel",(1.0-0.2*equipment_power("economizer") if "economizer" in installed_equipment else 1.0)*(1.1 if "supercharger" in installed_equipment else 1.0))
 	var plan = drive_plan(travel,turn)
 	var fraction = minf(1.0,factory.fuel/(plan.effort*consumption)) if plan.effort > 0 else 1.0
@@ -508,43 +595,46 @@ func move_player(factory, delta: float) -> float:
 			if drive_plan(travel*mid,turn*mid).effort*consumption <= factory.fuel: low = mid
 			else: high = mid
 		plan = drive_plan(travel*low,turn*low)
+	var powered = factory.fuel > 0
 	factory.consume_fuel(plan.effort*consumption)
-	velocity = (plan.position-player.position)/maxf(delta,0.001)
+	motion.record_plan(player.position,plan,delta,route_length)
 	player.position = plan.position
 	player.rotation.y = wrapf(plan.yaw,-PI,PI)
-	drive_poses = plan.poses
-	speed = velocity.length()
-	distance = clampf(player.position.x,0,route_length)
+	if not powered: motion.contacts.clear()
+	if feedback != null or not motion.contacts.is_empty():
+		ensure_feedback()
+		feedback.scrape(motion.contacts,delta)
 	return plan.effort
 
 func tick_battle(factory, delta: float):
-	if not factory.running or result != 0: return
-	combo_time = maxf(0,combo_time-delta)
-	if combo_time == 0: combo = 0
-	elapsed += delta
+	if not factory.running or progress.is_finished(): return
+	score.advance(delta)
+	progress.advance(delta)
 	var travel = move_player(factory,delta)
-	for pose in drive_poses:
+	update_ground_items(factory)
+	for pose in motion.poses:
 		for index in obstacles.triggered(pose.position,pose.yaw):
 			obstacles.set_spent(index,true)
 			var at: Vector3 = obstacles.mines[index].position
 			var local_hit = Basis(Vector3.UP,pose.yaw).inverse()*(at-pose.position)
 			factory.damage_at(Vector2(clampf(local_hit.x,-6.5,6.5),clampf(local_hit.z,-3.5,3.5)))
-			hull = maxi(0,hull-ceili(hit_damage()*1.4*(factory.ARMOR_DAMAGE_MULTIPLIER if factory.last_damage_blocked else 1.0)))
+			progress.take_damage(hit_damage()*1.4*(factory.ARMOR_DAMAGE_MULTIPLIER if factory.last_damage_blocked else 1.0))
 			impact(at,"demolition")
 			shake = 0.45
 	sync_damage(factory)
 	for site in resource_sites:
-		if not site.taken and site.node.crossed_by(drive_poses):
+		if not site.taken and site.node.crossed_by(motion.poses):
 			site.taken = true
 			if item_mode:
 				var count = 6 if sector_config.get("encounter","") == "rich" else 3
 				var role = {"scrapyard":0,"coalfield":9,"arsenal":2}.get(sector_config.kind,0)
-				for i in range(count): item_dropped.emit(Gear.roll(sector_config.seed,1000+resource_sites.find(site)*10+i,role,false,int(sector_config.sector)*2))
-				feedback_effect("pickup",site.node.position,1.2)
+				for i in range(count):
+					var offset = Vector3((i%3-1)*2.2,0,(i/3)*2.2)
+					drop_item(Gear.roll(sector_config.seed,1000+resource_sites.find(site)*10+i,role,false,int(sector_config.sector)*2),site.node.position+offset)
 			else: recover(factory,{"scrap":site.scrap,"coal":site.coal,"shell":site.shells})
 			site.node.set_taken(true)
 	# Small pitch motion and tracks make actual world movement readable.
-	player.rotation.z = sin(elapsed*9)*0.006*minf(speed,1)
+	player.rotation.z = sin(progress.elapsed*9)*0.006*minf(motion.speed,1)
 	trail_clock -= delta
 	if travel > 0 and trail_clock <= 0:
 		trail_clock = 0.4
@@ -555,7 +645,7 @@ func tick_battle(factory, delta: float):
 	while trails.size() > 90: trails.pop_front().queue_free()
 	# Spawn against this frame's camera, including movement before the wave trigger.
 	update_camera()
-	var wave_count = ceili(float(total)/int(sector_config.get("wave_size",2)))
+	var wave_count = ceili(float(score.total)/int(sector_config.get("wave_size",2)))
 	var wave_spacing = route_length/(wave_count+1) if sector_config.has("enemies") else 28.0
 	var commanded = false
 	var flying_bolts = bolts.duplicate()
@@ -564,7 +654,8 @@ func tick_battle(factory, delta: float):
 	for i in range(enemies.size()):
 		var enemy: Dictionary = enemies[i]
 		var profile = RunState.Content.ENEMIES[enemy.role]
-		if not enemy.active and (distance >= enemy.wave*wave_spacing or elapsed >= enemy.wave*float(sector_config.get("wave_delay",30.0))):
+		var guard = guard_destination(i) >= 0
+		if not guard and not enemy.active and (motion.distance >= enemy.wave*wave_spacing or progress.elapsed >= enemy.wave*float(sector_config.get("wave_delay",30.0))):
 			enemy.active = true
 			enemy.node.visible = true
 			# Enter along the road from beyond the forward edge, then approach normally.
@@ -576,6 +667,10 @@ func tick_battle(factory, delta: float):
 		if profile.get("flank",false): lane = -12.0 if i%2 == 0 else 12.0
 		var intercept = player.position+Vector3(float(profile.intercept),0,lane)
 		if profile.get("ram",false): intercept = player.position
+		if guard:
+			var home: Vector3 = enemy.guard_home
+			if player.position.distance_to(home) > 50: continue
+			intercept = home+(player.position-home).limit_length(10)
 		var move = (intercept-enemy.node.position)*0.4
 		var max_speed = float(profile.speed)
 		var enemy_step = move_enemy(enemy,move*delta,max_speed*delta)
@@ -603,8 +698,8 @@ func tick_battle(factory, delta: float):
 			enemy.cooldown = warning
 			enemy.aim = player.position
 			if profile.get("lead",0.0) > 0:
-				var flight = shell_flight_time(enemy.node.position,player.position+velocity*warning,profile.ballistics)
-				enemy.aim += velocity*(warning+flight)*minf(1.0,float(profile.lead))
+				var flight = shell_flight_time(enemy.node.position,player.position+motion.velocity*warning,profile.ballistics)
+				enemy.aim += motion.velocity*(warning+flight)*minf(1.0,float(profile.lead))
 			enemy.mark.position = enemy.aim+Vector3(0,0.1,0)
 			enemy.mark.visible = true
 		if enemy.cooldown <= 0:
@@ -632,14 +727,13 @@ func tick_battle(factory, delta: float):
 			impacts.erase(flash)
 	shake = maxf(0,shake-delta)
 	update_camera()
-	if hull <= 0: result = -1
-	else:
-		for i in range(goals.size()):
-			if goals[i].contains_position(player.position):
-				arrived_destination = i
-				result = 1
-				break
-	if result != 0:
+	var destination = -1
+	for i in range(goals.size()):
+		if goals[i].contains_position(player.position):
+			destination = i
+			break
+	progress.resolve(destination)
+	if progress.is_finished():
 		factory.running = false
 		target_marker.visible = false
 
@@ -649,21 +743,22 @@ func update_gun(factory, delta: float):
 	recoil = maxf(0,recoil-delta*0.75)
 	barrel.position.x = BARREL_REST-recoil
 	shot_time = maxf(0,shot_time-delta)
-	var target = nearest_enemy(turret.global_position,weapon_range(ENGAGEMENT_RANGE))
+	var target = nearest_enemy(turret.global_position,weapon_range(ENGAGEMENT_RANGE)+equipment_effect("main_range",0.0))
 	target_marker.visible = target != null
 	if target != null:
 		target_marker.position = target.node.position+Vector3(0,0.12,0)
 		var offset: Vector3 = target.node.position-turret.global_position
 		target_angle = atan2(-offset.z,offset.x)-player.rotation.y
 		turret.rotation.y = rotate_toward(turret.rotation.y,target_angle,delta*2.4*equipment_effect("turn",(1.0+0.6*equipment_power("servo") if "servo" in installed_equipment else 1.0)))
-		if cooldown <= 0 and absf(angle_difference(turret.rotation.y,target_angle)) < 0.025 and factory.ammo > 0:
+		if "cannon" not in empty_part_slots and cooldown <= 0 and absf(angle_difference(turret.rotation.y,target_angle)) < 0.025 and factory.ammo > 0:
 			factory.fire_round()
 			fire_visual()
 			var shot: Dictionary = projectiles.back()
 			shot.target = target
-			shot.duration = shell_flight_time(shot.origin,target.node.position+Vector3(0,1.3,0))
-			cooldown = 60.0/factory.rate*reload_multiplier*equipment_effect("reload",(1.0-0.2*equipment_power("drum_loader") if "drum_loader" in installed_equipment else 1.0))
+			shot.duration = shell_flight_time(shot.origin,target.node.position+Vector3(0,1.3,0),shot.style)
+			cooldown = 60.0/factory.rate*reload_multiplier*equipment_effect("reload",(1.0-0.2*equipment_power("drum_loader") if "drum_loader" in installed_equipment else 1.0))*equipment_effect("main_reload",1.0)
 	muzzle.visible = shot_time > 0
+	update_vehicle_part_visuals()
 	update_auxiliary_guns(factory,delta)
 	for shot in flying_shots:
 		shot.age += delta
@@ -685,16 +780,18 @@ func kill_enemy(enemy: Dictionary, factory, at: Vector3, style: String = "heavy"
 	for pip in enemy.health: pip.visible = false
 	impact(at,style)
 	feedback_effect("kill",at,1.2 if enemy.role in [2,7] else 0.8)
-	combo += 1
-	combo_time = 2.8
-	best_combo = maxi(best_combo,combo)
-	kills += 1
+	score.record_kill()
 	enemy_destroyed.emit(int(enemy.role))
 	if item_mode:
 		var index = enemies.find(enemy)
-		item_dropped.emit(Gear.roll(sector_config.seed,index,int(enemy.role),sector_config.get("boss",false) and index == enemies.size()-1,int(sector_config.sector)*2))
+		var is_boss = sector_config.get("boss",false) and index == enemies.size()-1
+		if is_boss:
+			drop_item(Gear.roll(sector_config.seed,index,int(enemy.role),true,int(sector_config.sector)*2),enemy.node.position)
+		else:
+			var profile = RunState.Content.ENEMIES[enemy.role]
+			drop_materials({"scrap":int(profile.get("loot",2))+int(combat_modifiers.get("salvage",0)),"coal":int(profile.get("coal",1))},enemy.node.position)
 		var recovery_rate = equipment_effect("salvage_rate",1.0/maxi(2,roundi(3/equipment_power("salvage_arm"))) if "salvage_arm" in installed_equipment else 0.0)
-		if floori(kills*recovery_rate+0.0000001) > floori((kills-1)*recovery_rate+0.0000001): item_dropped.emit(Gear.roll(sector_config.seed,2000+index,9,false,int(sector_config.sector)*2))
+		if score.earned_salvage(recovery_rate): drop_materials({"scrap":2,"coal":1},enemy.node.position+Vector3(0,0,1.5))
 	elif not sector_config.is_empty():
 		var profile = RunState.Content.ENEMIES[enemy.role]
 		recover(factory,{"scrap":int(profile.get("loot",2))+int(combat_modifiers.get("salvage",0))+(2 if "salvage_arm" in installed_equipment else 0),"coal":int(profile.get("coal",0))})
@@ -715,9 +812,9 @@ func chain_hit(factory, origin: Vector3, count: int):
 		var closest = 9.0*9.0
 		for enemy in enemies:
 			if not enemy.active or enemy.hp <= 0: continue
-			var distance = from.distance_squared_to(enemy.node.position+Vector3(0,1.3,0))
-			if distance < closest:
-				closest = distance
+			var candidate_distance = from.distance_squared_to(enemy.node.position+Vector3(0,1.3,0))
+			if candidate_distance < closest:
+				closest = candidate_distance
 				target = enemy
 		if target == null: break
 		var to: Vector3 = target.node.position+Vector3(0,1.3,0)
@@ -732,17 +829,37 @@ func weapon_range(base: float) -> float:
 func hit_damage() -> int:
 	return ceili(float(sector_config.get("damage",10))*equipment_effect("damage",(1.0-0.25*equipment_power("armor") if "armor" in installed_equipment else 1.0)*(1.0-0.2*equipment_power("skirts") if "skirts" in installed_equipment else 1.0))*float(combat_modifiers.get("damage",1.0)))
 
+func within_gun_arc(gun: Dictionary, at: Vector3) -> bool:
+	if not gun.has("half_arc"): return true
+	var offset = at-gun.pivot.global_position
+	var angle = wrapf(atan2(-offset.z,offset.x)-player.rotation.y-gun.get("rest_yaw",0.0),-PI,PI)
+	return absf(angle) <= gun.half_arc+0.000001
+
+func auxiliary_target(gun: Dictionary, reach: float):
+	var nearest = null
+	var best = INF
+	for enemy in enemies:
+		if enemy.hp <= 0 or not enemy.active or not within_gun_arc(gun,enemy.node.position): continue
+		if not can_engage(enemy,reach,gun.pivot.global_position): continue
+		if projectiles.any(func(shot): return shot.target.node == enemy.node): continue
+		var distance_to_enemy = gun.pivot.global_position.distance_squared_to(enemy.node.position)
+		if distance_to_enemy < best:
+			best = distance_to_enemy
+			nearest = enemy
+	return nearest
+
 func update_auxiliary_guns(factory, delta: float):
 	for gun in auxiliary_guns:
 		var spec = RunState.EQUIPMENT[gun.id]
 		gun.cooldown = maxf(0,gun.cooldown-delta)
 		gun.flash = maxf(0,gun.flash-delta)
 		gun.recoil = maxf(0,gun.recoil-delta*0.5)
-		var target = nearest_enemy(gun.pivot.global_position,weapon_range(float(spec.range)))
+		gun.pivot.rotation.y = clamp_gun_angle(gun,gun.pivot.rotation.y)
+		var target = auxiliary_target(gun,weapon_range(float(spec.range)))
 		if target != null:
 			var offset: Vector3 = target.node.position-gun.pivot.global_position
 			var angle = atan2(-offset.z,offset.x)-player.rotation.y
-			gun.pivot.rotation.y = rotate_toward(gun.pivot.rotation.y,angle,delta*float(spec.get("turn",3.2))*equipment_effect("turn",(1.0+0.6*equipment_power("servo") if "servo" in installed_equipment else 1.0)))
+			gun.pivot.rotation.y = clamp_gun_angle(gun,rotate_toward(gun.pivot.rotation.y,angle,delta*float(spec.get("turn",3.2))*equipment_effect("turn",(1.0+0.6*equipment_power("servo") if "servo" in installed_equipment else 1.0))))
 			if gun.cooldown <= 0 and absf(angle_difference(gun.pivot.rotation.y,angle)) < 0.025 and factory.auxiliary_ammo(gun.id) >= int(spec.ammo):
 				for round_index in range(int(spec.ammo)): factory.fire_round(gun.id)
 				var origin: Vector3 = gun.muzzle.global_position
@@ -752,6 +869,7 @@ func update_auxiliary_guns(factory, delta: float):
 					var candidates: Array = []
 					for candidate in enemies:
 						if candidate == target or not candidate.active or candidate.hp <= 0: continue
+						if not within_gun_arc(gun,candidate.node.position): continue
 						if not can_engage(candidate,weapon_range(float(spec.range)),origin): continue
 						if projectiles.any(func(p): return p.target == candidate): continue
 						if heading.dot((candidate.node.position+Vector3(0,1.3,0)-origin).normalized()) < 0.8: continue
@@ -774,19 +892,80 @@ func update_auxiliary_guns(factory, delta: float):
 		gun.barrel.position.x = 0.6-gun.recoil
 
 func fire_visual():
+	if "cannon" in empty_part_slots: return
 	var heading = turret.global_basis.x.normalized()
 	var origin = muzzle.global_position
 	var shot = Node3D.new()
 	add_child(shot)
 	shot.position = origin
-	build_shell(shot,heading)
-	projectiles.append({"node":shot,"origin":origin,"dir":heading,"age":0.0,"style":"heavy","splash":equipment_effect("splash",4.0*equipment_power("blast_fuse") if "blast_fuse" in installed_equipment else 0.0)})
+	var style = Gear.Data.ITEMS[vehicle_parts.cannon.kind].ballistics if vehicle_parts.has("cannon") else "heavy"
+	build_shell(shot,heading,style)
+	projectiles.append({"node":shot,"origin":origin,"dir":heading,"age":0.0,"style":style,"splash":equipment_effect("splash",4.0*equipment_power("blast_fuse") if "blast_fuse" in installed_equipment else 0.0)+equipment_effect("main_splash",0.0)})
 	recoil = 0.65
 	barrel.position.x = BARREL_REST-recoil
 	shot_time = 0.1
 	shake = maxf(shake,0.1)
 	feedback_effect("shot",origin,1.1)
 	visual_shots += 1
+
+func drop_item(item: Dictionary, at: Vector3):
+	spawn_ground_item({"item":item.duplicate(true),"position":Vector3(at.x,0,at.z)})
+
+func drop_materials(items: Dictionary, at: Vector3):
+	var offset = 0.0
+	for kind in items:
+		if items[kind] <= 0: continue
+		spawn_ground_item({"item":{"kind":kind,"amount":int(items[kind])},"position":Vector3(at.x,0,at.z+offset)})
+		offset += 1.5
+
+func spawn_ground_item(saved: Dictionary):
+	var item: Dictionary = saved.item.duplicate(true)
+	var root = Node3D.new()
+	root.name = "GroundItem"
+	add_child(root)
+	root.position = saved.position
+	var model = item_models.build(item.kind,item.get("rarity","normal"))
+	root.add_child(model)
+	model.scale = Vector3.ONE*1.8
+	model.position.y = 0.5
+	item_models.decorate_drop(root,model,item.get("rarity",""))
+	ground_items.append({"item":item,"position":saved.position,"node":root,"model":model})
+
+func ground_item_snapshot() -> Array:
+	var saved: Array = []
+	for drop in ground_items: saved.append({"item":drop.item.duplicate(true),"position":drop.position})
+	return saved
+
+func restore_ground_items(saved: Array):
+	for drop in ground_items:
+		remove_child(drop.node)
+		drop.node.queue_free()
+	ground_items.clear()
+	for drop in saved: spawn_ground_item(drop)
+
+func update_ground_items(factory):
+	# Called after actual movement, before new drops: loot remains visible until
+	# the next simulation step. Swept paths also catch a fast pass over an item.
+	for i in range(ground_items.size()-1,-1,-1):
+		var drop: Dictionary = ground_items[i]
+		drop.model.position.y = 0.6+sin(progress.elapsed*2.5+i)*0.15
+		drop.model.rotation.y = progress.elapsed*0.5
+		var center = Vector2(drop.position.x,drop.position.z)
+		var close = false
+		for j in range(motion.poses.size()):
+			var from: Vector3 = motion.poses[maxi(0,j-1)].position
+			var to: Vector3 = motion.poses[j].position
+			var nearest = Geometry2D.get_closest_point_to_segment(center,Vector2(from.x,from.z),Vector2(to.x,to.z))
+			if center.distance_squared_to(nearest) <= PICKUP_RADIUS*PICKUP_RADIUS:
+				close = true
+				break
+		if not close: continue
+		# Remove first so callbacks and later ticks cannot grant the same drop twice.
+		ground_items.remove_at(i)
+		if drop.item.has("rarity"): item_collected.emit(drop.item)
+		else: recover(factory,{drop.item.kind:drop.item.amount})
+		feedback_effect("pickup",drop.position+Vector3(0,0.8,0),0.8)
+		drop.node.queue_free()
 
 func recover(factory, items: Dictionary):
 	for kind in items:

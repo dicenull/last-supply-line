@@ -15,7 +15,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="AMMO LINE LAB"
-run/main_scene="res://main.tscn"
+run/main_scene="res://scenes/start_screen.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [display]
@@ -28,3 +28,11 @@ window/stretch/mode="canvas_items"
 
 renderer/rendering_method="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
+
+[gui]
+
+theme/custom.web="res://assets/fonts/web_theme.tres"
+
+[input_devices]
+
+pointing/emulate_mouse_from_touch=true

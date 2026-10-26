@@ -135,7 +135,7 @@ func run():
 	check(game.expedition.phase == "reward" and game.choice_popup.visible and not game.choice_popup.continue_button.visible,"actual stage clear opens the random item draft directly")
 	check(game.expedition.recipes.is_empty() and game.expedition.equipment.is_empty(),"battle kills grant no free gear before the clear choice")
 	var clear_save = game.checkpoint.snapshot(game)
-	check(game.checkpoint.validate(clear_save) and clear_save.version == 11,"new save stores construction materials and pending equipment draft")
+	check(game.checkpoint.validate(clear_save) and clear_save.version == game.checkpoint.VERSION,"new save stores construction materials and pending equipment draft")
 	var choices = game.expedition.reward_options.duplicate()
 	game.open_menu()
 	game.close_menu()

@@ -75,7 +75,7 @@ func run():
 	var distinct_shops = true
 	var shops = 0
 	var extra_offers: Dictionary = {}
-	for seed_value in range(512):
+	for seed_value in range(2048):
 		var model = Run.new(seed_value)
 		model.enable_items()
 		var course = Run.FieldCourse.new(model.current)

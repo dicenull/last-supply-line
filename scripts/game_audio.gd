@@ -1,5 +1,6 @@
 extends Node
 ## Bounded original mechanical sounds on an owned bus; never changes simulation or Master.
+const Observation = preload("res://scripts/audio_observation.gd")
 const KINDS = ["engine","machine","shot","impact","pickup","place","connect","armor","reward","combo"]
 const GAINS = {"engine":0.18,"machine":0.25,"shot":0.65,"impact":0.5,"pickup":0.3,"place":0.45,"connect":0.35,"armor":0.5,"reward":0.45,"combo":0.35}
 const PRIORITIES = {"machine":0,"place":1,"connect":1,"pickup":1,"combo":2,"shot":3,"impact":3,"armor":3,"reward":4}
@@ -13,13 +14,7 @@ var bus_name = "Master"
 var voices: Array = []
 var motor: AudioStreamPlayer
 var played: Dictionary = {}
-var last_factory = 0
-var last_battle = 0
-var last_ticks = 0
-var last_shots = 0
-var last_kills = 0
-var last_hull = 100
-var last_impacts = 0
+var previous: Observation = Observation.new()
 var pending_pickup = false
 func _ready():
 	enabled = enabled and DisplayServer.get_name() != "headless"
@@ -123,23 +118,20 @@ func sync():
 	pending_pickup = false
 	var f = game.factory
 	var b = game.battlefield
-	var factory_id = f.get_instance_id()
-	var battle_id = b.get_instance_id() if b != null else 0
-	var changed = factory_id != last_factory or battle_id != last_battle or f.ticks < last_ticks or f.shots < last_shots
-	var kills = b.kills if b != null else 0
-	var hull = b.hull if b != null else 100
+	var current: Observation = Observation.new(f,b)
+	var changed = current.changed_source(previous)
 	if changed: stop_all()
 	if enabled and volume > 0 and f.running:
 		if equipment_pickup: play_effect("pickup")
-		if b != null and b.speed > 0.05:
-			motor.pitch_scale = 0.8+minf(b.speed/3.3,1)*0.3
+		if b != null and b.motion.speed > 0.05:
+			motor.pitch_scale = 0.8+minf(b.motion.speed/3.3,1)*0.3
 			if not motor.playing: motor.play()
 		else: motor.stop()
 		if not changed:
-			if f.ticks > last_ticks and not f.completed.is_empty(): play_effect("machine")
-			if f.shots > last_shots: play_effect("shot")
-			if kills > last_kills or hull < last_hull or (b != null and b.impact_serial > last_impacts): play_effect("impact")
-			if kills > last_kills and b != null and b.combo >= 2: play_effect("combo",1.0+minf(b.combo-2,6)*0.06)
+			if current.ticks > previous.ticks and not f.completed.is_empty(): play_effect("machine")
+			if current.shots > previous.shots: play_effect("shot")
+			if current.has_impact_since(previous): play_effect("impact")
+			if current.kills > previous.kills and b != null and b.score.combo >= 2: play_effect("combo",1.0+minf(b.score.combo-2,6)*0.06)
 			if b != null:
 				for event in b.collection_events:
 					if event.accepted > 0:
@@ -148,13 +140,7 @@ func sync():
 	elif enabled and volume > 0 and not game.menu.visible and game.expedition.phase in ["prepare","reward","route","shop","won"]:
 		motor.stop()
 	else: stop_all()
-	last_factory = factory_id
-	last_battle = battle_id
-	last_ticks = f.ticks
-	last_shots = f.shots
-	last_kills = kills
-	last_hull = hull
-	last_impacts = b.impact_serial if b != null else 0
+	previous = current
 
 func _exit_tree():
 	stop_all()

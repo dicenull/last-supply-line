@@ -42,10 +42,10 @@ func badges() -> Array:
 	return result
 func _draw():
 	var battle = game.battlefield
-	if game.battle_mode and battle != null and battle.combo >= 2 and battle.combo_time > 0:
-		var alpha = minf(1.0,battle.combo_time)
+	if game.battle_mode and battle != null and battle.score.combo_visible():
+		var alpha = minf(1.0,battle.score.combo_time)
 		var at = Vector2(1160,128)
-		draw_string(game.font,at,"連続撃破 ×%d" % battle.combo,HORIZONTAL_ALIGNMENT_RIGHT,220,24,Color(game.GOLD,alpha))
+		draw_string(game.font,at,"連続撃破 ×%d" % battle.score.combo,HORIZONTAL_ALIGNMENT_RIGHT,220,24,Color(game.GOLD,alpha))
 	for entry in badges():
 		var world_pos = game.world.cell_position(entry.pos)+Vector3(0,1.4,0)
 		if game.factory.layout_version == 2 and entry.pos == game.Factory.Layout.AMMO_ANCHOR: world_pos += Vector3(0.5,0,0.5)

@@ -6,7 +6,11 @@
     "deploy:web": "cf deploy",
     "check:deploy": "cf deploy --dry-run",
     "postinstall": "node -e \"require('node:fs').writeFileSync('node_modules/.gdignore', '')\"",
-    "test:web": "node tests/web_smoke_test.cjs"
+    "test:web": "node tests/web_smoke_test.cjs",
+    "test:web:touch": "node tests/web_touch_test.cjs",
+    "test:web:responsive": "node tests/web_responsive_test.cjs",
+    "test:web:font": "node tests/web_font_test.cjs",
+    "test:web:loadout": "node tests/web_loadout_test.cjs"
   },
   "engines": {
     "node": ">=22.18"
