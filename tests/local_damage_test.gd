@@ -128,7 +128,7 @@ func run():
 	game.battlefield.result = 1
 	game._process(0)
 	check(game.expedition.phase == "reward" and not f.layout_locked and f.wrecks.is_empty() and f.wreck_directions.is_empty(),"stage clear repairs every destroyed cell and releases construction lock")
-	check(game.expedition.hull == 100 and game.battlefield.hull == 100,"stage clear fully repairs both hull states before reward selection")
+	check(game.expedition.hull == 80 and game.battlefield.hull == 80,"stage clear preserves damaged hull in both states before reward selection")
 	check(f.cells[cell].kind == "press" and f.cells[cell].dir == 3 and f.cells[second].kind == "belt","repair restores original machine types positions and orientation after save load")
 	check(f.cells[cell].items.is_empty() and f.cells[cell].work == 0 and f.cells[Vector2i(2,2)] == kept,"repair loses destroyed cargo but preserves intact processing")
 	check(f.reserves == {"scrap":0,"coal":0} and f.ammo == ammo_before and f.fuel == fuel_before,"repair is free even without resources and does not refill ammunition or fuel")

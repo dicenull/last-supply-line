@@ -105,6 +105,7 @@ func run():
 	check(battle.enemies[0].hp == 0 and battle.enemies[1].hp == 0 and battle.enemies[2].hp == 0,"three separated vehicles are destroyed by one forward volley")
 	isolate({0:Vector3(24,0,0),1:Vector3(31,0,0),2:Vector3(38,0,0),3:Vector3(53,0,0)})
 	load_gun("arc_gun",2)
+	factory.fuel = 0.3
 	aim_gun("arc_gun",0)
 	battle.update_auxiliary_guns(factory,0.001)
 	check(battle.projectiles.size() == 1 and battle.projectiles[0].chain == 2 and battle.projectiles[0].style == "electric","charged gun launches a two-hop electric round")
@@ -140,14 +141,14 @@ func run():
 	var scrap_before = factory.reserves.scrap
 	battle.kill_enemy(battle.enemies[13],factory,Vector3(24,1,0))
 	check(battle.enemies[0].hp == 0 and battle.enemies[1].hp == 1 and battle.combo == 2,"powder carrier detonates nearby enemies within its blast radius")
-	check(factory.reserves.scrap == scrap_before+7,"detonation awards salvage for each destroyed vehicle exactly once")
+	check(factory.reserves.scrap == scrap_before+8,"detonation awards salvage for each destroyed vehicle exactly once")
 	battle.kill_enemy(battle.enemies[13],factory,Vector3(24,1,0))
-	check(factory.reserves.scrap == scrap_before+7 and battle.combo == 2,"a wreck cannot trigger repeated detonations or rewards")
+	check(factory.reserves.scrap == scrap_before+8 and battle.combo == 2,"a wreck cannot trigger repeated detonations or rewards")
 	isolate({13:Vector3(24,0,0),16:Vector3(34,0,0),0:Vector3(43,0,0),1:Vector3(58,0,0)})
 	scrap_before = factory.reserves.scrap
 	battle.kill_enemy(battle.enemies[13],factory,Vector3(24,1,0))
 	check(battle.enemies[16].hp == 0 and battle.enemies[0].hp == 0 and battle.enemies[1].hp == 1 and battle.combo == 3,"a second powder carrier propagates the blast beyond the first radius")
-	check(factory.reserves.scrap == scrap_before+12,"recursive powder detonations award each vehicle exactly once")
+	check(factory.reserves.scrap == scrap_before+14,"recursive powder detonations award each vehicle exactly once")
 	isolate({14:Vector3(30,0,0)})
 	var rocket = battle.enemies[14]
 	rocket.cooldown = 0.01

@@ -36,10 +36,20 @@ func run():
 			counter.record_kill()
 			if counter.earned_salvage(sample.rate): awarded.append(counter.kills)
 		check(awarded == sample.expected,"fractional salvage cadence: "+str(sample.rate))
+	var chain = Score.new()
+	var bonuses = []
+	for i in range(6):
+		chain.record_kill()
+		bonuses.append(chain.combo_drop_bonus())
+	check(bonuses == [0,1,1,2,2,3],"combo rewards grow in small two-kill steps")
+	chain.advance(Score.COMBO_WINDOW)
+	check(chain.combo_drop_bonus() == 0,"expiry clears drop bonus immediately")
+	chain.record_kill()
+	check(chain.combo_drop_bonus() == 0,"first kill in a new chain has no extra materials")
 	var saved_score = score.snapshot()
 	score.total = 24
 	score.restore(saved_score)
-	check(score.kills == 3 and score.total == 24 and score.combo == 0 and score.combo_time == 0 and score.best_combo == 0,"restore preserves durable kills and keeps legacy transient-combo reset")
+	check(score.kills == 3 and score.total == 24 and score.combo == 0 and score.combo_time == 0 and score.best_combo == 2,"restore preserves kills and peak while resetting the active combo")
 	score.record_kill()
 	check(score.kills == 4 and score.combo == 1,"first post-load kill starts a fresh combo")
 	var progress = Progress.new()

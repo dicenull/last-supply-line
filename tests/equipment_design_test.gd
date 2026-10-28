@@ -1,5 +1,6 @@
 extends SceneTree
 const Data = preload("res://scripts/equipment_data.gd")
+const Catalog = preload("res://scripts/equipment_catalog.gd")
 var checks = 0
 var failures = 0
 func check(ok: bool, label: String):
@@ -9,74 +10,25 @@ func check(ok: bool, label: String):
 		failures += 1
 		push_error(label)
 func _initialize():
-	check(Data.ITEMS.size() == 312 and Data.DEFINITIONS.size() == 312,"300 accessory designs and 12 vehicle parts exist independently of rarity")
+	check(Data.ITEMS.size() == 312 and Data.DEFINITIONS.size() == 312,"all historical item IDs remain loadable")
+	check(Data.ACTIVE_IDS.size() == 28 and not "right_gun" in Data.ACTIVE_IDS,"sixteen distinct accessories and twelve chassis parts")
+	var families = {}
 	var names = {}
-	var signatures = {}
-	var genres = {"secondary":0,"protection":0,"engine":0,"support":0}
-	var levels = {}
-	var groups = {}
-	var shape_valid = true
-	var finite_stats = true
-	for id in Data.ITEMS:
+	for id in Data.ACTIVE_IDS:
 		var item = Data.ITEMS[id]
-		if item.has("slot"): continue
+		check(not names.has(item.name) and not item.name.is_empty(),"distinct current name: "+id)
 		names[item.name] = true
-		var stats = {}
-		for key in ["interval","range","ammo","turn","splash","chain","pellets","ballistics","effects"]:
-			if item.has(key): stats[key] = item[key]
-		signatures[JSON.stringify(stats)] = true
-		genres[item.genre] += 1
-		levels[item.level] = true
-		var key = item.family+":"+item.profile
-		if not groups.has(key): groups[key] = []
-		groups[key].append(item)
-		var footprint: Vector2i = Data.DEFINITIONS[id].size
-		shape_valid = shape_valid and footprint == Vector2i(item.size[0],item.size[1]) and footprint.x >= 1 and footprint.x <= 2 and footprint.y >= 1 and footprint.y <= 2
-		finite_stats = finite_stats and item.level >= 1 and item.level <= 10 and item.shop_price >= 32 and item.scrap > 0 and item.coal > 0
-		for value in item.effects.values(): finite_stats = finite_stats and is_finite(value)
-	check(names.size() == 300 and signatures.size() == 300,"every name and actual performance vector is distinct")
-	check(genres == {"secondary":120,"protection":60,"engine":60,"support":60},"all four equipment genres receive the planned number of designs")
-	check(levels.size() == 10 and shape_valid and finite_stats,"level 1–10 designs have finite stats, prices and reserved footprints")
-	check(Data.GUNS.size() == 120 and Data.GUN_PORTS.size() == 120,"every new weapon has a feed definition")
-	var old_ids = true
-	for id in Data.ORIGINAL_IDS:
-		old_ids = old_ids and Data.ITEMS.has(id) and Data.ITEMS[id].family == id and Data.ITEMS[id].level == 1 and Data.ITEMS[id].profile == "balanced"
-	check(old_ids and Data.ORIGINAL_IDS.size() == 17,"all original save IDs remain baseline designs")
-	var progression = true
-	var budgets = true
-	for key in groups:
-		var rows: Array = groups[key]
-		for index in range(1,rows.size()):
-			var before = rows[index-1]
-			var after = rows[index]
-			progression = progression and after.level > before.level and after.shop_price > before.shop_price and after.scrap >= before.scrap
-			if after.genre == "secondary":
-				progression = progression and after.interval < before.interval and after.range > before.range and after.turn > before.turn
-			else:
-				var primary = after.effects.keys()[0]
-				progression = progression and absf(after.effects[primary]) > absf(before.effects[primary])
-		var first = rows[0]
-		var last = rows.back()
-		if first.genre == "secondary":
-			budgets = budgets and first.interval/last.interval <= 1.23 and last.range/first.range <= 1.10
-		else:
-			var primary = first.effects.keys()[0]
-			budgets = budgets and absf(last.effects[primary]/first.effects[primary]) <= 1.23
-	check(progression,"levels improve their primary effect and increase acquisition cost in every progression branch")
-	check(budgets,"level scaling stays inside a 23 percent primary-stat budget before rarity")
-	var tradeoffs = true
-	for id in Data.ITEMS:
-		var item = Data.ITEMS[id]
-		if item.has("slot"): continue
-		if item.profile == "balanced": continue
-		var base_id = item.family if item.level == 1 else item.family+"_balanced_l%02d" % item.level
-		var base = Data.ITEMS[base_id]
-		if item.genre == "secondary":
-			tradeoffs = tradeoffs and ((item.range > base.range and item.interval > base.interval) or (item.interval < base.interval and item.range < base.range))
-		elif item.genre == "protection":
-			tradeoffs = tradeoffs and ((item.effects.damage_reduction > base.effects.damage_reduction and item.effects.speed_bonus < 0) or (item.effects.damage_reduction < base.effects.damage_reduction and item.effects.speed_bonus > 0))
-		else:
-			tradeoffs = tradeoffs and item.effects.size() >= 2 and item.effects != base.effects
-	check(tradeoffs,"specializations exchange real benefits and costs instead of renaming identical equipment")
+		if Catalog.part_slot(id).is_empty():
+			check(not families.has(item.family),"one current design per accessory family: "+id)
+			families[item.family] = true
+		var spec = Catalog.effect_values({"kind":id,"rarity":"normal"})
+		var rare = Catalog.effect_values({"kind":id,"rarity":"legendary"})
+		for key in spec:
+			if key in ["ammo_tax","shot_fuel"] or (key == "fuel_bonus" and spec[key] > 0) or (key != "fuel_bonus" and spec[key] < 0):
+				check(is_equal_approx(spec[key],rare[key]),"rarity does not erase the operating cost: "+id+" "+key)
+	check(Data.ITEMS.rear_gun.get("interceptor",false) and not Data.ITEMS.left_gun.get("interceptor",false),"interception and direct fire have different jobs")
+	check(Data.ITEMS.skirts.effects.has("blast_reduction") and not Data.ITEMS.skirts.effects.has("damage_reduction"),"blast screens differ from universal armour")
+	check(Data.ITEMS.vehicle_cannon_long.damage == 4 and Data.ITEMS.vehicle_cannon_long.ammo == 2 and Data.ITEMS.vehicle_cannon_howitzer.ammo == 3,"main guns exchange ammo consumption for anti-armour or area power")
+	check(Catalog.models(10).size() == 28 and Catalog.models(1).size() == 28,"levels never reintroduce minor variants")
 	print("EQUIPMENT DESIGN RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)

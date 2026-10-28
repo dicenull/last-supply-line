@@ -21,11 +21,19 @@ func run():
 	b.finish_sector(true,87)
 	a.finish_crafting()
 	b.finish_crafting()
-	check(a.hull == 100 and a.phase == "reward","clear fully repairs hull before offering rewards")
+	check(a.hull == 87 and a.phase == "reward","clear preserves remaining hull before offering rewards")
 	var defeated = RunState.new(42)
 	defeated.start_sector()
 	defeated.finish_sector(true,0)
 	check(defeated.phase == "lost" and defeated.hull == 0,"destroyed hull cannot be revived by a simultaneous clear")
+	# Test all five clear transitions independently of the combat pilot.
+	var progression = RunState.new(42)
+	for stage in range(1,6):
+		progression.sector = stage
+		progression.phase = "travel"
+		progression.current = progression.make_route("scrapyard")
+		progression.finish_sector(true,90-stage*10)
+		check(progression.hull == 90-stage*10 and progression.phase != "lost","stage clear retains damage including the final sector: "+str(stage))
 	check(not a.choose_reward(9),"invalid reward is rejected")
 	var chosen_item = a.reward_options[0]
 	a.choose_reward(0)
@@ -66,11 +74,16 @@ func run():
 			game.factory.edit(Vector2i(8,4),"belt",0)
 		game.toggle_running()
 		check(game.expedition.sector == sector and game.expedition.phase == "travel","start sector "+str(sector))
+		var arrival_hull = game.battlefield.hull
 		for tick in range(2200):
+			arrival_hull = game.battlefield.hull
 			preload("res://tests/profile_fixture.gd").drive(game,0.1)
 			if game.expedition.phase != "travel": break
+		if game.expedition.phase == "lost":
+			check(game.battlefield.hull == 0 and game.expedition.hull == 0 and game.battlefield.result == -1,"accumulated hull damage ends the pilot campaign without automatic healing")
+			break
 		check(game.battlefield.result == 1,"built factory completes sector "+str(sector))
-		check(game.expedition.hull == 100 and game.battlefield.hull == 100 and game.factory.wrecks.is_empty(),"every successful sector including final stage receives full repair")
+		check(game.expedition.hull == game.battlefield.hull and game.battlefield.hull <= arrival_hull and game.factory.wrecks.is_empty(),"every successful sector restores the line without increasing hull HP")
 		if game.battlefield.result != 1:
 			print("FAILED SECTOR STATE ", {"sector":sector,"hp":game.battlefield.hull,"kills":game.battlefield.kills,"distance":game.battlefield.distance,"position":game.battlefield.player.position,"yaw":game.battlefield.player.rotation.y,"wrecks":game.factory.wrecks,"reserves":game.factory.reserves,"ammo":game.factory.ammo,"fuel":game.factory.fuel,"shots":game.factory.shots})
 			break

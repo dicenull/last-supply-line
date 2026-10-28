@@ -43,6 +43,7 @@ func run():
 	for seed_value in [42,117,991]:
 		game.reset_battle(seed_value)
 		var valid_saves = true
+		var repair_preserves_hp = true
 		var scraps = 0
 		for sector in range(1,6):
 			prepare()
@@ -52,7 +53,10 @@ func run():
 				if tick%20 == 0:
 					for item in game.expedition.gear_items.duplicate():
 						if item.position == Inventory.STOWED and game.dismantle_item(item.uid): scraps += 1
-					if not game.factory.wrecks.is_empty() or game.battlefield.hull < 70: game.repair_vehicle()
+					if not game.factory.wrecks.is_empty():
+						var hp = game.battlefield.hull
+						game.repair_vehicle()
+						repair_preserves_hp = repair_preserves_hp and game.battlefield.hull == hp
 				if game.expedition.phase != "travel": break
 			valid_saves = valid_saves and game.checkpoint.validate(game.checkpoint.snapshot(game))
 			if game.expedition.phase != "reward": break
@@ -60,11 +64,12 @@ func run():
 			if game.expedition.phase == "shop": game.leave_shop()
 			valid_saves = valid_saves and game.checkpoint.validate(game.checkpoint.snapshot(game))
 			if game.expedition.phase == "won": break
-		var row = {"seed":seed_value,"phase":game.expedition.phase,"cleared":game.expedition.cleared,"salvaged":scraps,"hull":game.battlefield.hull,"position":str(game.battlefield.player.position),"reserves":game.factory.reserves.duplicate(),"wrecks":str(game.factory.wrecks),"fuel":game.factory.fuel}
+		var row = {"seed":seed_value,"phase":game.expedition.phase,"cleared":game.expedition.cleared,"boss_hp":game.battlefield.enemies.back().hp,"boss_position":str(game.battlefield.enemies.back().node.position),"salvaged":scraps,"hull":game.battlefield.hull,"position":str(game.battlefield.player.position),"reserves":game.factory.reserves.duplicate(),"wrecks":str(game.factory.wrecks),"fuel":game.factory.fuel}
 		outcomes.append(row)
 		print("CAMPAIGN OUTCOME ",JSON.stringify(row))
-		check(game.expedition.phase == "won","protected new-layout campaign completes five sectors: "+str(seed_value))
-		check(scraps > 0 and game.factory.collected.scrap > 0 and game.factory.collected.coal > 0,"dismantled equipment supplies the entire campaign economy")
+		check((game.expedition.phase == "won" and game.expedition.cleared == 5 and game.battlefield.hull > 0) or (game.expedition.phase == "lost" and game.battlefield.hull == 0 and game.expedition.hull == 0),"campaign ends in victory or accumulated hull loss: "+str(seed_value))
+		check(repair_preserves_hp,"paid line repairs never erase campaign hull damage")
+		check(scraps > 0 and game.factory.collected.scrap > 0 and game.factory.collected.coal > 0,"dismantled equipment supplies campaign production")
 		check(valid_saves,"new loot and installed equipment remain saveable across sector transitions")
 		await process_frame
 	var file = FileAccess.open("res://build/equipment-audit/campaign.json",FileAccess.WRITE)

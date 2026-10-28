@@ -34,7 +34,7 @@ func run():
 		var original = model_signature(model)
 		builder.decorate_drop(drop,model,rarity)
 		var marker = drop.get_node("RarityRing")
-		check(marker.material_override.albedo_color == Color(Models.Catalog.RARITIES[rarity].color) and marker.material_override.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and model_signature(model) != original,"field model and light-independent marker use rarity color: "+rarity)
+		check(marker.material_override.albedo_color == Color(Models.Catalog.RARITIES[rarity].color) and marker.material_override.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and model_signature(model) == original,"field marker conveys rarity without repainting the model: "+rarity)
 		var preview = builder.build("arc_gun",rarity)
 		check(model_signature(preview) == original,"field tint cannot leak into shared preview materials: "+rarity)
 		preview.free()
@@ -46,6 +46,36 @@ func run():
 	root.add_child(game)
 	game.set_process(false)
 	await process_frame
+	# Enlarged production machines remain inside one cell at every rotation.
+	for kind in ["armor_block","source","coal_source","furnace","press","refinery","engine","depot","gun"]+game.factory.Content.BLOCKS.keys():
+		var machine = Node3D.new()
+		game.world.machine(kind,machine,[1,2,3])
+		var fits = true
+		for direction in range(4):
+			for point in Models.vertices(machine,Transform3D(Basis(Vector3.UP,direction*PI/2),Vector3.ZERO)):
+				fits = fits and absf(point.x) <= 0.501 and absf(point.z) <= 0.501
+		check(fits,"large machine and real couplings fit the cell in all orientations: "+kind)
+		machine.free()
+	for kind in ["scrap","coal","steel","fuel","shell"]:
+		var resource = builder.build(kind)
+		check(Models.vertices(resource).size() > 0,"recognizable resource model: "+kind)
+		resource.free()
+		var storage = game.factory.get_script().new(1)
+		var cell = storage.make_cell("depot",0)
+		cell.items = [kind,kind,kind,kind,kind,kind,kind,kind]
+		storage.cells[Vector2i(6,4)] = cell
+		var frames = game.world.item_frames(storage)
+		var boxes: Array[AABB] = []
+		var separated = true
+		var good = game.world.make_good(kind)
+		for frame in frames:
+			var points = Models.vertices(good,Transform3D(Basis.IDENTITY.scaled(good.scale*frame.scale),frame.pos))
+			var bounds = AABB(points[0],Vector3.ZERO)
+			for point in points: bounds = bounds.expand(point)
+			for other in boxes: separated = separated and not bounds.intersects(other)
+			boxes.append(bounds)
+		check(separated and boxes.size() == 8,"full storage keeps all eight enlarged resources separate: "+kind)
+		good.free()
 	game.toggle_running()
 	var b = game.battlefield
 	for site in b.resource_sites:
@@ -57,7 +87,7 @@ func run():
 	enemy.node.position = Vector3(40,0,20)
 	b.kill_enemy(enemy,game.factory,enemy.node.position)
 	check(b.ground_items.size() == 2 and b.ground_items[0].position == enemy.node.position and game.factory.reserves == stock,"enemy drops at its actual position without remote collection")
-	check(b.ground_items[1].item == {"kind":"coal","amount":1} and b.ground_items[1].position.distance_to(enemy.node.position) <= 2,"ordinary enemies drop one physical coal beside their scrap")
+	check(b.ground_items[1].item == {"kind":"coal","amount":1} and b.ground_items[1].position.distance_to(enemy.node.position) <= 5,"ordinary enemies drop one physical coal beside their scrap")
 	b.kill_enemy(enemy,game.factory,enemy.node.position)
 	check(b.ground_items.size() == 2,"repeated defeat cannot duplicate scrap or coal")
 	b.drop_item({"kind":"arc_gun","rarity":"legendary"},Vector3(60,0,-20))

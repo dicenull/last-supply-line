@@ -89,7 +89,7 @@ func option_rect(index: int) -> Rect2:
 
 func refresh():
 	read_models()
-	visible = expedition.phase in ["craft","reward","route"]
+	visible = expedition.phase in ["craft","reward","route"] and not models_provider.call().get("cinematic",false)
 	var crafting = expedition.phase == "craft"
 	continue_button.visible = crafting
 	for i in range(page_buttons.size()):
@@ -106,7 +106,7 @@ func refresh():
 		if expedition.phase == "reward" and i < expedition.reward_options.size():
 			var reward: String = expedition.reward_options[i]
 			if expedition.item_mode and reward.begins_with("gear:"):
-				buttons[i].tooltip_text = RunState.Content.reward_info(reward).name+"\n"+RunState.Gear.description({"kind":reward.trim_prefix("gear:"),"rarity":"rare"})
+				buttons[i].tooltip_text = RunState.Content.reward_info(reward).name+"\n"+RunState.Gear.description(expedition.reward_item(i))
 		if expedition.phase == "route" and i < expedition.route_options.size():
 			var route = expedition.route_options[i]
 			var surface = RunState.condition(route)
@@ -136,7 +136,7 @@ func _draw():
 	draw_rect(Rect2(PANEL_RECT.position,Vector2(PANEL_RECT.size.x,4)),ui.GOLD)
 	var reward_phase = expedition.phase == "reward"
 	var crafting = expedition.phase == "craft"
-	label("装備を製作" if crafting else "報酬を選択" if reward_phase else "次の経路を選択",Vector2(396,284 if crafting else 292),28,ui.INK)
+	label("装備を製作" if crafting else "航空支援物資を選択" if reward_phase else "次の経路を選択",Vector2(396,284 if crafting else 292),28,ui.INK)
 	if crafting:
 		label("%d / %d" % [craft_page+1,ceili(RunState.ENEMY_RECIPES.size()/3.0)],Vector2(660,288),18,ui.MUTED)
 		stat("scrap",str(factory.reserves.scrap),Vector2(800,267))
@@ -165,7 +165,7 @@ func _draw():
 			var reward = expedition.reward_options[i]
 			var info = RunState.Content.reward_info(reward).duplicate()
 			if expedition.item_mode and reward.begins_with("gear:"):
-				info.effect = RunState.Gear.description({"kind":reward.trim_prefix("gear:"),"rarity":"rare"})
+				info.effect = RunState.Gear.description(expedition.reward_item(i))
 			icon(info.icon,at+Vector2(20,24),48)
 			var title: String = info.name
 			if reward.begins_with("block:"):
@@ -174,8 +174,9 @@ func _draw():
 				title += " ×%d" % count
 				label("所持 %d" % factory.inventory[kind],at+Vector2(510,37),17,ui.MUTED)
 			elif reward.begins_with("gear:"):
-				label("レア" if expedition.item_mode else "装備",at+Vector2(550,37),17,Color("7dadd2") if expedition.item_mode else ui.MUTED)
-			label(fitted(title,450,22),at+Vector2(88,37),22,ui.INK)
+				var rarity: Dictionary = RunState.Gear.RARITIES[expedition.reward_rarity(i)]
+				label(rarity.name if expedition.item_mode else "装備",at+Vector2(500,37),15,Color(rarity.color) if expedition.item_mode else ui.MUTED)
+			label(fitted(title,400 if reward.begins_with("gear:") else 450,22),at+Vector2(88,37),22,ui.INK)
 			label(fitted(info.effect,550,17),at+Vector2(88,68),17,ui.GOLD)
 		else:
 			var route: Dictionary = expedition.route_options[i]

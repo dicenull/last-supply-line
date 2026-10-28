@@ -11,6 +11,7 @@ var difficulty = "normal"
 var status = ""
 var transitioning = false
 var menu
+var catalog
 var tank
 var display: SubViewportContainer
 var sound
@@ -36,6 +37,7 @@ func _ready():
 	menu.standalone_title = true
 	menu.configure(ui,snapshot)
 	menu.action_selected.connect(select_action)
+	menu.catalog_requested.connect(open_catalog)
 	menu.volume_changed.connect(func(value): sound.set_volume(value))
 	menu.difficulty_selected.connect(func(value): difficulty = value)
 	menu.framed = true
@@ -46,6 +48,13 @@ func _ready():
 	menu_frame.mount(menu,menu.frame_bounds)
 	menu.show()
 	menu.refresh()
+	catalog = preload("res://scripts/item_catalog_page.gd").new()
+	add_child(catalog)
+	catalog.closed.connect(func(): menu.show(); menu.refresh())
+
+func open_catalog():
+	menu.hide()
+	catalog.open()
 
 func _process(_delta):
 	if display != null: display.size = get_viewport_rect().size
@@ -96,7 +105,8 @@ func launch_game(continue_run: bool):
 
 func _unhandled_input(event):
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-		menu.go_back()
+		if catalog.visible: catalog.close()
+		else: menu.go_back()
 		get_viewport().set_input_as_handled()
 
 func _notification(what: int):

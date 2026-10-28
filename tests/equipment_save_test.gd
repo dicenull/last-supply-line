@@ -54,7 +54,7 @@ func run():
 		var bad = data.duplicate(true)
 		bad.run.next_item_uid = value
 		reject(bad,"invalid next identity "+str(value))
-	for at in [Vector2i(1,0),Vector2i(9,3),Vector2i(11,0),Vector2i(13,7),Vector2i(-1,0)]:
+	for at in [Vector2i(1,0),Vector2i(9,3),Vector2i(13,0),Vector2i(13,7),Vector2i(-1,0)]:
 		var bad = data.duplicate(true)
 		bad.factory.equipment_mounts.left_gun = at
 		bad.run.gear_items[0].position = at
@@ -102,15 +102,25 @@ func run():
 	var fuse = game.expedition.add_item({"kind":"blast_fuse","rarity":"legendary"})
 	game.place_item(mortar,Vector2i(0,0))
 	game.place_item(fuse,Vector2i(2,0))
+	game.factory.edit(Vector2i(3,1),"depot",2)
+	game.factory.edit(Vector2i(2,1),"belt",2)
 	game.toggle_running()
-	game.factory.cells[Vector2i(0,0)].items = ["shell","shell"]
+	game.factory.cells[Vector2i(0,0)].items = ["shell","shell","shell"]
 	var target: Dictionary = game.battlefield.enemies[0]
 	target.node.position = Vector3(12,0,0)
 	target.node.visible = true
 	target.active = true
 	game.battlefield.update_auxiliary_guns(game.factory,0.1)
 	check(game.battlefield.projectiles.size() == 1 and game.battlefield.projectiles[0].splash == 10.0,"legendary mortar and fuse produce a ten-meter splash")
-	check(game.checkpoint.validate(game.checkpoint.snapshot(game)),"strongest equipment combination remains saveable mid-flight")
+	var flying = game.checkpoint.snapshot(game)
+	check(game.checkpoint.validate(flying),"strongest equipment combination remains saveable mid-flight")
+	check(game.checkpoint.apply(game,flying) and game.battlefield.projectiles.size() == 1 and game.battlefield.projectiles[0].damage == 3,"projectile damage survives an actual reload")
+	var corrupt = flying.duplicate(true)
+	corrupt.battle.projectiles[0].damage = 0
+	check(not game.checkpoint.validate(corrupt),"invalid outgoing damage rejected before loading")
+	flying.version = 17
+	flying.battle.projectiles[0].erase("damage")
+	check(game.checkpoint.apply(game,flying) and game.battlefield.projectiles[0].damage == 1,"old in-flight rounds retain legacy one-hit damage")
 	legacy.queue_free()
 	game.queue_free()
 	await process_frame

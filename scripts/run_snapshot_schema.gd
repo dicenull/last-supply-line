@@ -2,7 +2,7 @@ extends RefCounted
 ## Data-only checkpoint contract. No file IO, scene creation, or live-state mutation.
 const Factory = preload("res://scripts/factory.gd")
 const RunState = preload("res://scripts/run_state.gd")
-const VERSION = 13
+const VERSION = 20
 const FIELDS = ["cells","clock","elapsed","ticks","fuel","fuel_used","ammo","rate","fire_clock","shots","supplied","injected","manufactured","missed","history","moves","completed","undo_stack","reserves","collected","reserve_capacity","work_multiplier","ammo_capacity"]
 const RUN_FIELDS = ["run_seed","sector","phase","hull","cleared","rewards_taken","modifiers","route_options","reward_options","current"]
 const CRAFT_FIELDS = ["recipes","equipment","stage_recipes"]
@@ -24,7 +24,7 @@ func safe_value(value, depth: int = 0) -> bool:
 		TYPE_VECTOR3: return value.is_finite() and value.length() < 100000
 		TYPE_TRANSFORM3D: return value.is_finite() and value.origin.length() < 100000
 		TYPE_ARRAY:
-			if value.size() > 2000: return false
+			if value.size() > 2004: return false
 			for entry in value:
 				if not safe_value(entry,depth+1): return false
 			return true
@@ -40,6 +40,8 @@ func numeric(value, low: float, high: float) -> bool:
 
 func valid_route(route) -> bool:
 	if not route is Dictionary or not route.has_all(["kind","seed","sector","length","scrap","coal","shells","enemy_hp","damage","attack_period","boss","opening"]): return false
+	if not route.get("final_base_version",0) is int or route.get("final_base_version",0) not in [0,1]: return false
+	if route.get("final_base_version",0) == 1 and (route.sector != 5 or route.boss != true or route.get("defenses_version",0) != 1): return false
 	if route.get("terrain","road") not in RunState.CONDITIONS or route.get("formation","patrol") not in RunState.FORMATIONS: return false
 	if not route.get("combat_version",1) is int or route.get("combat_version",1) not in [1,2,3]: return false
 	if route.get("combat_version",1) == 3 or route.has("enemies"):
@@ -52,8 +54,13 @@ func valid_route(route) -> bool:
 	if not route.get("landscape_version",0) is int or route.get("landscape_version",0) not in [0,1]: return false
 	if not route.get("destination_layout_version",0) is int or route.get("destination_layout_version",0) not in [0,1]: return false
 	if route.get("destination_layout_version",0) == 1 and route.get("field_version",0) != 1: return false
+	if not route.get("map_shape_version",0) is int or route.get("map_shape_version",0) not in [0,1]: return false
+	if route.get("map_shape_version",0) == 1:
+		if route.get("map_shape") not in RunState.FieldCourse.Shapes.IDS: return false
+		if route.get("destination_layout_version",0) != 1 or route.get("landscape_version",0) != 1 or route.get("defenses_version",0) != 1 or route.get("final_base_version",0) == 1: return false
+	elif route.has("map_shape"): return false
 	if route.get("field_version",0) == 1:
-		if not route.get("destination_count") is int or route.destination_count not in [2,3]: return false
+		if not route.get("destination_count") is int or route.destination_count not in ([1] if route.get("final_base_version",0) == 1 else [2,3]): return false
 		if not route.get("destination_index") is int or not numeric(route.destination_index,-1,route.destination_count-1): return false
 	if not route.get("encounters_version",0) is int or route.get("encounters_version",0) not in [0,1,2]: return false
 	if route.get("encounters_version",0) in [1,2]:
@@ -81,10 +88,11 @@ func valid_route(route) -> bool:
 
 func validate(data) -> bool:
 	if not data is Dictionary or not safe_value(data) or not data.has_all(["version","factory","run","rng_state","started","battle_mode","view","battle"]): return invalid("validation_1")
-	if data.version not in [1,2,3,4,5,6,7,8,9,10,11,12,VERSION] or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
+	if data.version not in [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,VERSION] or not data.rng_state is int or not data.started is bool or not data.battle_mode is bool: return invalid("validation_2")
 	var f = data.factory
 	var r = data.run
 	if not f is Dictionary or not f.has_all(FIELDS) or not r is Dictionary or not r.has_all(RUN_FIELDS): return invalid("validation_5")
+	if (data.version >= 15 or r.has("results")) and not preload("res://scripts/run_results.gd").valid(r.get("results")): return invalid("run_results")
 	for key in CRAFT_FIELDS:
 		var ids = r.get(key,[])
 		if not ids is Array or ids.size() > RunState.EQUIPMENT.size(): return invalid("craft_ids")
@@ -99,6 +107,14 @@ func validate(data) -> bool:
 	if not layout_version is int or layout_version not in [1,2] or (data.version < 10 and layout_version != 1): return invalid("factory_layout")
 	if data.version >= 10 and not f.has("layout_version"): return invalid("missing_factory_layout")
 	var candidate = Factory.new(layout_version)
+	var anchor = f.get("main_gun_anchor",Factory.Layout.AMMO_ANCHOR)
+	if not anchor is Vector2i or (data.version >= 20 and not f.has("main_gun_anchor")): return invalid("main_gun_anchor")
+	if layout_version == 2 and (anchor.x < 0 or anchor.y < 0 or anchor.x+2 > Factory.W or anchor.y+2 > Factory.H): return invalid("main_gun_bounds")
+	if layout_version == 2: candidate.configure_main_gun(anchor)
+	if not f.cells is Dictionary: return invalid("factory_cells")
+	for cell in f.cells.values():
+		if not cell is Dictionary or not cell.get("kind") is String: return invalid("factory_cell_kind")
+	candidate.cells = f.cells.duplicate(true)
 	var mounts = f.get("equipment_mounts",{})
 	if not mounts is Dictionary or mounts.size() > Factory.Gear.DEFINITIONS.size() or (layout_version == 1 and not mounts.is_empty()): return invalid("equipment_mounts")
 	var rotations = f.get("equipment_rotations",{})
@@ -112,7 +128,8 @@ func validate(data) -> bool:
 	var item_mode = r.get("item_mode",false)
 	var items = r.get("gear_items",[])
 	var next_uid = r.get("next_item_uid",1)
-	if not item_mode is bool or not items is Array or items.size() > 2000 or not next_uid is int or next_uid < 1: return invalid("item_inventory")
+	# Four reserved slots accommodate implicit stock parts in full legacy saves.
+	if not item_mode is bool or not items is Array or items.size() > 2004 or not next_uid is int or next_uid < 1: return invalid("item_inventory")
 	if item_mode != (layout_version == 2) or (not item_mode and not items.is_empty()): return invalid("item_layout")
 	var seen_uids = []
 	var installed = {}
@@ -123,8 +140,14 @@ func validate(data) -> bool:
 		if not slot is String or slot not in Factory.Gear.PART_SLOTS or slot in unique_empty: return invalid("empty_part_slots")
 		unique_empty.append(slot)
 	var part_slots: Array = []
+	var stock_slots: Array = []
 	for item in items:
 		if not Factory.Gear.valid(item) or not item.get("uid") is int or item.uid < 1 or item.uid >= next_uid or item.uid in seen_uids or not item.get("position") is Vector2i: return invalid("item_instance")
+		if not item.get("stock",false) is bool: return invalid("stock_part")
+		if item.get("stock",false):
+			var stock_slot = Factory.Gear.part_slot(item.kind)
+			if stock_slot.is_empty() or item.kind != "vehicle_"+stock_slot or item.rarity != "normal" or stock_slot in stock_slots: return invalid("stock_part")
+			stock_slots.append(stock_slot)
 		var rounds = item.get("ammo",0)
 		var facing = item.get("direction",0)
 		if not facing is int or not numeric(facing,0,3): return invalid("item_direction")
@@ -139,13 +162,14 @@ func validate(data) -> bool:
 			continue
 		if installed.has(item.kind) or mounts.get(item.kind,Vector2i(-1,-1)) != item.position or rotations.get(item.kind,0) != facing: return invalid("item_installation")
 		installed[item.kind] = item.position
+	if items.size()-stock_slots.size() > 2000: return invalid("item_inventory")
 	if item_mode and (installed != mounts or mounts.size() != r.get("equipment",[]).size()): return invalid("item_mounts")
 	if not numeric(r.sector,1,5) or not numeric(r.hull,0,100) or not numeric(r.cleared,0,5) or not numeric(r.rewards_taken,0,5) or not r.run_seed is int: return invalid("validation_6")
 	if data.version == 4 and not f.has("inventory"): return invalid("missing_inventory")
 	if f.has("inventory"):
-		if not f.inventory is Dictionary or f.inventory.size() not in [Factory.LIMITS.size()-1,Factory.LIMITS.size()]: return invalid("inventory")
+		if not f.inventory is Dictionary or f.inventory.size() not in [16,17,18,19]: return invalid("inventory")
 		for kind in Factory.LIMITS:
-			if kind == "armor_block" and not f.inventory.has(kind): continue
+			if kind in ["armor_block","source","coal_source"] and not f.inventory.has(kind): continue
 			if not f.inventory.get(kind) is int or not numeric(f.inventory[kind],0,Factory.LIMITS[kind]): return invalid("inventory_count")
 		for kind in f.inventory:
 			if not Factory.LIMITS.has(kind): return invalid("inventory_kind")
@@ -211,7 +235,8 @@ func validate(data) -> bool:
 		if c.has("feed_cursor") and (layout_version != 2 or not Factory.AUXILIARY.has(c.kind) or not c.feed_cursor is int or not numeric(c.feed_cursor,0,7)): return invalid("equipment_feed_cursor")
 		if c.kind == "armor_block":
 			if not c.get("armor_hp") is int or not numeric(c.armor_hp,1,Factory.ARMOR_HITS) or not c.items.is_empty() or c.work != 0: return invalid("armor_state")
-		if c.items.size() > (f.ammo_capacity if Factory.AUXILIARY.has(c.kind) else 8 if c.kind in ["depot","fuel_depot"] else 4 if c.kind == "overflow_gate" else 1): return invalid("validation_28")
+		if c.items.size() > (f.ammo_capacity if Factory.AUXILIARY.has(c.kind) else 8 if c.kind in ["depot","fuel_depot"] else 4 if c.kind == "overflow_gate" else 2 if c.kind == "auto_press" else 1): return invalid("validation_28")
+		if c.kind == "auto_press" and c.items.size() == 2 and (c.work != 0 or c.items != ["shell","shell"]): return invalid("press_batch")
 		if Factory.AUXILIARY.has(c.kind):
 			if data.version == 1 or c.kind not in r.get("equipment",[]) or c.work != 0: return invalid("auxiliary_cell")
 			for item in c.items:
@@ -265,6 +290,7 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 		if not spent is bool: return invalid("mine_state")
 	for key in BATTLE_FIELDS:
 		if not numeric(b[key],-100000,1e9): return invalid("validation_56")
+	if b.has("best_combo") and (not b.best_combo is int or not numeric(b.best_combo,0,b.kills)): return invalid("best_combo")
 	var count = RunState.enemy_count(run.current)
 	if b.hull < 0 or b.hull > 100 or b.kills < 0 or b.kills > count or b.result not in [-1,0,1]: return invalid("validation_57")
 	if run.current.get("field_version",0) == 1 and b.result == 1:
@@ -272,7 +298,7 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 		if selected < 0 or not b.player is Transform3D: return invalid("field_destination")
 		var course = RunState.FieldCourse.new(run.current)
 		var local: Vector3 = b.player.origin-course.destinations[selected].position
-		if local.x < 0 or local.x > 16 or absf(local.z) > 8: return invalid("field_arrival")
+		if local.x < (10 if run.current.get("final_base_version",0) == 1 else 0) or local.x > (64 if run.current.get("final_base_version",0) == 1 else 16) or absf(local.z) > 8: return invalid("field_arrival")
 	if run.phase in ["craft","shop"] and b.result != 1: return invalid("craft_battle")
 	# Optional for version-11 saves written before ground loot was introduced.
 	var drops = b.get("ground_items",[])
@@ -317,6 +343,7 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 			if not shot.get("chain",0) is int or not numeric(shot.get("chain",0),0,2): return invalid("projectile_chain")
 			if shot.get("style","heavy") not in RunState.Content.BALLISTICS: return invalid("projectile_style")
 			if key == "projectiles":
+				if not shot.get("damage",1) is int or not numeric(shot.get("damage",1),1,8): return invalid("projectile_damage")
 				if not shot.has("dir") or not shot.dir is Vector3 or not shot.target is int or shot.target < 0 or shot.target >= count: return invalid("validation_78")
 			elif not shot.target is Vector3 or not shot.has("mark") or not shot.mark is int or shot.mark < 0 or shot.mark >= count: return invalid("validation_79")
 	if not b.trails is Array or b.trails.size() > 90 or not b.impacts is Array or b.impacts.size() > 128: return invalid("validation_80")

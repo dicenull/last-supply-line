@@ -20,6 +20,12 @@ func capture(path: String):
 	# Also render when macOS throttles an unfocused test window.
 	RenderingServer.force_draw()
 	root.get_texture().get_image().save_png(path)
+func preview_fits(preview) -> bool:
+	var inset = Rect2(Vector2(4,4),Vector2(preview.viewport.size)-Vector2(8,8))
+	for point in Preview.Models.vertices(preview.model,preview.model.transform):
+		if not inset.has_point(preview.camera.unproject_position(point)): return false
+	return true
+
 func run():
 	DirAccess.make_dir_recursive_absolute("res://build/item-models")
 	root.size = Vector2i(1440,940)
@@ -28,6 +34,8 @@ func run():
 	gallery.size = Vector2(1440,940)
 	root.add_child(gallery)
 	var families = Catalog.Content.BASE_EQUIPMENT.keys()+["scrap","coal","shell"]
+	var previews = []
+	var labels = []
 	for i in range(families.size()):
 		var preview = Preview.new()
 		preview.position = Vector2(24+(i%5)*280,16+(i/5)*220)
@@ -40,8 +48,32 @@ func run():
 		label.size.x = 248
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		gallery.add_child(label)
+		previews.append(preview)
+		labels.append(label)
 		check(preview.model.get_meta("kind") == families[i] and preview.mouse_filter == Control.MOUSE_FILTER_IGNORE,"preview uses shared model without capturing pointer: "+families[i])
 	await capture("res://build/item-models/catalog.png")
+	var designs = Catalog.Data.ITEMS.keys()
+	for page in range(ceili(designs.size()/20.0)):
+		for i in range(20):
+			var index = page*20+i
+			previews[i].visible = index < designs.size()
+			labels[i].visible = index < designs.size()
+			if index >= designs.size(): continue
+			previews[i].show_item({"kind":designs[index],"rarity":"normal"})
+			labels[i].add_theme_font_override("font",preload("res://scripts/ui_style.gd").create_font())
+			labels[i].add_theme_font_size_override("font_size",13)
+			labels[i].text = Catalog.Data.ITEMS[designs[index]].name
+			check(previews[i].model.get_meta("kind") == designs[index] and preview_fits(previews[i]),"full catalog model fills preview without clipping: "+designs[index])
+		await capture("res://build/item-models/designs-%02d.png" % (page+1))
+	for i in range(previews.size()):
+		previews[i].visible = i < 5
+		labels[i].visible = i < 5
+		if i >= 5: continue
+		var kind = ["scrap","coal","steel","fuel","shell"][i]
+		previews[i].show_item({"kind":kind,"rarity":"normal"})
+		labels[i].text = ["鉄くず","石炭","鋼材","燃料","砲弾"][i]
+		check(preview_fits(previews[i]),"resource preview fills frame without clipping: "+kind)
+	await capture("res://build/item-models/resources.png")
 	gallery.queue_free()
 	await process_frame
 	root.size = Vector2i(1440,940)
@@ -112,6 +144,20 @@ func run():
 	await capture("res://build/item-models/fortified-destination.png")
 	game.queue_free()
 	await process_frame
+	# Render a busy production line as well as the equipment-only deck.
+	game = load("res://main.tscn").instantiate()
+	Fixture.assign(game,"resource_line_models_test",1)
+	game.show_start_menu = false
+	root.add_child(game)
+	game.set_process(false)
+	await process_frame
+	game.factory.example(false)
+	for tick in range(35): game.factory.simulate_tick()
+	game._process(0)
+	await capture("res://build/item-models/production-line.png")
+	game.queue_free()
+	await process_frame
+	Fixture.clean("resource_line_models_test")
 	Fixture.clean("item_models_test")
 	print("RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)

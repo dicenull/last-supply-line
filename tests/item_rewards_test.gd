@@ -132,7 +132,9 @@ func run():
 	for tick in range(1800):
 		Fixture.drive(game,0.1)
 		if game.expedition.phase != "travel": break
-	check(game.expedition.phase == "reward" and game.choice_popup.visible and not game.choice_popup.continue_button.visible,"actual stage clear opens the random item draft directly")
+	check(game.expedition.phase == "reward" and game.airdrop.active and not game.choice_popup.visible,"actual stage clear delivers its draft through aerial support")
+	game.airdrop.advance(7)
+	check(game.choice_popup.visible and not game.choice_popup.continue_button.visible,"supply reveal opens the item draft")
 	check(game.expedition.recipes.is_empty() and game.expedition.equipment.is_empty(),"battle kills grant no free gear before the clear choice")
 	var clear_save = game.checkpoint.snapshot(game)
 	check(game.checkpoint.validate(clear_save) and clear_save.version == game.checkpoint.VERSION,"new save stores construction materials and pending equipment draft")

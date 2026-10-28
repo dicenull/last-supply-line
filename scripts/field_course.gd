@@ -1,5 +1,6 @@
 extends RefCounted
 ## Seeded road graph shared by scenery, navigation, destinations and the map.
+const Shapes = preload("res://scripts/map_shapes.gd")
 const Defenses = preload("res://scripts/destination_defenses.gd")
 const SHOP_FIELD_CHANCE = 0.20
 const KINDS = ["scrapyard","coalfield","arsenal"]
@@ -19,6 +20,9 @@ var pattern = 0
 var supply_length = 0.0
 
 func _init(route: Dictionary):
+	if route.get("final_base_version",0) == 1:
+		build_final_base(route)
+		return
 	var rng = RandomNumberGenerator.new()
 	rng.seed = int(route.get("seed",0))
 	var length = float(route.get("length",110))
@@ -53,9 +57,21 @@ func _init(route: Dictionary):
 			var end: Vector3 = destinations[i].position
 			branches[i][1].x = minf(branches[i][1].x,end.x-44)
 			branches[i].insert(2,end-Vector3(24,0,0))
+	if route.get("map_shape_version",0) == 1: Shapes.build(self,route)
 	for path in [trunk]+branches+connectors:
 		for i in range(path.size()-1): segments.append([path[i],path[i+1]])
 	if landscape != "": preload("res://scripts/field_landscape.gd").populate(self,route)
+
+func build_final_base(route: Dictionary):
+	var length = float(route.length)
+	var end = Vector3(length+40,0,-28)
+	supply_length = length
+	trunk = [Vector3.ZERO,Vector3(length*0.25,0,10),Vector3(length*0.5,0,-28)]
+	branches = [[trunk.back(),end-Vector3(64,0,0),end-Vector3(24,0,0),end+Vector3(16,0,0)]]
+	destinations = [{"position":end,"kind":"arsenal","encounter":"hostile","final_base":true}]
+	bounds = Rect2(-26,-94,end.x+132,152)
+	for path in [trunk]+branches:
+		for i in range(path.size()-1): segments.append([path[i],path[i+1]])
 
 func scatter_destinations(route: Dictionary):
 	# A versioned, independent stream preserves existing saves and site rewards.
@@ -130,7 +146,7 @@ func road_distance(at: Vector3) -> float:
 	return result
 
 func navigation_points(index: int = 0, detour: bool = false) -> Array:
-	if detour and not connectors.is_empty(): return [trunk[1]]+connectors[0].slice(1)+branches[clampi(index,0,branches.size()-1)].slice(1)
+	if detour and not connectors.is_empty() and connectors[0][0] == trunk[1] and connectors[0][-1] == trunk[-1]: return [trunk[1]]+connectors[0].slice(1)+branches[clampi(index,0,branches.size()-1)].slice(1)
 	return trunk.slice(1)+branches[clampi(index,0,branches.size()-1)].slice(1)
 
 func center_at(x: float) -> Vector3:

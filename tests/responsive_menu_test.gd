@@ -25,7 +25,7 @@ func click(button: Button, frame):
 		event.button_index = MOUSE_BUTTON_LEFT
 		event.pressed = pressed
 		root.push_input(event,false)
-		await process_frame
+	await settle()
 func capture(label: String):
 	await settle()
 	RenderingServer.force_draw()
@@ -40,17 +40,22 @@ func run():
 	game.set_process(false)
 	var menu = game.menu
 	var frame = menu.get_parent().get_parent().get_parent()
-	for dimensions in [Vector2i(1440,940),Vector2i(844,390),Vector2i(390,844),Vector2i(768,1024)]:
+	for dimensions in [Vector2i(1440,940),Vector2i(844,390),Vector2i(390,844),Vector2i(768,1024),Vector2i(320,568)]:
 		root.size = dimensions
 		await settle()
 		game.open_menu()
 		await settle()
+		var visual_scale = game.UIStyle.effective_scale(menu)
+		check(menu.text_size(18)*visual_scale >= 16 and menu.text_size(14)*visual_scale >= 14 and menu.text_size(28)*visual_scale >= 24,"body, captions and headings respect visible pixel minimums")
+		check(game.UIStyle.icon_size(menu)*visual_scale >= 24-0.001,"menu icons respect the visible 24 pixel minimum")
 		check(menu.actions[0].position.x == 520 and menu.actions[2].position.x == 520 and menu.actions[4].position.x == 520,"same original single-column menu at "+str(dimensions))
 		check(menu.actions[0].size == Vector2(400,44),"original icon-row design is shared across input devices")
 		check(Rect2(Vector2.ZERO,frame.size).encloses(frame.scroll.get_rect()),"menu viewport stays within the available screen")
 		await capture("pause-%dx%d" % [dimensions.x,dimensions.y])
 		await click(menu.navigation.settings,frame)
 		check(menu.page == "settings","settings remains reachable by scrolling")
+		check(menu.back_button.get_theme_font_size("font_size")*visual_scale >= 16 and menu.difficulty_select.get_theme_font_size("font_size")*visual_scale >= 16,"native menu buttons share the text minimum")
+		await capture("minimum-settings-%dx%d" % [dimensions.x,dimensions.y])
 		await click(menu.difficulty_select,frame)
 		check(menu.difficulty_popup.visible,"responsive layout preserves difficulty input coordinates")
 		menu.go_back()
@@ -65,9 +70,21 @@ func run():
 		check(not menu.visible and root.content_scale_aspect == Window.CONTENT_SCALE_ASPECT_KEEP,"closing restores the gameplay viewport")
 		game.toggle_inventory()
 		await settle()
-		check(game.inventory_panel.page_size == 6 and game.inventory_panel.size == Vector2(392,716),"inventory uses original six-row icon layout")
+		check(game.inventory_panel.page_size >= 1 and game.inventory_panel.page_size <= 6 and game.inventory_panel.size.y <= 716,"inventory pages fit available height without scrolling: %s at %s" % [game.inventory_panel.size,dimensions])
 		await capture("inventory-%dx%d" % [dimensions.x,dimensions.y])
 		game.inventory_panel.hide()
+	# Rotate with the settings page still open, rather than reopening it.
+	game.equipment_workspace.close_all()
+	game.open_menu()
+	menu.show_page("settings")
+	for dimensions in [Vector2i(844,390),Vector2i(390,844),Vector2i(844,390)]:
+		root.size = dimensions
+		await settle()
+		await settle()
+		frame.reflow()
+		var rendered = root.get_final_transform()*frame.scroll.get_global_rect()
+		check(rendered.size.x >= minf(432,dimensions.x-32)-1,"open settings retains readable width after rotation: "+str(rendered))
+		await capture("rotate-settings-%dx%d" % [dimensions.x,dimensions.y])
 	game.free()
 	var title = load("res://scenes/start_screen.tscn").instantiate()
 	title.audio_enabled = false

@@ -1,0 +1,19 @@
+{
+  "left_gun": {"name":"ホチキス左舷砲","code":"H-L","inspiration":"ホチキス6ポンド戦車砲の砲尾・防盾"},
+  "right_gun": {"name":"ホチキス右舷砲","code":"H-R","inspiration":"ホチキス6ポンド戦車砲の右舷配置"},
+  "rapid_gun": {"name":"ヴィッカース式連装砲","code":"VQ","inspiration":"水冷ジャケットと給弾箱。連装化はゲーム独自"},
+  "long_gun": {"name":"長砲身対戦車砲","code":"AT","inspiration":"長い砲身・駐退機・砲口制退器"},
+  "mortar_gun": {"name":"滑腔迫撃砲","code":"MT","inspiration":"高仰角の砲身・底板・支持脚"},
+  "rear_gun": {"name":"短砲身支援砲","code":"IG","inspiration":"短砲身歩兵砲の厚い防盾と大きな砲口"},
+  "scatter_gun": {"name":"多銃身斉射砲","code":"VB","inspiration":"歴史的な多銃身斉射機構を参考にした架空砲"},
+  "arc_gun": {"name":"試製誘導砲","code":"EX","inspiration":"電磁コイルと碍子を使った架空の実験装備"},
+  "armor": {"name":"リベット増加装甲","code":"AP","inspiration":"リベット接合の追加鋼板"},
+  "skirts": {"name":"シュルツェン装甲","code":"SK","inspiration":"支持架に吊り下げる間隔装甲板"},
+  "supercharger": {"name":"ルーツ式過給機","code":"SC","inspiration":"容積式過給機の二つのローターと吸気管"},
+  "economizer": {"name":"管式熱交換器","code":"HX","inspiration":"蒸気機関の管群・集管・保守蓋"},
+  "rangefinder": {"name":"光学合致測距儀","code":"RF","inspiration":"離れた対物レンズを持つ横長の光学基線"},
+  "servo": {"name":"ウォーム砲塔駆動機","code":"TD","inspiration":"歯車環とウォーム軸による減速機構"},
+  "salvage_arm": {"name":"門型回収クレーン","code":"RC","inspiration":"回収車のウインチ・支柱・吊り具"},
+  "blast_fuse": {"name":"着発榴弾信管","code":"HF","inspiration":"砲弾の真鍮製信管と収納架"},
+  "drum_loader": {"name":"回転弾倉装填機","code":"AL","inspiration":"回転弾倉と機械式送弾機構"}
+}

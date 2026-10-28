@@ -76,5 +76,5 @@ static func maintain(game) -> int:
 		var best = best_item(game.expedition.gear_items,[kind],0)
 		if not best.is_empty(): retained.append(best.uid)
 	var bulk_items = salvage_unused(game,retained)
-	if not game.factory.wrecks.is_empty() or game.battlefield.hull < 70: game.repair_vehicle()
+	if not game.factory.wrecks.is_empty(): game.repair_vehicle()
 	return bulk_items

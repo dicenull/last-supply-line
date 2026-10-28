@@ -18,6 +18,7 @@ const RECIPES = {"furnace":["scrap","steel",6],"press":["steel","shell",8],"refi
 const FILTERS = {"scrap_filter":"scrap","shell_filter":"shell","fuel_filter":"fuel"}
 const AUXILIARY = Gear.Data.GUN_PORTS
 var layout_version = 1
+var main_gun_anchor = Layout.AMMO_ANCHOR
 var ports: Dictionary = PORTS.duplicate()
 var blocks: Array = []
 var equipment_mounts: Dictionary = {}
@@ -70,9 +71,16 @@ func feedback_event(kind: String, cell: Vector2i):
 func _init(version: int = 1):
 	layout_version = version
 	ports = Layout.PORTS.duplicate() if version == 2 else PORTS.duplicate()
-	blocks = Layout.WALLS.duplicate() if version == 2 else []
+	if version == 2:
+		for at in ports.keys():
+			if ports[at] in ["source","coal_source"]: ports.erase(at)
+	blocks = []
 	for kind in LIMITS: inventory[kind] = Content.STARTING_BLOCKS.get(kind,0)
 	clear_layout(false)
+	if version == 2:
+		for at in Layout.WALLS: cells[at] = make_cell("armor_block",0)
+		for at in Layout.PORTS:
+			if Layout.PORTS[at] in ["source","coal_source"]: cells[at] = make_cell(Layout.PORTS[at],Layout.DIRECTIONS.get(at,0))
 	message = "空の車内です。入口から精錬炉・砲弾機・試射口をつないでください。"
 
 func make_cell(kind: String, direction: int) -> Dictionary:
@@ -84,9 +92,53 @@ func inside(p: Vector2i) -> bool:
 	return p.x >= 0 and p.x < W and p.y >= 0 and p.y < H
 
 func mounted_at(p: Vector2i, except_id: String = "") -> String:
-	for id in equipment_mounts:
-		if id != except_id and Rect2i(equipment_mounts[id],Gear.footprint(id,equipment_rotations.get(id,0))).has_point(p): return id
-	return ""
+	var nearest = ""
+	var distance = INF
+	var ids = equipment_mounts.keys()
+	ids.sort()
+	for id in ids:
+		if id != except_id and Rect2i(equipment_mounts[id],Gear.footprint(id,equipment_rotations.get(id,0))).has_point(p):
+			var d = Vector2(equipment_mounts[id]-p).length_squared()
+			if d < distance:
+				nearest = id
+				distance = d
+	return nearest
+
+func configure_main_gun(at: Vector2i):
+	main_gun_anchor = at
+	if layout_version != 2: return
+	for p in ports.keys():
+		if ports[p] == "gun":
+			ports.erase(p)
+			cells.erase(p)
+	for y in range(2):
+		for x in range(2):
+			var p = at+Vector2i(x,y)
+			ports[p] = "gun"
+			cells[p] = make_cell("gun",0)
+
+func can_move_main_gun(at: Vector2i) -> bool:
+	if layout_version != 2 or loadout_locked or layout_locked: return false
+	for y in range(2):
+		for x in range(2):
+			var p = at+Vector2i(x,y)
+			if not inside(p) or p in blocks or wrecks.has(p): return false
+			if ports.has(p) and ports[p] != "gun": return false
+			if cells.has(p) and cells[p].kind != "gun": return false
+			for id in equipment_mounts:
+				if not AUXILIARY.has(id) and Rect2i(equipment_mounts[id],Gear.footprint(id,equipment_rotations.get(id,0))).has_point(p): return false
+	return true
+
+func move_main_gun(at: Vector2i) -> bool:
+	if not can_move_main_gun(at): return false
+	for p in ports:
+		if ports[p] == "gun": cells.erase(p)
+	configure_main_gun(at)
+	for p in ports:
+		if ports[p] == "gun": cells[p] = make_cell("gun",0)
+	undo_stack.clear()
+	moves.clear()
+	return true
 
 func can_place_equipment(id: String, at: Vector2i, facing: int = -1) -> bool:
 	if layout_version != 2 or loadout_locked or layout_locked or id not in Gear.DEFINITIONS: return false
@@ -96,12 +148,20 @@ func can_place_equipment(id: String, at: Vector2i, facing: int = -1) -> bool:
 	if facing == -1: facing = equipment_rotations.get(id,0)
 	if facing < 0 or facing > 3: return false
 	var size: Vector2i = Gear.footprint(id,facing)
-	if Gear.DEFINITIONS[id].genre == "secondary" and not Layout.roof_clearance(at,size): return false
+	var secondary = AUXILIARY.has(id)
 	for y in range(at.y,at.y+size.y):
 		for x in range(at.x,at.x+size.x):
 			var p = Vector2i(x,y)
-			if not inside(p) or p in blocks or ports.has(p) or mounted_at(p,id) != "" or wrecks.has(p): return false
-			if cells.has(p) and not (id in auxiliary_ids and cells[p].kind == id): return false
+			if not inside(p) or p in blocks or wrecks.has(p): return false
+			# Weapons may overlap reservations, but their separate ammunition
+			# sockets remain unique so loading/removal never duplicates rounds.
+			if ports.has(p) and not (secondary and ports[p] == "gun" and p != at): return false
+			for mounted in equipment_mounts:
+				if mounted == id: continue
+				if Rect2i(equipment_mounts[mounted],Gear.footprint(mounted,equipment_rotations.get(mounted,0))).has_point(p):
+					if not secondary or not AUXILIARY.has(mounted) or equipment_mounts[mounted] == at: return false
+			if cells.has(p) and cells[p].kind != id:
+				if not secondary or p == at or not (AUXILIARY.has(cells[p].kind) or cells[p].kind == "gun"): return false
 	return true
 
 func place_equipment(id: String, at: Vector2i, facing: int = -1) -> bool:
@@ -205,8 +265,8 @@ func auxiliary_ammo(id: String) -> int:
 
 func count_kind(kind: String) -> int:
 	var n = 0
-	for c in cells.values():
-		if c.kind == kind: n += 1
+	for p in cells:
+		if cells[p].kind == kind and (kind not in ["source","coal_source"] or not ports.has(p)): n += 1
 	return n
 
 func owned_kind_count(kind: String, except_position: Vector2i = Vector2i(-1,-1)) -> int:
@@ -225,7 +285,9 @@ func available(kind: String) -> int:
 
 func construction_cost(layout_cells: Dictionary) -> Dictionary:
 	var total = {"scrap":0,"coal":0}
-	for cell in layout_cells.values():
+	for pos in layout_cells:
+		if ports.has(pos): continue
+		var cell: Dictionary = layout_cells[pos]
 		if not Content.BUILD_COSTS.has(cell.kind): continue
 		for raw in total: total[raw] += Content.BUILD_COSTS[cell.kind][raw]
 	return total
@@ -273,7 +335,7 @@ func damage_at(local_hit: Vector2) -> Vector2i:
 	var target = Vector2i(-1,-1)
 	var nearest = 1.75 * 1.75
 	for p in cells:
-		if not LIMITS.has(cells[p].kind): continue
+		if ports.has(p) or not LIMITS.has(cells[p].kind): continue
 		var center = Vector2(p.x-(W-1)*0.5,p.y-(H-1)*0.5)
 		var distance = center.distance_squared_to(local_hit)
 		if distance < nearest:
@@ -338,7 +400,7 @@ func reset_inventory():
 	var kept = {}
 	for p in cells.keys():
 		var kind: String = cells[p].kind
-		if not LIMITS.has(kind): continue
+		if ports.has(p) or not LIMITS.has(kind): continue
 		kept[kind] = kept.get(kind,0)+1
 		if kept[kind] > inventory[kind]: cells.erase(p)
 	undo_stack.clear()
@@ -403,7 +465,7 @@ func restore(rows: Array, pay: bool = true) -> bool:
 		var direction = int(row[3])
 		if not inside(p) or ports.has(p) or p in blocks or pending.has(p) or (not LIMITS.has(kind) and kind not in auxiliary_ids) or direction < 0 or direction > 3: return false
 		if layout_version == 2 and kind in auxiliary_ids and equipment_mounts.get(kind,Vector2i(-1,-1)) != p: return false
-		if mounted_at(p) != "" and not (kind in auxiliary_ids and mounted_at(p) == kind and equipment_mounts[kind] == p): return false
+		if mounted_at(p) != "" and not (kind in auxiliary_ids and equipment_mounts.get(kind,Vector2i(-1,-1)) == p): return false
 		counts[kind] = counts.get(kind, 0) + 1
 		if counts[kind] > LIMITS.get(kind,1): return false
 		pending[p] = make_cell(kind, direction)
@@ -506,7 +568,7 @@ func output_item(c: Dictionary) -> String:
 
 func storage_capacity(kind: String) -> int:
 	if AUXILIARY.has(kind): return ammo_capacity
-	return 8 if kind in ["depot","fuel_depot"] else 4 if kind == "overflow_gate" else 1
+	return 8 if kind in ["depot","fuel_depot"] else 4 if kind == "overflow_gate" else 2 if kind == "auto_press" else 1
 
 func output_directions(c: Dictionary, item: String) -> Array:
 	if c.kind == "splitter": return [c.dir,(c.dir+1)%4] if c.turn == 0 else [(c.dir+1)%4,c.dir]
@@ -565,8 +627,8 @@ func start_processing(c: Dictionary):
 		if reserves.coal < 1: return
 		reserves.coal -= 1
 	if c.kind == "auto_press":
-		if fuel < 0.08: return
-		consume_fuel(0.08)
+		if fuel < 0.30: return
+		consume_fuel(0.30)
 	c.work = maxi(1,int(ceil(RECIPES[c.kind][2]*work_multiplier)))
 
 func simulate_tick():
@@ -641,10 +703,12 @@ func simulate_tick():
 			c.busy += 1
 			if c.work == 0:
 				c.items[0] = RECIPES[c.kind][1]
-				c.made += 1
+				var produced = 2 if c.kind == "auto_press" else 1
+				if produced == 2: c.items.append("shell")
+				c.made += produced
 				completed.append(p)
 				feedback_event("fuel" if c.kind == "refinery" else "production",p)
-				if c.kind in ["press","auto_press"]: manufactured += 1
+				if c.kind in ["press","auto_press"]: manufactured += produced
 	if auto_fire:
 		fire_clock += TICK
 		var interval = 60.0 / rate
@@ -654,6 +718,14 @@ func simulate_tick():
 	else:
 		fire_clock = 0.0
 	while not history.is_empty() and history[0][0] <= elapsed - 30.0: history.pop_front()
+
+func fire_volley(weapon: String, rounds: int, fuel_cost: float) -> bool:
+	# Check both resources first: starvation never destroys half a volley.
+	var available = ammo if weapon == "gun" else auxiliary_ammo(weapon)
+	if rounds < 1 or fuel_cost < 0 or available < rounds or fuel+0.000001 < fuel_cost: return false
+	consume_fuel(fuel_cost)
+	for i in range(rounds): fire_round(weapon)
+	return true
 
 func fire_round(weapon: String = "gun") -> bool:
 	var success = ammo > 0 if weapon == "gun" else auxiliary_ammo(weapon) > 0

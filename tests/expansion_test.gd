@@ -22,7 +22,7 @@ func factory_with(kind: String):
 	f.cells[Vector2i(4,3)] = f.make_cell("belt",0)
 	return f
 func blocks():
-	check(Content.EQUIPMENT.size() == 300 and Content.BASE_EQUIPMENT.size() == 17 and Content.ENEMIES.size() == 16 and Factory.LIMITS.size() == 17 and Run.REWARDS.size() == 15,"expanded catalogs include new weapons, enemy roles and defense block")
+	check(Content.EQUIPMENT.size() == 312 and Content.BASE_EQUIPMENT.size() == 17 and Content.ENEMIES.size() == 16 and Factory.LIMITS.size() == 19 and Run.REWARDS.size() == 15,"expanded catalogs include new weapons, enemy roles and defense block")
 	for kind in Factory.FILTERS:
 		var f = factory_with(kind)
 		var c = f.cells[Vector2i(4,4)]
@@ -71,9 +71,9 @@ func blocks():
 	f.cells[Vector2i(4,4)].items = ["steel"]
 	for i in range(4): f.simulate_tick()
 	check(f.manufactured == 0,"powered press waits for real fuel")
-	f.fuel = 0.08
+	f.fuel = 0.30
 	for i in range(4): f.simulate_tick()
-	check(f.manufactured == 1 and is_zero_approx(f.fuel) and f.cells[Vector2i(4,4)].items == ["shell"],"powered press consumes fuel to produce one real shell")
+	check(f.manufactured == 2 and is_zero_approx(f.fuel) and f.cells[Vector2i(4,4)].items == ["shell","shell"],"powered press consumes fuel once to produce two real shells")
 	f = factory_with("fuel_depot")
 	var depot = f.cells[Vector2i(4,4)]
 	depot.items = ["fuel","fuel","fuel","fuel","fuel","fuel","fuel","fuel"]

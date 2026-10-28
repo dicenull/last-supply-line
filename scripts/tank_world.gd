@@ -1,6 +1,8 @@
 extends Node3D
 ## Native low-poly 3D diorama. Grid coordinates are on the exposed tank deck.
 const EquipmentModels = preload("res://scripts/item_model.gd")
+const MountLayout = preload("res://scripts/weapon_mount_layout.gd")
+var main_gun_anchor = Vector2i(9,3)
 const MOUNTED_GUN_Y = 0.62
 const EXTERIOR_GUN_HEIGHT = 1.15
 const MAIN_BARREL_HEIGHT = 1.9
@@ -65,6 +67,8 @@ var auxiliary_guns: Array = []
 var feedback: Node3D
 var vehicle_part_visuals: Node3D
 var vehicle_part_signature = ""
+var installed_rarities: Dictionary = {}
+const EXTERIOR_MOUNT_SCALE = 1.3
 var vehicle_parts: Dictionary = {}
 
 func configure_vehicle_parts(parts: Dictionary, empty_slots: Array = []):
@@ -97,33 +101,44 @@ func configure_vehicle_parts(parts: Dictionary, empty_slots: Array = []):
 		fittings.name = "CannonFittings"
 		fittings.set_meta("kind",parts.cannon.kind)
 		vehicle_part_visuals.add_child(fittings)
+		var rank = F.Gear.RARITIES.keys().find(parts.cannon.rarity)
+		for i in range(rank):
+			var radiator = equipment_models.cylinder(fittings,Vector3(0.75+i*0.25,0,0),0.48,0.12,"iron")
+			radiator.rotation.z = PI/2
 		for x in ([1.7,3.1] if variant == 1 else [1.5]):
 			var band = equipment_models.cylinder(fittings,Vector3(x,0,0),0.34 if variant != 2 else 0.42,0.18,F.Gear.RARITIES[parts.cannon.rarity].color)
 			band.rotation.z = PI/2
-		if variant == 2:
-			for side in [-1,1]: equipment_models.box(fittings,Vector3(3.8,0,side*0.36),Vector3(0.5,0.34,0.14),"iron")
+		if variant == 1:
+			equipment_models.box(fittings,Vector3(3.8,0,0),Vector3(0.5,0.65,0.9),"iron")
+			for side in [-1,1]: equipment_models.box(fittings,Vector3(3.8,0,side*0.46),Vector3(0.28,0.25,0.02),"dark")
+		elif variant == 2:
+			equipment_models.box(fittings,Vector3(0.9,0,0),Vector3(0.6,0.8,1.0),"paint")
 	for slot in ["gear","engine"]:
 		if not parts.has(slot): continue
 		var model = equipment_models.build(parts[slot].kind,parts[slot].rarity)
 		vehicle_part_visuals.add_child(model)
 		# Rear chassis fittings sit beyond the deck's X=-7 edge, keeping every
 		# accessory reservation clear even when its limited-traverse gun turns.
-		model.position = Vector3(-8.0,3.65,0) if slot == "engine" else Vector3(-7.9,3.65,3.2)
+		model.position = Vector3(-8.0,2.1,0) if slot == "engine" else Vector3(-7.9,2.1,3.2)
 		model.rotation.y = PI/2
 		model.scale = Vector3.ONE*(1.4 if slot == "engine" else 1.25)
 	if parts.has("tracks"):
 		var item: Dictionary = parts.tracks
-		mats.track.albedo_color = Color(mats.track.get_meta("part_base_color")).lerp(Color(F.Gear.RARITIES[item.rarity].color),0.5)
+		# Tracks retain their base metal; only two small identification plates use quality color.
 		var variant = int(F.Gear.Data.ITEMS[item.kind].visual)
+		var rank = F.Gear.RARITIES.keys().find(item.rarity)
 		for side in [-1,1]:
+			for i in range(rank): equipment_models.box(vehicle_part_visuals,Vector3(-4+i*3,3.1,side*6.2),Vector3(1.4,0.22,0.55),"dark")
 			for i in range(5):
 				var at = Vector3(-5.8+i*2.9,2.4,side*5.95)
-				var plate = equipment_models.box(vehicle_part_visuals,at,Vector3(2.2 if variant == 1 else 1.4,0.65 if variant == 1 else 0.35,0.14),F.Gear.RARITIES[item.rarity].color)
+				var plate = equipment_models.box(vehicle_part_visuals,at,Vector3(2.2 if variant == 1 else 1.4,0.65 if variant == 1 else 0.35,0.14),F.Gear.RARITIES[item.rarity].color if i == 0 else "paint")
 				plate.set_meta("part_kind",item.kind)
 				if variant == 2: plate.rotation.z = 0.18
 			for i in range(6):
-				var tread = equipment_models.box(vehicle_part_visuals,Vector3(-6.2+i*2.4,3.05,side*5.65),Vector3(1.6,0.18,0.9 if variant == 1 else 0.45),F.Gear.RARITIES[item.rarity].color)
+				var tread = equipment_models.box(vehicle_part_visuals,Vector3(-6.2+i*2.4,3.05,side*5.65),Vector3(1.6,0.18,0.9 if variant == 1 else 0.45),"iron")
 				tread.set_meta("part_kind",item.kind)
+				if variant == 1: equipment_models.box(vehicle_part_visuals,Vector3(-6.2+i*2.4,3.05,side*6.2),Vector3(0.9,0.16,0.4),"iron")
+				elif variant == 2: equipment_models.box(vehicle_part_visuals,Vector3(-6.2+i*2.4,3.16,side*5.65),Vector3(1.3,0.1,0.38),"coal")
 	if parts.has("gear"):
 		var gear: Dictionary = parts.gear
 		for side in [-1,1]:
@@ -135,7 +150,7 @@ func configure_vehicle_parts(parts: Dictionary, empty_slots: Array = []):
 		var empty = equipment_models.build_empty(slot)
 		vehicle_part_visuals.add_child(empty)
 		if slot != "cannon":
-			empty.position = Vector3(-8.0,3.65,0) if slot == "engine" else Vector3(-7.9,3.65,3.2)
+			empty.position = Vector3(-8.0,2.1,0) if slot == "engine" else Vector3(-7.9,2.1,3.2)
 			empty.rotation.y = PI/2
 			empty.scale = Vector3.ONE*(1.4 if slot == "engine" else 1.25)
 	update_vehicle_part_visuals()
@@ -200,13 +215,14 @@ func feedback_effect(kind: String, at: Vector3, strength: float = 1.0):
 func tick_feedback(delta: float):
 	if feedback != null: feedback.tick(delta)
 
-func configure_equipment(ids: Array, positions: Dictionary = {}, mounts: Dictionary = {}, rotations: Dictionary = {}):
+func configure_equipment(ids: Array, positions: Dictionary = {}, mounts: Dictionary = {}, rotations: Dictionary = {}, rarities: Dictionary = {}):
 	mounted_positions = mounts.duplicate()
 	mounted_rotations = rotations.duplicate()
-	if installed_equipment == ids and configured_layout_version == layout_version:
+	if installed_equipment == ids and installed_rarities == rarities and configured_layout_version == layout_version:
 		position_auxiliary_guns(positions)
 		position_mounted_models()
 		return
+	installed_rarities = rarities.duplicate()
 	configured_layout_version = layout_version
 	installed_equipment = ids.duplicate()
 	if upgrade_mount != null:
@@ -294,6 +310,7 @@ func configure_equipment(ids: Array, positions: Dictionary = {}, mounts: Diction
 	position_auxiliary_guns(positions)
 
 func position_auxiliary_guns(positions: Dictionary):
+	var tiers = MountLayout.tiers(positions,main_gun_anchor)
 	for gun in auxiliary_guns:
 		if positions.has(gun.id):
 			var at = cell_position(positions[gun.id])
@@ -302,11 +319,16 @@ func position_auxiliary_guns(positions: Dictionary):
 				var facing = -int(mounted_rotations.get(gun.id,0))*PI/2
 				if not is_equal_approx(gun.get("rest_yaw",0.0),facing): gun.pivot.rotation.y = facing
 				gun.rest_yaw = facing
-				gun.pivot.position = Vector3(at.x+0.5,4.18 if roof_closed else DECK_Y+MOUNTED_GUN_Y,at.z+0.5)
-				gun.pivot.position += Vector3(gun.mount_offset.x,0,gun.mount_offset.y).rotated(Vector3.UP,facing)
-				var factor: float = gun.mount_scale
-				gun.pivot.scale = Vector3(factor,EXTERIOR_GUN_HEIGHT/gun.model_height if roof_closed else factor,factor)
+				gun.tier = tiers.get(gun.id,0)
+				var height = MountLayout.UPPER_Y if gun.tier == 1 else (4.18 if roof_closed else DECK_Y+MOUNTED_GUN_Y)
+				gun.pivot.position = Vector3(at.x+0.5,height,at.z+0.5)
+				gun.pivot.position += Vector3(gun.mount_offset.x,0,gun.mount_offset.y).rotated(Vector3.UP,facing)*MountLayout.GUN_SCALE
+				var factor: float = gun.mount_scale*MountLayout.GUN_SCALE
+				gun.pivot.scale = Vector3(factor,MountLayout.GUN_HEIGHT/gun.model_height,factor)
 				gun.pivot.rotation.y = clamp_gun_angle(gun,gun.pivot.rotation.y)
+				gun.riser.visible = gun.tier == 1
+				gun.riser.position = Vector3(gun.pivot.position.x,(height+DECK_Y)*0.5,gun.pivot.position.z)
+				gun.riser.scale.y = height-DECK_Y
 
 static func clamp_gun_angle(gun: Dictionary, angle: float) -> float:
 	if not gun.has("half_arc"): return angle
@@ -314,7 +336,7 @@ static func clamp_gun_angle(gun: Dictionary, angle: float) -> float:
 	return rest+clampf(angle_difference(rest,angle),-gun.half_arc,gun.half_arc)
 
 func build_equipment_gun(id: String):
-	var pivot = equipment_models.build(id)
+	var pivot = equipment_models.build(id,installed_rarities.get(id,"normal"))
 	upgrade_mount.add_child(pivot)
 	var gun_barrel: Node3D = pivot.get_node("Barrel")
 	var tip: Vector3 = pivot.get_meta("muzzle")
@@ -323,7 +345,8 @@ func build_equipment_gun(id: String):
 	var mount = equipment_models.weapon_mount(pivot,id)
 	var height = 0.0
 	for point in EquipmentModels.vertices(pivot): height = maxf(height,point.y)
-	auxiliary_guns.append({"id":id,"pivot":pivot,"barrel":gun_barrel,"muzzle":flash,"mount_scale":mount.scale,"mount_offset":mount.offset,"half_arc":mount.half_arc,"model_height":height,"cooldown":0.0,"flash":0.0,"recoil":0.0})
+	var riser = cylinder(upgrade_mount,Vector3.ZERO,0.26,1.0,"turret_dark",12)
+	auxiliary_guns.append({"id":id,"pivot":pivot,"barrel":gun_barrel,"muzzle":flash,"riser":riser,"tier":0,"mount_scale":mount.scale,"mount_offset":mount.offset,"half_arc":mount.half_arc,"model_height":height,"cooldown":0.0,"flash":0.0,"recoil":0.0})
 
 func material(name: String, color: String, metal: float = 0.0, glow: float = 0.0) -> StandardMaterial3D:
 	var m = StandardMaterial3D.new()
@@ -785,9 +808,17 @@ func set_layout_version(version: int):
 	layout_version = version
 	if equipment != null: equipment.visible = version != 2 or not roof_closed
 	if goods != null: goods.visible = version != 2 or not roof_closed
-	var center = Vector3(3,4.08,0) if version == 2 else TURRET_CENTER
+	var grid = cell_position(main_gun_anchor)
+	var center = Vector3(grid.x+0.5,4.08,grid.z+0.5) if version == 2 else TURRET_CENTER
 	if turret != null: turret.position = center
 	if turret_base != null: turret_base.position = center-Vector3(0,0.04,0)
+
+func configure_main_gun(at: Vector2i):
+	if main_gun_anchor == at: return
+	main_gun_anchor = at
+	set_layout_version(layout_version)
+	position_auxiliary_guns(mounted_positions)
+	rendered_layout = ""
 
 func build_turret():
 	turret_base = cylinder(self,TURRET_CENTER-Vector3(0,0.04,0),3.55,0.32,"turret_dark",32)
@@ -983,6 +1014,22 @@ func pipe_junction(parent: Node3D, ports: Array):
 			box(arm,Vector3(0.28,0.26,0),Vector3(0.08,0.28,0.64),"dark")
 
 func machine(kind: String, parent: Node3D, inputs: Array = [2]) -> Dictionary:
+	var parts = machine_body(kind,parent,inputs)
+	var base_kind = F.Content.BLOCKS[kind].base if F.Content.BLOCKS.has(kind) else kind
+	if base_kind in ["belt","splitter"]: return parts
+	# Fill the cell with the casing, while keeping the real pipe couplings at
+	# the cell boundary. Scale X/Z only so animated pistons retain their travel.
+	var extent = Vector2.ZERO
+	for point in EquipmentModels.vertices(parent):
+		extent.x = maxf(extent.x,absf(point.x))
+		extent.y = maxf(extent.y,absf(point.z))
+	var factor = Vector3(0.46/maxf(extent.x,0.01),1,0.46/maxf(extent.y,0.01))
+	for child in parent.get_children():
+		if child is Node3D: child.transform = child.transform.scaled(factor)
+	if kind != "armor_block": flow_ports(kind,parent,inputs)
+	return parts
+
+func machine_body(kind: String, parent: Node3D, inputs: Array = [2]) -> Dictionary:
 	var parts: Dictionary = {}
 	if kind == "armor_block":
 		box(parent,Vector3(0,0.08,0),Vector3(0.9,0.16,0.9),"pipe_joint")
@@ -1014,7 +1061,7 @@ func machine(kind: String, parent: Node3D, inputs: Array = [2]) -> Dictionary:
 		parts.ports = ports
 		return parts
 	if F.Content.BLOCKS.has(kind):
-		parts = machine(base_kind,parent,inputs)
+		parts = machine_body(base_kind,parent,inputs)
 		var mark = "machine_fuel" if kind in ["fuel_depot","auto_press"] else "machine_hot" if kind == "blast_furnace" else "machine_bronze"
 		box(parent,Vector3(-0.3,0.13,0),Vector3(0.08,0.08,0.7),mark)
 		if kind == "blast_furnace": cylinder(parent,Vector3(0.2,1.0,-0.2),0.14,0.7,"machine_hot",12)
@@ -1046,12 +1093,35 @@ func machine(kind: String, parent: Node3D, inputs: Array = [2]) -> Dictionary:
 				cylinder(parent,Vector3(x,0.33,-0.30),0.055,0.22,"shell",6)
 				cylinder(parent,Vector3(x,0.48,-0.30),0.055,0.09,"tip",6,0)
 		"source", "coal_source":
-			cylinder(parent,Vector3(0,0.32,0),0.22,0.46,"machine_hot",4,0.44)
-			box(parent,Vector3(0,0.56,0),Vector3(0.56,0.025,0.56),"dark")
-			for offset in [Vector3(-0.15,0.57,0),Vector3(0.12,0.59,0.13),Vector3(0.03,0.57,-0.17)]:
-				var scrap = make_good("coal" if kind == "coal_source" else "scrap")
-				parent.add_child(scrap)
-				scrap.position = offset
+			# Closed supply crates: solid sides and a strapped lid, not loose piles.
+			var panel = "machine_hot" if kind == "source" else "pipe_cover"
+			var mark = "rust" if kind == "source" else "coal"
+			box(parent,Vector3(0,0.08,0),Vector3(0.9,0.16,0.9),mark)
+			box(parent,Vector3(0,0.44,0),Vector3(0.84,0.64,0.84),panel)
+			box(parent,Vector3(0,0.80,0),Vector3(0.9,0.08,0.9),"machine_iron")
+			for side in [-1,1]:
+				box(parent,Vector3(side*0.425,0.85,0),Vector3(0.05,0.04,0.9),mark)
+				box(parent,Vector3(0,0.85,side*0.425),Vector3(0.8,0.04,0.05),mark)
+			for x in [-0.34,0.34]:
+				box(parent,Vector3(x,0.85,0),Vector3(0.075,0.04,0.8),mark)
+				for z in [-0.43,0.43]:
+					box(parent,Vector3(x,0.44,z),Vector3(0.075,0.68,0.04),mark)
+			for z in [-0.435,0.435]:
+				box(parent,Vector3(0,0.44,z),Vector3(0.38,0.30,0.025),mark)
+				box(parent,Vector3(0,0.64,z*1.02),Vector3(0.2,0.045,0.035),"dark")
+			box(parent,Vector3(-0.1,0.847,0),Vector3(0.32,0.014,0.38),"dark")
+			if kind == "source":
+				for z in [-0.085,0.085]: box(parent,Vector3(-0.1,0.86,z),Vector3(0.25,0.015,0.09),"rust")
+			else:
+				var badge = box(parent,Vector3(-0.1,0.86,0),Vector3(0.2,0.015,0.2),"mark")
+				badge.rotation.y = PI/4
+				var inset = box(parent,Vector3(-0.1,0.87,0),Vector3(0.14,0.01,0.14),"coal")
+				inset.rotation.y = PI/4
+			var arrow = Node3D.new()
+			parent.add_child(arrow)
+			arrow.position = Vector3(0.19,0.86,0)
+			arrow.scale = Vector3(0.4,0.4,0.8)
+			directional_cover(arrow,0,true)
 		"refinery":
 			box(parent,Vector3(0,0.10,0),Vector3(0.65,0.14,0.65),"dark")
 			cylinder(parent,Vector3(-0.14,0.58,0),0.19,0.92,"machine_fuel",6)
@@ -1065,44 +1135,49 @@ func machine(kind: String, parent: Node3D, inputs: Array = [2]) -> Dictionary:
 		"gun", "left_gun", "right_gun", "rapid_gun", "long_gun", "mortar_gun", "rear_gun", "scatter_gun", "arc_gun":
 			box(parent,Vector3(0,0.22,0),Vector3(0.62,0.40,0.62),"dark")
 			for z in [-0.18,0,0.18]:
-				var round_node = make_good("shell")
+				var round_node = make_good("shell",true)
 				parent.add_child(round_node)
 				round_node.position = Vector3(0,0.44,z)
 			beam(parent,Vector3(0.23,0.3,0),Vector3(0.23,0.95,0),0.14,"machine_bronze")
 			if F.AUXILIARY.has(kind):
 				# Different side stripes identify the two independent magazines.
 				box(parent,Vector3(0,0.05,-0.43 if F.Gear.family(kind) == "left_gun" else 0.43),Vector3(0.85,0.05,0.08),"machine_fuel")
-	if kind in ["furnace","press","depot","refinery","source","coal_source"]:
+	if kind in ["furnace","press","depot","refinery"]:
 		machine_cover(kind,parent)
-	if kind not in ["belt","splitter"]: flow_ports(kind,parent,inputs)
 	return parts
 
-func make_good(kind: String) -> Node3D:
+func make_good(kind: String, compact: bool = false) -> Node3D:
 	var n = Node3D.new()
 	match kind:
 		"scrap":
 			var a = box(n,Vector3(0,0.06,0),Vector3(0.3,0.12,0.21),"rust")
 			a.rotation_degrees = Vector3(15,20,10)
+			var offcut = box(n,Vector3(-0.025,0.17,0.025),Vector3(0.27,0.055,0.08),"steel")
+			offcut.rotation.y = -0.6
 		"coal":
 			var chunk = cylinder(n,Vector3(0,0.12,0),0.19,0.23,"coal",5,0.11)
 			chunk.rotation.z = 0.2
+			cylinder(n,Vector3(0.11,0.13,0.07),0.09,0.15,"coal",5,0.035)
 		"fuel":
 			cylinder(n,Vector3(0,0.16,0),0.13,0.3,"fuel",6)
 			for y in [0.06,0.25]: cylinder(n,Vector3(0,y,0),0.14,0.035,"brass",6)
+			cylinder(n,Vector3(0.055,0.32,0),0.04,0.04,"dark",6)
 		"steel":
-			box(n,Vector3(0,0.08,0),Vector3(0.42,0.16,0.28),"steel")
+			box(n,Vector3(0,0.07,0),Vector3(0.40,0.14,0.27),"steel")
+			box(n,Vector3(0,0.17,0),Vector3(0.32,0.06,0.21),"tip")
 		"shell":
 			var casing = cylinder(n,Vector3(-0.05,0.09,0),0.085,0.28,"shell",8)
 			casing.rotation.z = -PI/2
 			var nose = cylinder(n,Vector3(0.15,0.09,0),0.085,0.14,"tip",8,0.0)
 			nose.rotation.z = -PI/2
+	n.scale = Vector3.ONE*(0.85 if compact else 1.4)
 	n.set_meta("kind",kind)
 	return n
 
 func good_height(kind: String) -> float:
 	if F.Content.BLOCKS.has(kind): return good_height(F.Content.BLOCKS[kind].base)
 	if F.AUXILIARY.has(kind): return 0.4
-	return {"belt":0.57,"splitter":0.57,"furnace":0.83,"press":0.38,"source":0.4,"depot":0.35,"gun":0.4,"refinery":1.08,"engine":0.65,"coal_source":0.6}.get(kind,0.25)
+	return {"belt":0.57,"splitter":0.57,"furnace":0.83,"press":0.38,"source":0.4,"depot":0.35,"gun":0.4,"refinery":1.08,"engine":0.65,"coal_source":0.4}.get(kind,0.25)
 
 func item_frames(factory) -> Array:
 	var frames: Array = []
@@ -1114,8 +1189,9 @@ func item_frames(factory) -> Array:
 		var count = c.items.size()-(1 if arrivals.has(p) else 0)
 		for i in range(count):
 			var offset = Vector3(0,good_height(c.kind),0)
-			if c.kind in ["depot","fuel_depot","overflow_gate"]: offset += Vector3(-0.21+int(i/4)*0.42,0,-0.29+(i%4)*0.19)
-			frames.append({"kind":c.items[i],"pos":cell_position(p)+offset,"dir":c.dir})
+			var stored = c.kind in ["depot","fuel_depot","overflow_gate"]
+			if stored: offset += Vector3(-0.22+(i%2)*0.44,int(i/4)*0.32, -0.22+(int(i/2)%2)*0.44)
+			frames.append({"kind":c.items[i],"pos":cell_position(p)+offset,"dir":c.dir,"scale":0.65 if stored else 1.0})
 	for move in factory.moves:
 		var receiver = factory.receiving_cell(move.to)
 		if not factory.cells.has(move.from) or receiver.is_empty(): continue
@@ -1198,7 +1274,7 @@ func fixed_fitting(kind: String, parent: Node3D, inputs: Array, cell: Vector2i) 
 		conduit.position = Vector3(-0.25,0,0)
 		square_pipe(conduit,0.95)
 		box(parent,Vector3(-0.55,0.34,0),Vector3(0.18,0.55,0.65),"machine_fuel")
-	elif cell == F.Layout.AMMO_ANCHOR:
+	elif cell == main_gun_anchor:
 		var magazine = Node3D.new()
 		parent.add_child(magazine)
 		magazine.name = "MainMagazine2x2"
@@ -1215,6 +1291,7 @@ func fixed_fitting(kind: String, parent: Node3D, inputs: Array, cell: Vector2i) 
 	return {"root":parent}
 
 func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: float, preview_enabled: bool = true):
+	main_gun_anchor = factory.main_gun_anchor
 	set_layout_version(factory.layout_version)
 	sync_damage(factory)
 	var signature = str(factory.layout_version)+str(factory.equipment_mounts)+str(factory.equipment_rotations)+str(factory.layout())
@@ -1276,6 +1353,7 @@ func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: f
 			goods_pool[i] = make_good(frame.kind)
 			goods.add_child(goods_pool[i])
 		goods_pool[i].visible = not roof_closed
+		goods_pool[i].scale = Vector3.ONE*1.4*float(frame.get("scale",1.0))
 		goods_pool[i].position = frame.pos
 		goods_pool[i].rotation.y = -frame.dir*PI/2
 	marker.visible = not factory.layout_locked and not roof_closed and factory.inside(hovered)
@@ -1297,7 +1375,7 @@ func position_mounted_models():
 		mounted_models[id].visible = not roof_closed
 
 func build_mounted_model(parent: Node3D, id: String):
-	parent.add_child(equipment_models.build_mounted(id))
+	parent.add_child(equipment_models.build_mounted(id,installed_rarities.get(id,"normal")))
 
 func equipment_markings(parent: Node3D, id: String, height: float, area: Vector2):
 	var spec: Dictionary = F.Content.EQUIPMENT[id]
@@ -1317,8 +1395,19 @@ func preview_equipment(factory, item: Dictionary, at: Vector2i, allowed: bool = 
 		if equipment_preview != null: equipment_preview.hide()
 		return
 	if facing < 0: facing = item.get("direction",0)
-	var valid = allowed and factory.can_place_equipment(item.kind,at,facing)
-	var key = item.kind+str(valid)+str(facing)
+	var is_main = F.Gear.part_slot(item.kind) == "cannon"
+	var valid = allowed and (factory.can_move_main_gun(at) if is_main else factory.can_place_equipment(item.kind,at,facing))
+	var proposed_mounts = factory.equipment_mounts.duplicate()
+	proposed_mounts[item.kind] = at
+	var tier = MountLayout.tiers(proposed_mounts,factory.main_gun_anchor).get(item.kind,0)
+	var proposed = item.duplicate()
+	proposed.position = at
+	proposed.direction = facing
+	var activation = preload("res://scripts/equipment_activation.gd")
+	var active: bool = activation.status(factory,proposed,activation.ammo_network(factory)).active
+	if not mats.has("inactive_amber"): material("inactive_amber","e0a456",0,0.4)
+	var tile_color = "green" if active else "inactive_amber"
+	var key = item.kind+item.get("rarity","normal")+str(valid)+str(facing)+str(active)+str(tier)
 	if equipment_preview == null:
 		equipment_preview = Node3D.new()
 		add_child(equipment_preview)
@@ -1327,19 +1416,27 @@ func preview_equipment(factory, item: Dictionary, at: Vector2i, allowed: bool = 
 		for child in equipment_preview.get_children():
 			equipment_preview.remove_child(child)
 			child.queue_free()
-		var size: Vector2i = F.Gear.footprint(item.kind,facing)
+		var size: Vector2i = Vector2i(2,2) if is_main else F.Gear.footprint(item.kind,facing)
 		for y in range(size.y):
-			for x in range(size.x): box(equipment_preview,Vector3(x,0.06,y),Vector3(0.94,0.035,0.94),"green" if valid else "red")
-		var ghost = equipment_models.build_mounted(item.kind)
+			for x in range(size.x): box(equipment_preview,Vector3(x,0.06,y),Vector3(0.94,0.035,0.94),tile_color if valid else "red")
+		var secondary = item.kind in F.Content.ALL_GUNS
+		var ghost = equipment_models.build(item.kind,item.get("rarity","normal")) if secondary else equipment_models.build_mounted(item.kind,item.get("rarity","normal"))
 		equipment_preview.add_child(ghost)
 		ghost.position = Vector3((size.x-1)*0.5,0.15,(size.y-1)*0.5)
 		ghost.rotation.y = -facing*PI/2
+		if secondary:
+			var mount = equipment_models.weapon_mount(ghost,item.kind)
+			var height = 0.0
+			for point in EquipmentModels.vertices(ghost): height = maxf(height,point.y)
+			ghost.scale = Vector3(mount.scale*MountLayout.GUN_SCALE,MountLayout.GUN_HEIGHT/height,mount.scale*MountLayout.GUN_SCALE)
+			ghost.position.y = MountLayout.UPPER_Y-DECK_Y if tier == 1 else MOUNTED_GUN_Y
+			ghost.position += Vector3(mount.offset.x,0,mount.offset.y).rotated(Vector3.UP,-facing*PI/2)*MountLayout.GUN_SCALE
 		fade_equipment_preview(ghost)
 		if item.kind in F.Content.ALL_GUNS:
 			var center = Vector3((size.x-1)*0.5,0.12,(size.y-1)*0.5)
 			for relative in [-F.Gear.SECONDARY_HALF_ARC,0.0,F.Gear.SECONDARY_HALF_ARC]:
 				var angle = -facing*PI/2+relative
-				beam(equipment_preview,center,center+Vector3(cos(angle),0,-sin(angle))*0.7,0.035,"green" if valid else "red",6)
+				beam(equipment_preview,center,center+Vector3(cos(angle),0,-sin(angle))*0.7,0.035,tile_color if valid else "red",6)
 	equipment_preview.position = cell_position(at)
 	equipment_preview.show()
 
@@ -1358,7 +1455,12 @@ func mark_equipment(factory, selected_kind: String, enabled: bool):
 		add_child(equipment_marks)
 	equipment_marks.visible = enabled and not roof_closed
 	if not equipment_marks.visible: return
-	var key = str(factory.equipment_mounts)+str(factory.equipment_rotations)+selected_kind
+	var activation = preload("res://scripts/equipment_activation.gd")
+	var network = activation.ammo_network(factory)
+	var enabled_mounts = {}
+	for id in factory.equipment_mounts:
+		enabled_mounts[id] = activation.status(factory,{"kind":id,"position":factory.equipment_mounts[id],"direction":factory.equipment_rotations.get(id,0)},network).active
+	var key = str(factory.equipment_mounts)+str(factory.equipment_rotations)+selected_kind+str(enabled_mounts)
 	if key == equipment_marks_key: return
 	equipment_marks_key = key
 	for child in equipment_marks.get_children():
@@ -1374,7 +1476,8 @@ func mark_equipment(factory, selected_kind: String, enabled: bool):
 		mark.name = id
 		equipment_marks.add_child(mark)
 		mark.position = cell_position(factory.equipment_mounts[id])+Vector3((size.x-1)*0.5,0.14,(size.y-1)*0.5)
-		var tint = "selection_gold" if id == selected_kind else "installed_green"
+		if not mats.has("inactive_amber"): material("inactive_amber","e0a456",0,0.4)
+		var tint = "inactive_amber" if not enabled_mounts[id] else "selection_gold" if id == selected_kind else "installed_green"
 		var width = 0.10 if id == selected_kind else 0.05
 		for side in [-1,1]:
 			box(mark,Vector3(0,0,side*size.y*0.48),Vector3(size.x*0.96,width,width),tint)

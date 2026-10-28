@@ -39,7 +39,7 @@ func run():
 		for rarity in Gear.RARITIES:
 			var uid = game.expedition.add_item({"kind":id,"rarity":rarity})
 			valid = game.place_item(uid,Vector2i(0,0)) and valid
-			var effects = Inventory.effects(game.expedition)
+			var effects = Inventory.effects(game.expedition,f)
 			b.player.position = Vector3(40,0,0)
 			b.player.rotation = Vector3.ZERO
 			b.movement_direction = Vector3.RIGHT
@@ -49,7 +49,10 @@ func run():
 			valid = valid and is_equal_approx(b.player.position.x-40,0.33*effects.speed) and is_equal_approx(f.fuel_used,0.33*effects.speed*0.12*effects.fuel)
 			valid = valid and b.hit_damage() == ceili(100*effects.damage) and is_equal_approx(b.weapon_range(36),36+effects.range)
 			clear_shots(b)
-			if id in Gear.Content.ALL_GUNS:
+			if Gear.Data.ITEMS[id].get("interceptor",false):
+				b.update_auxiliary_guns(f,0.1)
+				valid = valid and b.projectiles.is_empty() # Incoming rounds exercised by emergent_builds.
+			elif id in Gear.Content.ALL_GUNS:
 				var spec = Gear.Data.ITEMS[id]
 				var gun = b.auxiliary_guns[0]
 				var offset = b.enemies[0].node.position-gun.pivot.global_position
@@ -71,7 +74,7 @@ func run():
 				valid = valid and is_equal_approx(b.turret.rotation.y,angle-0.5+2.4*effects.turn*0.01)
 				b.turret.rotation.y = angle
 				b.cooldown = 0
-				f.ammo = 1
+				f.ammo = 1+int(effects.ammo_tax)
 				b.update_gun(f,0.001)
 				valid = valid and b.projectiles.size() == 1 and is_equal_approx(b.projectiles[0].splash,effects.splash) and is_equal_approx(b.cooldown,60.0/f.rate*effects.reload) and f.ammo == 0
 			clear_shots(b)

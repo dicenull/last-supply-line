@@ -29,6 +29,32 @@ func run():
 	var stock = f.reserves.duplicate()
 	f.clear_layout()
 	check(f.reserves.scrap == stock.scrap+refund.scrap and f.reserves.coal == stock.coal+refund.coal,"clearing the whole line refunds every material without truncation")
+	# Movable resource stores tap the same finite stock; they do not generate it.
+	var movable = Factory.new(2)
+	movable.finite_resources = true
+	movable.auto_fire = false
+	movable.reserves = {"scrap":100,"coal":100}
+	for kind in ["source","coal_source","fuel_depot"]:
+		check(kind in movable.unlocked_blocks,"storage facility available from start: "+kind)
+	movable.edit(Vector2i(0,0),"source",0)
+	movable.edit(Vector2i(2,0),"coal_source",1)
+	check(movable.reserves == {"scrap":56,"coal":78},"raw storage blocks charge heavy scrap and coal costs exactly once")
+	movable.edit(Vector2i(0,1),"source",0)
+	check(not movable.can_place(Vector2i(0,2),"source"),"two additional outlets fit alongside the two removable starting outlets")
+	var cost = movable.construction_cost(movable.cells)
+	var stock_before = movable.reserves.duplicate()
+	movable.clear_layout()
+	check(movable.reserves.scrap == stock_before.scrap+cost.scrap and movable.reserves.coal == stock_before.coal+cost.coal and movable.ports.keys().all(func(at): return movable.cells.has(at)),"clearing refunds removable blocks and preserves only engine and magazine fittings")
+	movable.edit(Vector2i(0,0),"source",0)
+	movable.edit(Vector2i(1,0),"belt",0)
+	movable.reserves = {"scrap":1,"coal":0}
+	# Stop fixed outlets from taking the single test input first.
+	for at in movable.ports:
+		if movable.ports[at] in ["source","coal_source"]: movable.cells[at].items = ["scrap" if movable.ports[at] == "source" else "coal"]
+	for i in range(5): movable.simulate_tick()
+	check(movable.cells[Vector2i(1,0)].items == ["scrap"] and movable.reserves.scrap == 0,"placed stock block sends one real raw material onto the pipe")
+	for i in range(8): movable.simulate_tick()
+	check(movable.cells[Vector2i(0,0)].items.is_empty() and movable.reserves.scrap == 0,"empty shared reserve stops the new outlet")
 	var game = load("res://main.tscn").instantiate()
 	Fixture.assign(game,"resource_storage_test")
 	game.show_start_menu = false
@@ -36,6 +62,8 @@ func run():
 	game.set_process(false)
 	game.factory.reserves = {"scrap":4500000000,"coal":3000000000}
 	game.factory.collected = {"scrap":5500000000,"coal":6000000000}
+	game.factory.edit(Vector2i(12,7),"source",3)
+	game.factory.edit(Vector2i(11,7),"coal_source",2)
 	var saved = game.checkpoint.snapshot(game)
 	check(game.checkpoint.validate(saved),"large stock and cumulative salvage validate")
 	var path = "user://resource_storage_test.mfv"
@@ -51,6 +79,9 @@ func run():
 	check(not game.checkpoint.validate(bad),"fractional resource stock is rejected")
 	var old = saved.duplicate(true)
 	old.version = 6
+	old.factory.inventory = Factory.LIMITS.duplicate()
+	old.factory.inventory.erase("source")
+	old.factory.inventory.erase("coal_source")
 	old.factory.erase("wreck_directions")
 	old.factory.reserves = {"scrap":98,"coal":99}
 	old.factory.collected = {"scrap":0,"coal":0}

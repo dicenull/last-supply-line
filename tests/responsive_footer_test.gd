@@ -44,6 +44,13 @@ func run():
 		game._process(0)
 		game.touch_controls.refresh()
 		check(game.footer_layout.compact == (dimensions.y < 628),"layout responds to available screen space")
+		var scale = game.UIStyle.screen_scale(game)
+		check(is_equal_approx(game.footer_rect().size.y,maxf(52,44/scale)*2+maxf(32,36/scale)+32),"construction footer uses its former height")
+		check(game.footer_layout.ACTION_LABELS.values() == ["性能","倉庫","一覧","外装","視点","回転","収納","削除","中断"],"operation buttons describe their actions instead of keyboard keys")
+		var actions_fit = true
+		for entry in game.icon_buttons:
+			if entry.icon in game.footer_layout.ACTIONS or entry.icon == "play": actions_fit = actions_fit and game.footer_layout.controls_rect.grow(0.01).encloses(entry.rect)
+		check(actions_fit and is_equal_approx(game.footer_layout.controls_rect.size.x,1384.0*0.2),"all operation buttons occupy the right twenty percent")
 		for index in game.TOOL_TABS.size():
 			await click(game.tool_tabs[index])
 			check(game.tool_page == index,"mouse click selects category "+str(index))
@@ -57,6 +64,7 @@ func run():
 				controls.append(rect)
 			check(clear,"all category "+str(index)+" icons fit without overlapping the world or each other")
 			check(game.tool_buttons.keys() == game.tool_kinds(),"every available building remains reachable")
+		check(game.touch_controls.buttons.loadout.visible and game.touch_controls.buttons.warehouse.visible,"Q and E are visible in the shared footer")
 		var before = game.direction
 		await click(game.touch_controls.buttons.rotate)
 		check(game.direction == (before+1)%4,"real mouse works on the same footer even on a touch-capable device")
@@ -72,7 +80,13 @@ func run():
 		game.toggle_running()
 		game._process(0)
 		game.touch_controls.refresh()
+		check(is_equal_approx(game.footer_rect().size.y,maxf(52,44/scale)+12),"travel footer returns to its former compact height")
 		check(game.touch_controls.stick_center.y+game.touch_controls.STICK_RADIUS < game.footer_rect().position.y,"driving stick stays above the footer")
+		await click(game.touch_controls.buttons.loadout)
+		check(game.equipment_workspace.loadout.visible,"footer Q works while travelling")
+		await click(game.touch_controls.buttons.warehouse)
+		check(game.inventory_panel.visible,"footer E works while travelling")
+		game.equipment_workspace.close_all()
 		await capture("travel-%d" % dimensions.x)
 		game.reset_battle(42)
 		game.factory.unlocked_blocks = game.RunState.Content.BLOCK_LIMITS.keys()

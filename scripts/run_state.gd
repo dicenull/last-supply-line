@@ -19,7 +19,8 @@ static func enemy_role(route: Dictionary, index: int) -> int:
 	return int(route.enemies[index]) if route.has("enemies") else FORMATIONS[route.get("formation","patrol")][index]
 
 static func enemy_health(route: Dictionary, index: int) -> int:
-	# Keep old checkpoint health valid; every new encounter uses one-hit enemies.
+	if route.get("final_base_version",0) == 1 and index == enemy_count(route)-1: return 24
+	# Ordinary enemies retain one-hit combat.
 	if route.is_empty() or route.get("combat_version",1) >= 2: return 1
 	var extra = 1 if route.get("formation","patrol") == "battery" and enemy_role(route,index) == 2 else 0
 	return int(route.get("enemy_hp",3))+extra+(6 if route.get("boss",false) and index == 5 else 0)
@@ -31,6 +32,7 @@ static func total_health(route: Dictionary) -> int:
 static func enemy_count(route: Dictionary) -> int:
 	return route.get("enemies",[0,1,2,0,1,2]).size()
 
+var results = preload("res://scripts/run_results.gd").new()
 var difficulty = "normal"
 var run_seed = 1
 var sector = 1
@@ -55,9 +57,23 @@ func enable_items():
 	if item_mode: return
 	item_mode = true
 	fortify_route(current)
+	FieldCourse.Shapes.assign(current,run_seed)
 	add_item({"kind":"left_gun","rarity":"normal"})
 	add_item({"kind":"armor","rarity":"normal"})
 	add_item({"kind":"economizer","rarity":"uncommon"})
+	ensure_stock_parts()
+
+func ensure_stock_parts():
+	if not item_mode: return
+	for slot in Gear.PART_SLOTS:
+		if slot in empty_part_slots: continue
+		if gear_items.any(func(item): return item.get("stock",false) and Gear.part_slot(item.kind) == slot): continue
+		if gear_items.any(func(item): return Gear.part_slot(item.kind) == slot and item.position == Gear.part_position(item.kind)): continue
+		var kind = "vehicle_"+slot
+		add_item({"kind":kind,"rarity":"normal"})
+		gear_items.back().position = Gear.part_position(kind)
+		# These components already supplied the chassis's base performance.
+		gear_items.back().stock = true
 
 func add_item(definition: Dictionary) -> int:
 	if not Gear.valid(definition): return -1
@@ -103,7 +119,9 @@ func make_route(kind: String, opening: bool = false, encounter: String = "standa
 		"encounters_version":1,"encounter":encounter,"field_version":1,"landscape_version":1,"destination_count":int(modifiers.get("routes",2)),"destination_index":-1,
 		"damage":int(round((10+(sector-1)*2)*settings.damage)),"attack_period":maxf(4,8-(sector-1)*0.5)*settings.period,
 		"boss":sector == SECTORS,"opening":opening}
-	if item_mode: fortify_route(route)
+	if item_mode:
+		fortify_route(route)
+		FieldCourse.Shapes.assign(route,run_seed)
 	return route
 
 static func fortify_route(route: Dictionary):
@@ -111,12 +129,15 @@ static func fortify_route(route: Dictionary):
 	route.defenses_version = 1
 	route.destination_layout_version = 1
 	route.encounters_version = 2
+	if route.boss:
+		route.final_base_version = 1
+		route.destination_count = 1
 	# Keep the final enemy as the boss for loot and checkpoint compatibility.
 	var boss_role = route.enemies.pop_back() if route.boss else -1
 	route.patrol_count = route.enemies.size()
 	var roles = [0,1,2,0,3,2]
 	for i in range(route.destination_count*Defenses.GUARDS_PER_SITE): route.enemies.append(roles[i%roles.size()])
-	if boss_role >= 0: route.enemies.append(boss_role)
+	if boss_role >= 0: route.enemies.append(4 if route.get("final_base_version",0) == 1 else boss_role)
 
 func start_sector() -> bool:
 	if phase != "prepare": return false
@@ -168,15 +189,17 @@ func finish_sector(won: bool, remaining_hull: int, inventory: Dictionary = {}, m
 	if not won or hull == 0:
 		phase = "lost"
 		return true
-	hull = 100
+	# Clearing restores the supply line; hull damage carries into the next sector.
 	cleared += 1
+	if current.get("final_base_version",0) == 1:
+		phase = "won"
+		return true
 	offer_rewards(inventory,mount_space)
 	return true
 
 func reward_pool(inventory: Dictionary = {}, mount_space: bool = true) -> Array:
 	var pool: Array = []
-	for id in (EQUIPMENT if item_mode else Content.BASE_EQUIPMENT):
-		if item_mode and Gear.part_slot(id).is_empty() and (Gear.level(id) > mini(10,(sector+1)*2) or Gear.level(id) < maxi(1,mini(10,(sector+1)*2)-3)): continue
+	for id in (Gear.Data.ACTIVE_IDS if item_mode else Content.BASE_EQUIPMENT.keys()):
 		if item_mode or (id not in equipment and (mount_space or id not in Content.GUNS)): pool.append("gear:"+id)
 	return pool
 
@@ -193,6 +216,16 @@ func finish_crafting(_stock: Dictionary = {}, inventory: Dictionary = {}, mount_
 	offer_rewards(inventory,mount_space)
 	return true
 
+func reward_rarity(index: int) -> String:
+	# Separate deterministic roll: UI, checkpoint reload and selection agree.
+	var supply_rng = RandomNumberGenerator.new()
+	supply_rng.seed = ("airdrop:%s:%s:%s:%s" % [run_seed,sector,current.get("seed",0),index]).hash()
+	return "legendary" if supply_rng.randf() < 0.10 else "rare"
+
+func reward_item(index: int) -> Dictionary:
+	if index < 0 or index >= reward_options.size() or not reward_options[index].begins_with("gear:"): return {}
+	return {"kind":reward_options[index].trim_prefix("gear:"),"rarity":reward_rarity(index)}
+
 func choose_reward(index: int) -> bool:
 	if phase != "reward" or index < 0 or index >= reward_options.size(): return false
 	var id: String = reward_options[index]
@@ -200,7 +233,7 @@ func choose_reward(index: int) -> bool:
 		var gear = id.trim_prefix("gear:")
 		if not EQUIPMENT.has(gear) or (not item_mode and gear in equipment): return false
 		if gear not in recipes: recipes.append(gear)
-		if item_mode: add_item({"kind":gear,"rarity":"rare"})
+		if item_mode: add_item(reward_item(index))
 		else: equipment.append(gear)
 	elif id.begins_with("block:"):
 		if not Content.BLOCK_LIMITS.has(id.trim_prefix("block:")): return false

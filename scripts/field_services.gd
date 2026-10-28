@@ -15,8 +15,8 @@ static func price(id: String) -> int:
 	if id.begins_with("gear:"): return int(preload("res://scripts/equipment_data.gd").ITEMS.get(id.trim_prefix("gear:"),{}).get("shop_price",GEAR_PRICE))
 	return COAL_PRICE if id == "coal" else SHELL_PRICE if id == "shell" else GEAR_PRICE
 
-static func repair_cost(factory, hull: int) -> int:
+static func repair_cost(factory) -> int:
 	var parts = factory.wrecks.size()
 	for cell in factory.cells.values():
 		if cell.kind == "armor_block" and cell.armor_hp < factory.ARMOR_HITS: parts += 1
-	return parts*2+ceili(maxi(0,100-hull)/10.0)
+	return parts*2

@@ -1,6 +1,7 @@
 extends RefCounted
 ## Atomic inventory commands shared by UI, save validation and simulation tests.
 const Catalog = preload("res://scripts/equipment_catalog.gd")
+const Activation = preload("res://scripts/equipment_activation.gd")
 const STOWED = Vector2i(-1,-1)
 
 static func find_item(run, uid: int) -> Dictionary:
@@ -14,6 +15,7 @@ static func editable(run, factory) -> bool:
 static func can_place(run, factory, uid: int, at: Vector2i, direction: int = -1) -> bool:
 	var item = find_item(run,uid)
 	if item.is_empty() or not editable(run,factory): return false
+	if Catalog.part_slot(item.kind) == "cannon" and item.position != STOWED: return factory.can_move_main_gun(at)
 	if not Catalog.part_slot(item.kind).is_empty(): return false
 	if item.position == STOWED and run.equipment.any(func(id): return Catalog.family(id) == Catalog.family(item.kind)): return false
 	return factory.can_place_equipment(item.kind,at,item.get("direction",0) if direction == -1 else direction)
@@ -21,6 +23,7 @@ static func can_place(run, factory, uid: int, at: Vector2i, direction: int = -1)
 static func place(run, factory, uid: int, at: Vector2i, direction: int = -1) -> bool:
 	if not can_place(run,factory,uid,at,direction): return false
 	var item = find_item(run,uid)
+	if Catalog.part_slot(item.kind) == "cannon": return factory.move_main_gun(at)
 	if direction == -1: direction = item.get("direction",0)
 	var was_stowed: bool = item.position == STOWED
 	if not factory.place_equipment(item.kind,at,direction): return false
@@ -126,11 +129,19 @@ static func powers(run) -> Dictionary:
 		if item.position != STOWED: result[item.kind] = Catalog.RARITIES[item.rarity].power
 	return result
 
-static func effects(run) -> Dictionary:
-	var result = {"damage":1.0,"speed":1.0,"fuel":1.0,"turn":1.0,"reload":1.0,"range":0.0,"splash":0.0,"salvage_rate":0.0,"drive_turn":1.0,"offroad":0.0,"main_reload":1.0,"main_range":0.0,"main_splash":0.0}
-	for item in run.gear_items:
+static func effects(run, factory = null) -> Dictionary:
+	return effects_for(run.gear_items,run.empty_part_slots,factory)
+
+static func effects_for(items: Array, empty_slots: Array = [], factory = null) -> Dictionary:
+	var result = {"damage":1.0,"speed":1.0,"fuel":1.0,"turn":1.0,"reload":1.0,"range":0.0,"splash":0.0,"salvage_rate":0.0,"drive_turn":1.0,"offroad":0.0,"main_reload":1.0,"main_range":0.0,"main_splash":0.0,"blast_damage":1.0,"ammo_tax":0,"shot_fuel":0.0}
+	var network = Activation.ammo_network(factory) if factory != null else {}
+	for item in items:
 		if item.position == STOWED: continue
+		if factory != null and not Activation.status(factory,item,network).active: continue
 		var values = Catalog.effect_values(item)
+		result.blast_damage *= 1.0-values.get("blast_reduction",0.0)
+		result.ammo_tax += int(values.get("ammo_tax",0))
+		result.shot_fuel += float(values.get("shot_fuel",0.0))
 		result.damage *= 1.0-values.get("damage_reduction",0.0)
 		result.speed *= 1.0+values.get("speed_bonus",0.0)
 		result.fuel *= 1.0+values.get("fuel_bonus",0.0)
@@ -144,7 +155,7 @@ static func effects(run) -> Dictionary:
 		result.main_reload *= 1.0-values.get("main_reload_bonus",0.0)
 		result.main_range += values.get("main_range_bonus",0.0)
 		result.main_splash += values.get("main_splash_bonus",0.0)
-	var bounds = {"damage":Vector2(0.2,1),"speed":Vector2(0.5,2),"fuel":Vector2(0.25,2),"turn":Vector2(0.25,4),"reload":Vector2(0.35,1.5),"range":Vector2(0,20),"splash":Vector2(0,12),"salvage_rate":Vector2(0,0.75)}
+	var bounds = {"damage":Vector2(0.2,1),"blast_damage":Vector2(0.15,1),"speed":Vector2(0.5,2),"fuel":Vector2(0.25,2),"turn":Vector2(0.25,4),"reload":Vector2(0.35,1.5),"range":Vector2(0,20),"splash":Vector2(0,12),"salvage_rate":Vector2(0,0.75)}
 	for key in bounds: result[key] = clampf(result[key],bounds[key].x,bounds[key].y)
-	if run.empty_part_slots.any(func(slot): return slot in ["gear","engine","tracks"]): result.speed = 0.0
+	if empty_slots.any(func(slot): return slot in ["gear","engine","tracks"]): result.speed = 0.0
 	return result

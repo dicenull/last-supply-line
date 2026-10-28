@@ -4,25 +4,31 @@ const DEPTH = 16.0
 const HALF_WIDTH = 8.0
 var route_kind = "scrapyard"
 var stage = 1
+var final_base = false
+var gate: Node3D
 
 func contains_position(at: Vector3) -> bool:
 	var local = to_local(at)
-	return local.x >= 0.0 and local.x <= DEPTH and absf(local.z) <= HALF_WIDTH
+	return local.x >= (10.0 if final_base else 0.0) and local.x <= (64.0 if final_base else DEPTH) and absf(local.z) <= HALF_WIDTH
 
 func remaining_distance(at: Vector3) -> float:
 	var local = to_local(at)
-	var dx = maxf(0.0,maxf(-local.x,local.x-DEPTH))
+	var dx = maxf(0.0,maxf((10.0 if final_base else 0.0)-local.x,local.x-(64.0 if final_base else DEPTH)))
 	var dz = maxf(0.0,absf(local.z)-HALF_WIDTH)
 	return Vector2(dx,dz).length()
 
 func build(world, route: Dictionary):
 	route_kind = route.get("kind","scrapyard")
 	stage = int(route.get("sector",1))
+	final_base = route.get("final_base_version",0) == 1
 	name = "CourseGoal"
 	world.material("goal_deck","555b49",0.2)
 	world.material("goal_wall","686b54",0.2)
 	world.material("goal_roof","414a3f",0.3)
 	world.material("goal_signal","8eaa76",0,0.15)
+	if final_base:
+		build_final_base(world)
+		return
 	# Open receiving apron: the gate threshold is exactly the arrival boundary.
 	world.box(self,Vector3(DEPTH/2,-0.01,0),Vector3(DEPTH,0.08,HALF_WIDTH*2),"goal_deck")
 	for z in [-HALF_WIDTH,HALF_WIDTH]:
@@ -99,3 +105,24 @@ func build_arsenal(world):
 		for z in [13.25,14.75]:
 			world.box(self,Vector3(x,0.65,z),Vector3(0.2,1.3,0.12),"pipe_joint")
 	world.box(self,Vector3(16,1.3,13),Vector3(2.8,2.6,3),"goal_wall")
+
+func build_final_base(world):
+	world.box(self,Vector3(40,0,0),Vector3(82,0.12,82),"goal_deck").name = "FortressApron"
+	# One central entrance; every building leaves its driving corridor clear.
+	for side in [-1,1]:
+		for x in [4.0,76.0]:
+			world.box(self,Vector3(x,7,side*36),Vector3(9,14,9),"goal_wall")
+			world.box(self,Vector3(x,14.3,side*36),Vector3(11,0.8,11),"goal_roof")
+		for x in [26.0,52.0]:
+			world.box(self,Vector3(x,5,side*26),Vector3(21,10,17),"goal_wall")
+			world.box(self,Vector3(x,10.3,side*26),Vector3(23,0.7,19),"goal_roof")
+			world.box(self,Vector3(x,3,side*17.4),Vector3(9,6,0.15),"dark")
+		world.box(self,Vector3(0,5,side*10),Vector3(2,10,2),"goal_wall")
+	world.box(self,Vector3(0,10,0),Vector3(2,1,22),"goal_roof")
+	gate = world.box(self,Vector3(-2,4,0),Vector3(1.2,8,18),"goal_roof")
+	gate.name = "BossGate"
+	for z in range(-8,9,2): world.box(gate,Vector3(-0.65,0,z),Vector3(0.12,0.6,1.3),"mark")
+	world.box(self,Vector3(73,8,0),Vector3(12,16,24),"goal_wall").name = "Headquarters"
+	for z in [-8.0,0.0,8.0]: world.box(self,Vector3(66.9,11,z),Vector3(0.15,2,4),"goal_signal")
+	world.cylinder(self,Vector3(73,22,0),0.3,14,"pipe_joint",8)
+	world.box(self,Vector3(73,26,3),Vector3(0.15,4,6),"mark")

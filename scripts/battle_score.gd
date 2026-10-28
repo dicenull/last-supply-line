@@ -18,6 +18,9 @@ func record_kill():
 	combo_time = COMBO_WINDOW
 	best_combo = maxi(best_combo,combo)
 
+func combo_drop_bonus() -> int:
+	return floori(combo/2.0) if combo_time > 0 else 0
+
 func earned_salvage(rate: float) -> bool:
 	# Compare successive cumulative totals to retain fractional-rate cadence.
 	return kills > 0 and floori(kills*rate+0.0000001) > floori((kills-1)*rate+0.0000001)
@@ -26,12 +29,11 @@ func combo_visible() -> bool:
 	return combo >= 2 and combo_time > 0
 
 func snapshot() -> Dictionary:
-	return {"kills":kills}
+	return {"kills":kills,"best_combo":best_combo}
 
 func restore(data: Dictionary):
 	kills = int(data.kills)
-	# Combo and its peak are transient in existing checkpoints. Loading must
-	# not replay a combo cue; the encounter roster supplies total independently.
+	# The current combo expires on load, but its record is part of the result.
 	combo = 0
 	combo_time = 0
-	best_combo = 0
+	best_combo = int(data.get("best_combo",0))

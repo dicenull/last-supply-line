@@ -27,11 +27,23 @@ func run():
 	game.ensure_battle()
 	game.refresh_view()
 	var initial = game.checkpoint.snapshot(game)
+	check(Inventory.effects(game.expedition) == Inventory.effects_for([]),"registering stock parts does not add performance bonuses")
+	var old_stock = initial.duplicate(true)
+	old_stock.version = 16
+	old_stock.run.gear_items = old_stock.run.gear_items.filter(func(item): return not item.get("stock",false))
+	check(game.checkpoint.apply(game,old_stock) and Inventory.vehicle_parts(game.expedition).size() == 4,"old saves register implicit stock parts without removal")
+	var migrated = game.checkpoint.snapshot(game)
+	check(game.checkpoint.apply(game,migrated) and game.expedition.gear_items.size() == 7,"repeated restore cannot duplicate stock parts")
+	var bad_stock = migrated.duplicate(true)
+	bad_stock.run.gear_items[0].stock = true
+	check(not game.checkpoint.validate(bad_stock),"non-chassis equipment cannot impersonate a stock part")
 	for slot in Inventory.Catalog.PART_SLOTS:
 		var before = game.expedition.gear_items.size()
+		var stock_part: Dictionary = Inventory.vehicle_parts(game.expedition)[slot]
+		check(stock_part.get("stock",false),"initial component exists before removal: "+slot)
 		check(game.empty_vehicle_slot(slot) and slot in game.expedition.empty_part_slots,"remove standard component: "+slot)
-		check(game.expedition.gear_items.size() == before+1 and game.expedition.gear_items.back().kind == "vehicle_"+slot,"standard component is retained in storage: "+slot)
-		check(not game.empty_vehicle_slot(slot) and game.expedition.gear_items.size() == before+1,"repeated removal cannot duplicate parts")
+		check(game.expedition.gear_items.size() == before and stock_part.position == Inventory.STOWED,"standard component is retained in storage: "+slot)
+		check(not game.empty_vehicle_slot(slot) and game.expedition.gear_items.size() == before,"repeated removal cannot duplicate parts")
 	check(not game.world.barrel.visible and not game.battlefield.barrel.visible,"empty main gun has no barrel in either scene")
 	check(game.world.track_belts.all(func(n): return not n.visible) and game.world.engine_shell.all(func(n): return not n.visible),"removed tracks and engine expose chassis fittings")
 	check(game.world.vehicle_part_visuals.has_node("Empty_engine") and game.world.vehicle_part_visuals.has_node("Empty_gear") and game.world.vehicle_part_visuals.has_node("Empty_cannon"),"empty slots have distinct socket models")

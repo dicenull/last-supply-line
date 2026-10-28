@@ -4,6 +4,7 @@ const UIStyle = preload("res://scripts/ui_style.gd")
 const MenuState = preload("res://scripts/run_menu_state.gd")
 const Blueprints = preload("res://scripts/blueprints.gd")
 const Content = preload("res://scripts/content.gd")
+signal catalog_requested
 signal action_selected(index: int)
 signal blueprint_selected(id: String)
 signal layout_selected(kind: String)
@@ -32,6 +33,7 @@ var difficulty_select: Button
 var difficulty_popup: Control
 var difficulty_buttons: Array = []
 var standalone_title = false
+var minimum_size_signature = ""
 var framed = false
 var title_shade: GradientTexture2D
 
@@ -67,10 +69,15 @@ func _ready():
 	for i in range(3):
 		var kind: String = ["camera","roof","retreat"][i]
 		utility_buttons[kind] = small_button(row_rect(414+i*ROW_HEIGHT),func(): utility_action(kind))
-	for target in ["settings","workshop","history"]:
-		navigation[target] = small_button(row_rect(0),func(): show_page(target))
+	for target in ["settings","workshop","history","catalog"]:
+		navigation[target] = small_button(row_rect(0),func():
+			if target == "catalog": catalog_requested.emit()
+			else: show_page(target))
 	back_button = small_button(Rect2(808,140,112,40),func(): show_home())
-	back_button.text = "← 戻る"
+	back_button.text = "戻る"
+	back_button.icon = ui.pixel_icons.texture("back")
+	back_button.expand_icon = true
+	back_button.add_theme_constant_override("icon_max_width",24)
 	back_button.add_theme_font_override("font",ui.font)
 	back_button.add_theme_font_size_override("font_size",18)
 	volume_slider = HSlider.new()
@@ -180,14 +187,16 @@ func arrange():
 	back_button.visible = page not in ["start","pause"]
 	match page:
 		"start":
-			place_rows([actions[0],actions[1],navigation.settings,navigation.history,actions[4]],360,56)
+			place_rows([actions[0],actions[1],navigation.settings,navigation.history,navigation.catalog,actions[4]],360,56)
 			if standalone_title:
 				size = get_viewport_rect().size
-				var screen_scale = maxf(0.01,get_viewport().get_final_transform().get_scale().x)
+				var screen_scale = UIStyle.screen_scale(self)
 				var row_height = maxf(58,44/screen_scale)
 				var gap = row_height+12
 				var y = size.y*0.55 if size.x < size.y else minf(402,maxf(340,size.y-((4 if OS.has_feature("web") else 5)*gap)-100))
-				var entries = [actions[0],actions[1],navigation.settings,navigation.history,actions[4]]
+				var entries = [actions[0],actions[1],navigation.settings,navigation.history,navigation.catalog,actions[4]]
+				row_height = minf(row_height,(size.y-y-100)/6-6)
+				gap = row_height+6
 				for i in range(entries.size()):
 					entries[i].position = Vector2(60,y+i*gap)
 					entries[i].size = Vector2(maxf(320,200/screen_scale),row_height)
@@ -210,6 +219,7 @@ func _notification(what: int):
 	if what == NOTIFICATION_RESIZED and is_node_ready(): queue_redraw()
 
 func _process(_delta):
+	if visible: update_minimum_sizes()
 	if standalone_title and page == "start" and visible and size != get_viewport_rect().size:
 		arrange()
 		queue_redraw()
@@ -277,7 +287,32 @@ func layout_label(kind: String) -> String:
 func utility_label(kind: String) -> String:
 	return {"camera":"視点初期化","roof":"装甲を開く" if state.roof_closed else "装甲を閉じる","retreat":"撤退"}[kind]
 
-func line_text(value: String, rect: Rect2, font_size: int, color: Color, alignment: int = HORIZONTAL_ALIGNMENT_LEFT):
+func text_size(requested: int) -> int:
+	var minimum = UIStyle.HEADING_MIN if requested >= 24 else UIStyle.TEXT_MIN if requested >= 18 else UIStyle.CAPTION_MIN
+	return UIStyle.font_size(self,requested,minimum)
+
+func update_minimum_sizes():
+	var signature = str(UIStyle.effective_scale(self))
+	if signature == minimum_size_signature: return
+	minimum_size_signature = signature
+	for node in find_children("*","Control",true,false):
+		if not (node is Button or node is Label): continue
+		if node.text.is_empty(): continue
+		if not node.has_meta("nominal_font_size"): node.set_meta("nominal_font_size",node.get_theme_font_size("font_size"))
+		var requested = int(node.get_meta("nominal_font_size"))
+		node.add_theme_font_size_override("font_size",UIStyle.font_size(node,requested,UIStyle.HEADING_MIN if node is Label else UIStyle.TEXT_MIN))
+		if node is Button and node.icon != null:
+			node.add_theme_constant_override("icon_max_width",ceili(UIStyle.icon_size(node)))
+	var knob_side = ceili(UIStyle.icon_size(self,32))
+	var knob = ui.pixel_icons.texture("volume_knob").get_image()
+	knob.resize(knob_side,knob_side,Image.INTERPOLATE_NEAREST)
+	var knob_texture = ImageTexture.create_from_image(knob)
+	volume_slider.add_theme_icon_override("grabber",knob_texture)
+	volume_slider.add_theme_icon_override("grabber_highlight",knob_texture)
+	queue_redraw()
+
+func line_text(value: String, rect: Rect2, font_size: int, color: Color, alignment: int = HORIZONTAL_ALIGNMENT_LEFT, minimum: int = 0):
+	font_size = UIStyle.font_size(self,font_size,minimum) if minimum > 0 else text_size(font_size)
 	var baseline = rect.position.y+(rect.size.y-ui.font.get_height(font_size))/2.0+ui.font.get_ascent(font_size)
 	draw_string(ui.font,Vector2(rect.position.x,baseline),value,alignment,rect.size.x,font_size,color)
 
@@ -287,13 +322,17 @@ func draw_row(button: Button, icon: String, label: String, accent: bool = false,
 	if accent: plate(rect,Color("51563b"),ui.GOLD)
 	var tint = Color(1,1,1,0.3) if button.disabled else Color.WHITE
 	var color = ui.MUTED.darkened(0.25) if button.disabled else ui.DANGER if destructive else ui.INK
-	draw_texture_rect(ui.pixel_icons.texture(icon),Rect2(rect.position+Vector2(PADDING,PADDING),Vector2(24,24)),false,tint)
-	line_text(label,Rect2(rect.position+Vector2(44,PADDING),Vector2(ROW_WIDTH-52,24)),18,color)
-	if detail != "": line_text(detail,Rect2(rect.position+Vector2(204,PADDING),Vector2(184,24)),14,ui.MUTED,HORIZONTAL_ALIGNMENT_RIGHT)
+	var side = UIStyle.icon_size(self)
+	draw_texture_rect(ui.pixel_icons.texture(icon),Rect2(rect.position+Vector2(PADDING,(rect.size.y-side)/2),Vector2.ONE*side),false,tint)
+	var offset = PADDING*2+side
+	var label_width = ROW_WIDTH-offset-PADDING
+	if not detail.is_empty(): label_width = minf(label_width,ui.font.get_string_size(label,HORIZONTAL_ALIGNMENT_LEFT,-1,text_size(18)).x+8)
+	line_text(label,Rect2(rect.position+Vector2(offset,0),Vector2(label_width,rect.size.y)),18,color)
+	if not detail.is_empty(): line_text(detail,Rect2(rect.position+Vector2(offset+label_width,0),Vector2(ROW_WIDTH-offset-label_width-PADDING,rect.size.y)),14,ui.MUTED,HORIZONTAL_ALIGNMENT_RIGHT)
 
 func section(label: String, y: float):
 	line_text(label,Rect2(ROW_X+PADDING,y,ROW_WIDTH-8,22),14,ui.MUTED)
-	var start = ROW_X+12+ui.font.get_string_size(label,HORIZONTAL_ALIGNMENT_LEFT,-1,14).x
+	var start = ROW_X+12+ui.font.get_string_size(label,HORIZONTAL_ALIGNMENT_LEFT,-1,text_size(14)).x
 	draw_line(Vector2(start,y+11),Vector2(ROW_X+ROW_WIDTH-PADDING,y+11),ui.EDGE,1)
 
 func _draw():
@@ -310,12 +349,12 @@ func _draw():
 	else:
 		var heading = {"pause":"一時停止","settings":"設定","workshop":"配置・車両","history":"出撃履歴"}[page]
 		line_text(heading,Rect2(520,140,280,40),28,ui.INK)
-		if page == "pause": line_text("Esc で戻る",Rect2(800,146,120,30),15,ui.MUTED,HORIZONTAL_ALIGNMENT_RIGHT)
-	var kinds = ["play","load","save","reset","exit"]
+		if page == "pause": line_text("Esc 戻る",Rect2(800,146,120,30),15,ui.MUTED,HORIZONTAL_ALIGNMENT_RIGHT)
+	var kinds = ["play" if state.title else "back","load","save","reset","back" if OS.has_feature("web") else "exit"]
 	for i in range(actions.size()): draw_row(actions[i],kinds[i],action_labels()[i],i == 0,false)
 	for target in navigation:
-		var icon = {"settings":"settings","workshop":"belt","history":"clock"}[target]
-		var label = {"settings":"設定","workshop":"配置・車両","history":"出撃履歴"}[target]
+		var icon = {"settings":"settings","workshop":"belt","history":"clock","catalog":"cargo"}[target]
+		var label = {"settings":"設定","workshop":"配置・車両","history":"出撃履歴","catalog":"アイテム図鑑"}[target]
 		draw_row(navigation[target],icon,label)
 	for kind in utility_buttons:
 		draw_row(utility_buttons[kind],"roof_open" if kind == "roof" and not state.roof_closed else kind,utility_label(kind),false,kind == "retreat")
@@ -328,29 +367,29 @@ func _draw():
 	line_text(status,Rect2(520,panel.end.y-44,400,24),14,ui.GOLD if state.status == "victory" else ui.DANGER)
 
 func draw_title():
-	var screen_scale = maxf(0.01,get_viewport().get_final_transform().get_scale().x)
+	var screen_scale = UIStyle.screen_scale(self)
 	var portrait = size.x < size.y
 	draw_texture_rect(title_shade,Rect2(Vector2.ZERO,size),false)
 	draw_line(Vector2(64,76),Vector2(104,76),ui.GOLD,3)
-	line_text("MOBILE FOUNDRY VEHICLE / 1918",Rect2(120,60,size.x-180,32),maxi(16,roundi(11/screen_scale)),ui.GOLD)
+	line_text("MOBILE FOUNDRY VEHICLE / 1918",Rect2(120,60,size.x-180,32),16,ui.GOLD)
 	line_text("M.F.V. 03",Rect2(58,106,1000,134),112,ui.INK)
 	line_text("自走工廠",Rect2(66,244,1000,100 if portrait else 58),maxi(38,roundi(18/screen_scale)),ui.INK)
 	if not portrait: line_text("生産をつなげ。戦場を走り抜けろ。",Rect2(68,312,1000,36),18,ui.MUTED)
-	var entries = [actions[0],actions[1],navigation.settings,navigation.history,actions[4]]
-	var labels = ["はじめる","続きから","設定","出撃履歴","終了"]
+	var entries = [actions[0],actions[1],navigation.settings,navigation.history,navigation.catalog,actions[4]]
+	var labels = ["はじめる","続きから","設定","出撃履歴","アイテム図鑑","終了"]
 	for i in range(entries.size()):
 		var button: Button = entries[i]
 		if not button.visible: continue
 		var active = button.is_hovered() or button.has_focus()
 		var color = ui.MUTED.darkened(0.48) if button.disabled else ui.GOLD if active or i == 0 else ui.INK
 		var rect = button.get_rect()
-		line_text(labels[i],Rect2(rect.position+Vector2(34,0),rect.size-Vector2(34,0)),maxi(28,roundi(18/screen_scale)),color)
+		line_text(labels[i],Rect2(rect.position+Vector2(34,0),rect.size-Vector2(34,0)),28,color,HORIZONTAL_ALIGNMENT_LEFT,UIStyle.TEXT_MIN)
 		if active and not button.disabled:
 			draw_line(rect.position+Vector2(4,29),rect.position+Vector2(18,29),ui.GOLD,2)
 			draw_line(rect.position+Vector2(12,23),rect.position+Vector2(18,29),ui.GOLD,2)
 			draw_line(rect.position+Vector2(12,35),rect.position+Vector2(18,29),ui.GOLD,2)
-	if state.status != "": line_text(state.status,Rect2(68,size.y-118,1000,50),maxi(17,roundi(14/screen_scale)),ui.DANGER)
-	line_text("BUILD.  SUPPLY.  SURVIVE.",Rect2(68,size.y-78,size.x-120,32),maxi(16,roundi(11/screen_scale)),ui.GOLD)
+	if state.status != "": line_text(state.status,Rect2(68,size.y-118,1000,50),17,ui.DANGER)
+	line_text("BUILD.  SUPPLY.  SURVIVE.",Rect2(68,size.y-78,size.x-120,32),16,ui.GOLD)
 
 func draw_workshop():
 	section("ライン配置",210)
@@ -371,7 +410,14 @@ func draw_settings():
 	line_text("音量",Rect2(530,348,72,24),18,ui.INK)
 	line_text(str(roundi(state.volume*100))+"%",Rect2(850,348,60,24),18,ui.INK,HORIZONTAL_ALIGNMENT_RIGHT)
 	section("ゲーム",438)
-	line_text("難易度は第1戦の出撃前に変更できます。" if state.difficulty_locked else "次の出撃に向けて難易度を選べます。",Rect2(530,540,380,28),15,ui.MUTED)
+	var hint = "難易度は第1戦の出撃前に変更できます。" if state.difficulty_locked else "次の出撃に向けて難易度を選べます。"
+	var lines: Array[String] = [""]
+	var hint_size = text_size(15)
+	for letter in hint:
+		if ui.font.get_string_size(lines.back()+letter,HORIZONTAL_ALIGNMENT_LEFT,-1,hint_size).x > 380: lines.append("")
+		lines[-1] += letter
+	var step = ui.font.get_height(hint_size)+4
+	for i in range(lines.size()): line_text(lines[i],Rect2(530,540+i*step,380,step),15,ui.MUTED)
 
 func draw_history():
 	section("直近の出撃",226)
@@ -380,6 +426,6 @@ func draw_history():
 		var entry = state.entries[i]
 		var at = Vector2(530,280+i*100)
 		var icon = "victory" if entry.phase == "won" else "retreat" if entry.phase == "retreated" else "defeat"
-		draw_texture_rect(ui.pixel_icons.texture(icon),Rect2(at,Vector2(32,32)),false)
+		draw_texture_rect(ui.pixel_icons.texture(icon),Rect2(at,Vector2.ONE*UIStyle.icon_size(self,32)),false)
 		line_text("#"+entry.seed,Rect2(at+Vector2(48,0),Vector2(330,28)),16,ui.MUTED)
 		line_text("%d/5戦 · %d発製造" % [entry.cleared,int(entry.shells)],Rect2(at+Vector2(48,36),Vector2(330,28)),20,ui.INK)

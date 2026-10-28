@@ -126,7 +126,7 @@ async function press(page, key) {
     const prepared = await readSave(page, 'prepared');
     check(!prepared.state.started && prepared.state.phase === 'prepare', 'preparation saves before departure');
     check(prepared.state.layout_version === 2 && prepared.state.item_mode, 'new browser run uses central stock hull and equipment economy');
-    check(prepared.state.gear_items.length === 2 && prepared.state.gear_items[0].kind === 'left_gun' &&
+    check(prepared.state.gear_items.filter(i=>!i.stock).length === 2 && prepared.state.gear_items[0].kind === 'left_gun' &&
       JSON.stringify(prepared.state.gear_items[0].position) === '[0,0]', 'browser drag installs equipment on its reserved footprint');
     check(prepared.state.reserves.scrap === 57 && prepared.state.reserves.coal === 35,
       'browser dismantling turns stowed equipment into construction materials');
@@ -213,7 +213,7 @@ async function press(page, key) {
     await bulkPage.mouse.click(650,308);
     await bulkPage.waitForTimeout(1500);
     const cancelled = await readSave(bulkPage, 'bulk-cancelled');
-    check(cancelled.state.gear_items.length === 3 && cancelled.state.reserves.scrap === 48 &&
+    check(cancelled.state.gear_items.filter(i=>!i.stock).length === 3 && cancelled.state.reserves.scrap === 48 &&
       cancelled.state.reserves.coal === 32, 'browser bulk cancellation preserves all items and materials');
     await press(bulkPage, 'Escape');
     await press(bulkPage, 'i');
@@ -227,7 +227,7 @@ async function press(page, key) {
     await bulkPage.mouse.click(650,308);
     await bulkPage.waitForTimeout(1500);
     const salvaged = await readSave(bulkPage, 'bulk-salvaged');
-    check(salvaged.state.gear_items.length === 1 && salvaged.state.gear_items[0].uid === 3 &&
+    check(salvaged.state.gear_items.filter(i=>!i.stock).length === 1 && salvaged.state.gear_items[0].uid === 3 &&
       salvaged.state.gear_items[0].rarity === 'uncommon' && salvaged.state.reserves.scrap === 57 &&
       salvaged.state.reserves.coal === 37, 'browser bulk confirmation preserves uncommon equipment and grants exact materials');
     await openGame(bulkPage);

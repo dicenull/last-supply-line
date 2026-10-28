@@ -1,11 +1,9 @@
 extends RefCounted
-## Fixed hull fittings for new expeditions; version 1 remains save-compatible.
+## Hull fittings and the destructible starting armor ring.
 const VERSION = 2
 const AMMO_ANCHOR = Vector2i(9,3)
 const AMMO_CELLS = [Vector2i(9,3),Vector2i(10,3),Vector2i(9,4),Vector2i(10,4)]
 const FUEL_PORT = Vector2i(0,4)
-const TURRET_GRID_CENTER = Vector2(10,4)
-const TURRET_CLEARANCE = 3.8
 const PORTS = {
 	Vector2i(6,3):"source", Vector2i(7,4):"source", Vector2i(6,4):"coal_source",
 	Vector2i(9,3):"gun", Vector2i(10,3):"gun", Vector2i(9,4):"gun", Vector2i(10,4):"gun", FUEL_PORT:"engine"
@@ -25,10 +23,7 @@ static func rows(id: String = "standard") -> Array:
 	elif id == "buffered":
 		result[3][2] = "depot"
 		result[4][2] = "depot"
+	for at in WALLS: result.append([at.x,at.y,"armor_block",0])
+	for at in PORTS:
+		if PORTS[at] in ["source","coal_source"]: result.append([at.x,at.y,PORTS[at],DIRECTIONS.get(at,0)])
 	return result
-
-static func roof_clearance(at: Vector2i, size: Vector2i) -> bool:
-	# The closed hull exposes secondary guns above the roof. Keep their entire
-	# rotating footprint outside the main turret's physical pedestal and sleeve.
-	var nearest = TURRET_GRID_CENTER.clamp(Vector2(at),Vector2(at+size))
-	return nearest.distance_to(TURRET_GRID_CENTER) >= TURRET_CLEARANCE

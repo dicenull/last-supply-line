@@ -96,12 +96,14 @@ func run():
 	f.damage_at(Vector2(target.x-6.5,target.y-3.5))
 	game.battlefield.hull = 70
 	game.field_actions.refresh()
-	check(game.field_actions.visible and not game.field_actions.RECT.intersects(game.FOOTER_RECT) and not game.field_actions.RECT.intersects(game.HEADER_RECT),"damage exposes repair button outside the toolbar and header")
-	var cost = Services.repair_cost(f,70)
+	check(game.field_actions.visible and not game.field_actions.button.get_rect().intersects(game.footer_rect()) and not game.field_actions.RECT.intersects(game.HEADER_RECT),"damage exposes repair button outside the toolbar and header")
+	var hull_before = game.expedition.hull
+	var cost = Services.repair_cost(f)
+	check(cost == f.wrecks.size()*2,"hull damage never increases line repair cost")
 	f.reserves.scrap = cost-1
 	check(not game.repair_vehicle() and f.wrecks.has(target) and game.battlefield.hull == 70,"insufficient repair stock leaves all damage untouched")
 	f.reserves.scrap = cost
-	check(game.repair_vehicle() and f.reserves.scrap == 0 and f.wrecks.is_empty() and game.battlefield.hull == 100 and f.cells.has(target),"repair atomically charges scrap and restores hull and broken line")
+	check(game.repair_vehicle() and f.reserves.scrap == 0 and f.wrecks.is_empty() and game.battlefield.hull == 70 and game.expedition.hull == hull_before and f.cells.has(target),"repair atomically charges only line damage and preserves both hull states")
 	check(f.running and f.ammo == 5 and f.fuel == 6 and not game.field_actions.visible,"repair preserves combat and supplies, then hides its button")
 	var mid = game.checkpoint.snapshot(game)
 	check(game.checkpoint.apply(game,mid) and not game.factory.layout_locked and game.factory.combat_editing and not game.factory.running,"saved live edits restore unlocked and paused")
@@ -147,13 +149,13 @@ func run():
 	var press = InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true
-	press.position = root.get_final_transform()*game.field_actions.RECT.get_center()
+	press.position = root.get_final_transform()*game.field_actions.button.get_rect().get_center()
 	root.push_input(press,false)
 	press = press.duplicate()
 	press.pressed = false
 	root.push_input(press,false)
 	await process_frame
-	check(game.battlefield.hull == 100 and game.factory.wrecks.is_empty(),"minimum-window repair button accepts real click input")
+	check(game.battlefield.hull == 80 and game.factory.wrecks.is_empty(),"minimum-window repair button accepts real click input")
 	var final_run = Run.new(0)
 	final_run.sector = 5
 	final_run.modifiers.routes = 3

@@ -1,4 +1,5 @@
 extends Control
+const UIStyle = preload("res://scripts/ui_style.gd")
 ## Keep one canonical menu design. Fit its width, preserve readable text, and
 ## scroll vertically when the available height is smaller than the content.
 var content: Control
@@ -7,6 +8,7 @@ var scroll: ScrollContainer
 var extent: Control
 var expand_viewport = false
 var align_right = false
+var bottom_clearance = 0.0
 var shade = false
 var expanded = false
 var old_aspect: int
@@ -47,7 +49,7 @@ func reflow():
 	size = get_viewport_rect().size
 	var bounds: Rect2 = bounds_provider.call()
 	var fullscreen = bounds.position == Vector2.ZERO and bounds.size == size
-	var screen_scale = maxf(0.01,get_viewport().get_final_transform().get_scale().x)
+	var screen_scale = UIStyle.screen_scale(self)
 	var margin = 0.0 if fullscreen else 16.0/screen_scale
 	var available = size-Vector2.ONE*margin*2
 	var factor = 1.0 if fullscreen else minf(maxf(1.0,0.9/screen_scale),available.x/bounds.size.x)
@@ -60,7 +62,7 @@ func reflow():
 	if reference_position.x >= 0 and is_equal_approx(factor,1.0) and size.is_equal_approx(Vector2(1440,940)):
 		scroll.position = reference_position
 	extent.custom_minimum_size = content_size
-	scroll.size = Vector2(content_size.x,minf(content_size.y,available.y))
+	scroll.size = Vector2(content_size.x,minf(content_size.y,minf(available.y,size.y-scroll.position.y-margin-bottom_clearance)))
 	content.scale = Vector2.ONE*factor
 	content.position = -bounds.position*factor
 	scroll.scroll_vertical = 0

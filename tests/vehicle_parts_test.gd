@@ -75,7 +75,7 @@ func run():
 	check(not game.checkpoint.validate(bad),"part cannot occupy a different dedicated slot")
 	var legacy = saved.duplicate(true)
 	legacy.run.gear_items = legacy.run.gear_items.filter(func(item): return Gear.part_slot(item.kind).is_empty())
-	check(game.checkpoint.apply(game,legacy) and Inventory.vehicle_parts(game.expedition).is_empty() and game.world.barrel.scale == game.world.MAIN_BARREL_SCALE,"old saves without replaceable parts use the standard chassis")
+	check(game.checkpoint.apply(game,legacy) and Inventory.vehicle_parts(game.expedition).size() == 4 and game.world.barrel.scale == game.world.MAIN_BARREL_SCALE,"old saves without replaceable parts use the standard chassis")
 	check(game.checkpoint.apply(game,saved),"return to upgraded chassis")
 	var engine = game.world.vehicle_part_visuals.get_node("Item_vehicle_engine_power")
 	var screen_position = game.WORLD_RECT.position+game.world.camera.unproject_position(engine.to_global(Vector3(0,0.5,0)))
@@ -115,7 +115,7 @@ func run():
 	b.cooldown = 0
 	factory.ammo = 3
 	b.update_gun(factory,0.001)
-	check(b.projectiles.size() == 1 and b.projectiles[0].style == "sniper" and factory.ammo == 2,"replacement main gun fires its own projectile and consumes existing ammo")
+	check(b.projectiles.size() == 1 and b.projectiles[0].style == "sniper" and factory.ammo == 1 and b.projectiles[0].damage == 5,"replacement main gun fires its own projectile and consumes existing ammo")
 	if not b.projectiles.is_empty():
 		var shot = b.projectiles[0]
 		check(is_equal_approx(shot.duration,b.shell_flight_time(shot.origin,target.node.position+Vector3(0,1.3,0),"sniper")),"main gun flight uses the replaced cannon's ballistics")
@@ -134,8 +134,8 @@ func run():
 	game.inventory_panel.refresh()
 	var panel = game.inventory_panel
 	var uid: int = panel.rows[0].uid
-	panel.stow_buttons[0].button_down.emit()
-	panel.stow_buttons[0].pressed.emit()
+	panel.equip_buttons[0].button_down.emit()
+	panel.equip_buttons[0].pressed.emit()
 	check(Inventory.vehicle_parts(game.expedition).gear.uid == uid,"inventory swap button installs the item originally pressed")
 	var right_click = InputEventMouseButton.new()
 	right_click.button_index = MOUSE_BUTTON_RIGHT

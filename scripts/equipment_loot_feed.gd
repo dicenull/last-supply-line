@@ -1,5 +1,5 @@
 extends Control
-## Bounded, transient equipment receipts. Receives values, never mutates the run.
+## Bounded, transient equipment and material receipts; never changes inventory.
 const Catalog = preload("res://scripts/equipment_catalog.gd")
 const Style = preload("res://scripts/ui_style.gd")
 const MAX_ENTRIES = 4
@@ -25,7 +25,20 @@ func push_item(item: Dictionary):
 		if entries.size() > MAX_ENTRIES: entries.pop_front()
 	queue_redraw()
 
+func push_material(kind: String, amount: int):
+	if kind not in ["scrap","coal"] or amount <= 0: return
+	for entry in entries:
+		if entry.kind == kind and entry.rarity == "":
+			entry.count += amount
+			entry.time = DURATION
+			queue_redraw()
+			return
+	entries.append({"kind":kind,"rarity":"","count":amount,"time":DURATION})
+	if entries.size() > MAX_ENTRIES: entries.pop_front()
+	queue_redraw()
+
 func advance(delta: float, shown: bool):
+	scale = Vector2.ONE*maxf(1.0,0.85/Style.screen_scale(self))
 	for entry in entries: entry.time -= maxf(0,delta)
 	entries = entries.filter(func(entry): return entry.time > 0)
 	visible = shown and not entries.is_empty()
@@ -40,10 +53,11 @@ func _draw():
 	for i in range(entries.size()):
 		var entry: Dictionary = entries[i]
 		var at = Vector2(i*64,0)
-		var tint = Color(Catalog.RARITIES[entry.rarity].color)
+		var material_receipt = entry.rarity.is_empty()
+		var tint = Color("d5aa62") if material_receipt else Color(Catalog.RARITIES[entry.rarity].color)
 		var alpha = minf(1,entry.time)
 		draw_style_box(Style.style(Color(Style.PANEL,alpha),Color(tint,alpha)),Rect2(at,Vector2(58,58)))
-		draw_texture_rect(icons.texture(Catalog.Content.EQUIPMENT[entry.kind].icon),Rect2(at+Vector2(11,5),Vector2(36,36)),false,Color(1,1,1,alpha))
-		var rank = Catalog.RARITIES.keys().find(entry.rarity)+1
+		draw_texture_rect(icons.texture(entry.kind if material_receipt else Catalog.Content.EQUIPMENT[entry.kind].icon),Rect2(at+Vector2(11,5),Vector2(36,36)),false,Color(1,1,1,alpha))
+		var rank = 0 if material_receipt else Catalog.RARITIES.keys().find(entry.rarity)+1
 		for mark in range(rank): draw_rect(Rect2(at+Vector2(5+mark*7,47),Vector2(5,5)),Color(tint,alpha))
 		draw_string(font,at+Vector2(33,52),"+"+str(entry.count),HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color(Style.INK,alpha))

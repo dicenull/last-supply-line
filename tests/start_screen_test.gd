@@ -29,6 +29,8 @@ func new_title():
 	return title
 
 func click(button: Button):
+	await process_frame
+	await process_frame
 	var at = root.get_final_transform()*button.get_global_rect().get_center()
 	var motion = InputEventMouseMotion.new()
 	motion.position = at
@@ -39,7 +41,6 @@ func click(button: Button):
 		event.button_index = MOUSE_BUTTON_LEFT
 		event.pressed = pressed
 		root.push_input(event,false)
-		await process_frame
 	await process_frame
 
 func escape():

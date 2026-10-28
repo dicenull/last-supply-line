@@ -7,18 +7,26 @@ const HALF_WIDTH = 18.0
 const GATE_HALF_WIDTH = 9.0
 const THICKNESS = 1.0
 
-static func fences(at: Vector3) -> Array:
+static func fences(at: Vector3, large: bool = false) -> Array:
+	var back = 82.0 if large else BACK
+	var half_width = 42.0 if large else HALF_WIDTH
 	var origin = Vector2(at.x,at.z)
 	var result: Array = []
 	for side in [-1,1]:
-		result.append(Rect2(origin+Vector2(FRONT,side*HALF_WIDTH-THICKNESS/2),Vector2(BACK-FRONT+THICKNESS,THICKNESS)))
-		var z = GATE_HALF_WIDTH if side == 1 else -HALF_WIDTH
-		result.append(Rect2(origin+Vector2(FRONT-THICKNESS/2,z),Vector2(THICKNESS,HALF_WIDTH-GATE_HALF_WIDTH)))
-	result.append(Rect2(origin+Vector2(BACK-THICKNESS/2,-HALF_WIDTH),Vector2(THICKNESS,HALF_WIDTH*2)))
+		result.append(Rect2(origin+Vector2(FRONT,side*half_width-THICKNESS/2),Vector2(back-FRONT+THICKNESS,THICKNESS)))
+		var z = GATE_HALF_WIDTH if side == 1 else -half_width
+		result.append(Rect2(origin+Vector2(FRONT-THICKNESS/2,z),Vector2(THICKNESS,half_width-GATE_HALF_WIDTH)))
+	result.append(Rect2(origin+Vector2(back-THICKNESS/2,-half_width),Vector2(THICKNESS,half_width*2)))
 	return result
 
-static func mines(at: Vector3) -> Array:
+static func mines(at: Vector3, large: bool = false) -> Array:
 	var result: Array = []
+	if large:
+		for side in [-1,1]:
+			for x in range(0,89,8): result.append(at+Vector3(x,0,side*47))
+			for z in range(15,48,8): result.append(at+Vector3(-8,0,side*z))
+		for z in range(-40,41,8): result.append(at+Vector3(88,0,z))
+		return result
 	for side in [-1,1]:
 		for x in [4.0,12.0,20.0,28.0]: result.append(at+Vector3(x,0,side*22))
 		for z in [14.0,21.0]: result.append(at+Vector3(-8,0,side*z))

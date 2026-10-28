@@ -111,7 +111,7 @@ func run():
 	var layout = f.layout()
 	await click_cell(Vector2i(13,7))
 	await click_cell(Vector2i(1,2),MOUSE_BUTTON_RIGHT)
-	await tap(KEY_Q)
+	await tap(KEY_F)
 	check(f.layout() != layout and not f.layout_locked,"interior permits real placement removal and rotation")
 	f.edit(Vector2i(13,7),"belt",0)
 	f.rotate(Vector2i(1,2))

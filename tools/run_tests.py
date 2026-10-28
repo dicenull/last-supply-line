@@ -14,17 +14,17 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADLESS = (
-    'factory', 'run', 'battle_state', 'checkpoint', 'supply_recovery', 'soak', 'expansion',
-    'enemy_roles', 'balance', 'tank_steering', 'touch_controls', 'local_damage', 'armor_block',
+    'combo_loot',     'starting_resources', 'weapon_mounting', 'equipment_activation', 'emergent_builds', 'map_shapes', 'factory', 'run', 'final_base', 'rarity_geometry', 'battle_state', 'checkpoint', 'supply_recovery', 'soak', 'expansion',
+    'enemy_roles', 'balance', 'tank_steering', 'touch_controls', 'local_damage', 'armor_block', 'starting_armor',
     'ballistics', 'feedback', 'arsenal_feedback', 'vehicle_collision', 'collision_slide',
     'course_goal', 'supply_point', 'resource_storage', 'course_obstacles',
     'field_course', 'ui_architecture', 'japanese_font', 'campaign_variety', 'equipment_catalog',
-    'inventory_model', 'ground_items', 'empty_loadout', 'vehicle_parts', 'destination_defenses', 'destination_spacing', 'factory_layout', 'equipment_geometry', 'weapon_arc', 'equipment_save',
+    'inventory_model', 'vehicle_parameters', 'ground_items', 'empty_loadout', 'vehicle_parts', 'destination_defenses', 'destination_spacing', 'factory_layout', 'equipment_geometry', 'weapon_arc', 'equipment_save',
     'equipment_campaign', 'equipment_inventory', 'equipment_feed',
     'equipment_feedback', 'equipment_bulk', 'equipment_pilot', 'equipment_design', 'equipment_progression', 'equipment_runtime',
 )
 VISUAL = (
-    'start_screen', 'responsive_menu', 'responsive_footer', 'menu_pages', 'field_landscape', 'field_surface', 'field_services',
+    'supply_airdrop',     'weapon_mounting_ui', 'map_shapes_view', 'result_ui', 'start_screen', 'item_catalog_page', 'responsive_menu', 'responsive_footer', 'menu_pages', 'field_landscape', 'field_surface', 'field_services',
     'pipe_connections', 'placement_preview', 'tank_ui', 'battle', 'run_ui',
     'item_rewards', 'research', 'auxiliary_ports', 'menu', 'history', 'blueprint',
     'variety', 'logistics', 'audio', 'window', 'content_ui', 'phase_movement',

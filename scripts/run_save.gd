@@ -25,9 +25,11 @@ func snapshot(game) -> Dictionary:
 	data.run.merge(fields(game.expedition,CRAFT_FIELDS))
 	data.factory.wrecks = game.factory.wrecks.duplicate()
 	data.factory.layout_version = game.factory.layout_version
+	data.factory.main_gun_anchor = game.factory.main_gun_anchor
 	data.factory.equipment_mounts = game.factory.equipment_mounts.duplicate()
 	data.factory.equipment_rotations = game.factory.equipment_rotations.duplicate()
 	data.factory.wreck_directions = game.factory.wreck_directions.duplicate()
+	data.run.results = game.expedition.results.snapshot()
 	data.run.difficulty = game.expedition.difficulty
 	data.run.item_mode = game.expedition.item_mode
 	data.run.empty_part_slots = game.expedition.empty_part_slots.duplicate()
@@ -61,7 +63,7 @@ func snapshot(game) -> Dictionary:
 	for mine in b.obstacles.mines: state.mines.append(mine.spent)
 	state.projectiles = []
 	for shot in b.projectiles:
-		state.projectiles.append({"origin":shot.origin,"dir":shot.dir,"age":shot.age,"duration":shot.duration,"target":b.enemies.find(shot.target),"position":shot.node.position,"splash":shot.get("splash",0.0),"style":shot.get("style","heavy"),"chain":shot.get("chain",0)})
+		state.projectiles.append({"origin":shot.origin,"dir":shot.dir,"age":shot.age,"duration":shot.duration,"target":b.enemies.find(shot.target),"position":shot.node.position,"splash":shot.get("splash",0.0),"style":shot.get("style","heavy"),"chain":shot.get("chain",0),"damage":shot.get("damage",1)})
 	state.bolts = []
 	for bolt in b.bolts:
 		var mark_index = -1
@@ -142,19 +144,27 @@ func apply(game, data: Dictionary) -> bool:
 		error = "invalid_state"
 		return false
 	game.sound.stop_all()
+	if game.airdrop != null: game.airdrop.cancel()
 	if game.loot_feed != null: game.loot_feed.clear()
 	if game.world.feedback != null: game.world.feedback.clear()
 	var restored_factory = Factory.new(data.factory.get("layout_version",1))
+	restored_factory.configure_main_gun(data.factory.get("main_gun_anchor",Factory.Layout.AMMO_ANCHOR))
 	restored_factory.equipment_mounts = data.factory.get("equipment_mounts",{}).duplicate()
 	restored_factory.equipment_rotations = data.factory.get("equipment_rotations",{}).duplicate()
 	restored_factory.loadout_locked = data.started
 	for key in FIELDS: restored_factory.set(key,data.factory[key].duplicate(true) if data.factory[key] is Array or data.factory[key] is Dictionary else data.factory[key])
+	if data.version < 20 and restored_factory.layout_version == 2:
+		for rows in restored_factory.undo_stack:
+			for at in Factory.Layout.PORTS:
+				if Factory.Layout.PORTS[at] not in ["source","coal_source"]: continue
+				if not rows.any(func(row): return Vector2i(int(row[0]),int(row[1])) == at): rows.append([at.x,at.y,Factory.Layout.PORTS[at],Factory.Layout.DIRECTIONS.get(at,0)])
 	restored_factory.wrecks = data.factory.get("wrecks",{}).duplicate()
 	for pos in restored_factory.wrecks:
 		restored_factory.wreck_directions[pos] = data.factory.get("wreck_directions",{}).get(pos,0)
 	if data.factory.has("inventory"):
 		restored_factory.inventory = data.factory.inventory.duplicate()
-		if not restored_factory.inventory.has("armor_block"): restored_factory.inventory.armor_block = 0
+		for kind in ["armor_block","source","coal_source"]:
+			if not restored_factory.inventory.has(kind): restored_factory.inventory[kind] = 0
 	else:
 		# Preserve legacy layouts and undo history without granting every old cap.
 		var layouts: Array = [restored_factory.layout()]+restored_factory.undo_stack
@@ -165,6 +175,14 @@ func apply(game, data: Dictionary) -> bool:
 				if not Factory.LIMITS.has(kind): continue
 				counts[kind] = counts.get(kind,0)+1
 				restored_factory.inventory[kind] = maxi(restored_factory.inventory[kind],counts[kind])
+	# Versions through 13 stored the central ring as implicit indestructible walls.
+	# Materialize it once; v14 saves own their exact damage/removal state.
+	if data.version < 14 and restored_factory.layout_version == 2:
+		for pos in Factory.Layout.WALLS:
+			if not restored_factory.cells.has(pos) and not restored_factory.wrecks.has(pos): restored_factory.cells[pos] = restored_factory.make_cell("armor_block",0)
+		for rows in restored_factory.undo_stack:
+			for pos in Factory.Layout.WALLS:
+				if not rows.any(func(row): return Vector2i(row[0],row[1]) == pos): rows.append([pos.x,pos.y,"armor_block",0])
 	restored_factory.unlocked_blocks = RunState.Content.STARTING_BLOCKS.keys()+game.history.researched_blocks
 	restored_factory.finite_resources = true
 	restored_factory.auto_fire = false
@@ -180,6 +198,8 @@ func apply(game, data: Dictionary) -> bool:
 	restored_run.empty_part_slots = data.run.get("empty_part_slots",[]).duplicate()
 	restored_run.gear_items = data.run.get("gear_items",[]).duplicate(true)
 	restored_run.next_item_uid = data.run.get("next_item_uid",1)
+	restored_run.ensure_stock_parts()
+	restored_run.results.restore(data.run.get("results",{}))
 	restored_run.rng.state = data.rng_state
 	game.release_battle()
 	game.factory = restored_factory
@@ -195,7 +215,7 @@ func apply(game, data: Dictionary) -> bool:
 	game.world.pending_shots = 0
 	game.world.set_layout_version(restored_factory.layout_version)
 	game.clear_equipment_selection()
-	game.world.configure_equipment(restored_run.equipment,restored_factory.auxiliary_positions(),restored_factory.equipment_mounts,restored_factory.equipment_rotations)
+	game.sync_equipment()
 	game.world.configure_vehicle_parts(preload("res://scripts/equipment_inventory.gd").vehicle_parts(restored_run),restored_run.empty_part_slots)
 	game.world.camera_offset = data.view.get("camera_offset",Vector3.ZERO)
 	for key in ["yaw","pitch","zoom"]: game.world.set(key,data.view[key])
@@ -243,6 +263,7 @@ func apply_battle(b, state: Dictionary):
 		enemy.mark.position = e.mark_position
 		enemy.mark.visible = e.mark_visible
 		for pip in range(enemy.health.size()): enemy.health[pip].visible = pip < enemy.hp
+	b.sync_final_gate()
 	for i in range(b.resource_sites.size()):
 		b.resource_sites[i].taken = state.sites[i]
 		b.resource_sites[i].node.set_taken(state.sites[i])
@@ -253,7 +274,7 @@ func apply_battle(b, state: Dictionary):
 		b.add_child(node)
 		node.position = shot.position
 		b.build_shell(node,shot.dir,shot.get("style","heavy"))
-		b.projectiles.append({"node":node,"origin":shot.origin,"dir":shot.dir,"age":shot.age,"duration":shot.duration,"target":b.enemies[shot.target],"splash":shot.get("splash",0.0),"style":shot.get("style","heavy"),"chain":shot.get("chain",0)})
+		b.projectiles.append({"node":node,"origin":shot.origin,"dir":shot.dir,"age":shot.age,"duration":shot.duration,"target":b.enemies[shot.target],"splash":shot.get("splash",0.0),"style":shot.get("style","heavy"),"chain":shot.get("chain",0),"damage":shot.get("damage",1)})
 	for bolt in state.bolts:
 		var node = Node3D.new()
 		b.add_child(node)

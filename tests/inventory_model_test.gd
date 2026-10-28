@@ -35,7 +35,7 @@ func run():
 	f.running = true
 	for i in range(400): f.step(0.1)
 	check(f.ammo == 12 and f.fuel > 0,"central starter line supplies both 2×2 magazine and rear engine")
-	check(f.ports == F.Layout.PORTS and f.blocks == F.Layout.WALLS,"new fixed fittings and central walls use shared layout data")
+	check(f.ports == F.Layout.PORTS and f.blocks.is_empty() and F.Layout.WALLS.all(func(at): return f.cells[at].kind == "armor_block"),"fixed fittings and starting armor use shared layout data")
 	var filled = F.new(2)
 	filled.auto_fire = false
 	filled.ammo = 11
@@ -47,7 +47,7 @@ func run():
 	var r = Run.new(42)
 	r.enable_items()
 	var uid = r.gear_items[0].uid
-	check(r.gear_items.size() == 3 and r.equipment.is_empty(),"issued gear starts stowed and inactive")
+	check(r.gear_items.size() == 7 and r.gear_items.filter(func(i): return i.position == Inventory.STOWED).size() == 3 and Inventory.vehicle_parts(r).size() == 4 and r.equipment.is_empty(),"three accessories start stowed and four stock parts start equipped")
 	check(not Inventory.place(r,f,uid,Vector2i(6,3)) and not Inventory.place(r,f,uid,Vector2i(13,7)) and not Inventory.place(r,f,uid,Vector2i(4,2)),"gear rejects stock, out-of-bounds and wall overlap")
 	check(Inventory.place(r,f,uid,Vector2i(0,0)),"2×2 gun mounts on a free footprint")
 	check(f.mounted_at(Vector2i(1,1)) == "left_gun" and not f.can_place(Vector2i(1,1),"belt"),"every footprint cell reserves space against construction")

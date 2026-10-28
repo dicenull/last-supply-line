@@ -7,15 +7,22 @@ import wave
 
 RATE = 22050
 DEST = Path(__file__).resolve().parents[1] / "audio"
-DURATIONS = {"place": 0.16, "connect": 0.32, "armor": 0.36, "reward": 0.65, "combo": 0.28}
+DURATIONS = {"place": 0.16, "connect": 0.32, "armor": 0.36, "reward": 0.65, "combo": 0.28, "airdrop": 2.7}
 
 for kind, duration in DURATIONS.items():
     rng = random.Random(kind)
     pcm = []
+    filtered = 0.0
     for i in range(int(RATE * duration)):
         t = i / RATE
         noise = rng.uniform(-1, 1)
-        if kind in ("place", "armor"):
+        if kind == "airdrop":
+            filtered = filtered * 0.93 + noise * 0.07
+            phase = math.tau * (95 * t - 8 * t * t)
+            envelope = math.sin(math.pi * t / duration) ** 1.5
+            sample = envelope * (0.32 * math.sin(phase) + 0.14 * math.sin(phase * 2)
+                                 + filtered * 1.1 + noise * 0.04)
+        elif kind in ("place", "armor"):
             low = 125 if kind == "armor" else 260
             sample = (0.32 * math.sin(math.tau * low * t) * math.exp(-t * 25)
                       + noise * 0.18 * math.exp(-t * 80)

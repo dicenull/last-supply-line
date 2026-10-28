@@ -34,6 +34,15 @@ func run():
 	check(feed.entries.size() == Feed.MAX_ENTRIES,"unknown equipment does not enter the display")
 	feed.clear()
 	check(feed.entries.is_empty() and not feed.visible,"reset clears transient receipts")
+	feed.push_material("scrap",2)
+	feed.push_material("coal",1)
+	feed.push_item({"kind":"armor","rarity":"rare"})
+	feed.advance(1,true)
+	feed.push_material("scrap",3)
+	check(feed.entries.size() == 3 and feed.entries[0].count == 5 and feed.entries[0].time == Feed.DURATION,"materials aggregate across intervening coal and equipment receipts and renew visibility")
+	feed.advance(4,true)
+	feed.push_material("scrap",1)
+	check(feed.entries.size() == 1 and feed.entries[0].count == 1,"expired material totals start a fresh receipt")
 	feed.queue_free()
 	await process_frame
 	var game = load("res://main.tscn").instantiate()
@@ -51,15 +60,15 @@ func run():
 	game.battlefield.drive_poses = [{"position":enemy.node.position,"yaw":0.0}]
 	game.battlefield.update_ground_items(game.factory)
 	game._process(0)
-	check(game.expedition.gear_items.size() == count and game.factory.reserves.scrap == stock.scrap+2 and game.loot_feed.entries.is_empty(),"ordinary enemy grants materials without an equipment receipt")
-	check(game.logistics.notices.scrap.accepted == 2,"enemy material gain appears in the resource header")
+	check(game.expedition.gear_items.size() == count and game.factory.reserves.scrap == stock.scrap+2 and game.loot_feed.entries.size() == 2,"ordinary enemy materials appear in the shared loot feed")
+	check(game.stock_text("scrap",game.factory.reserves.scrap,100) == str(game.factory.reserves.scrap),"resource header no longer draws a duplicate plus notification")
 	game.battlefield.sector_config.boss = true
 	enemy = game.battlefield.enemies.back()
 	game.battlefield.kill_enemy(enemy,game.factory,enemy.node.position)
 	game.battlefield.drive_poses = [{"position":enemy.node.position,"yaw":0.0}]
 	game.battlefield.update_ground_items(game.factory)
 	game._process(0)
-	check(game.expedition.gear_items.size() == count+1 and game.loot_feed.entries.size() == 1,"boss equipment appears in the loot feed")
+	check(game.expedition.gear_items.size() == count+1 and game.loot_feed.entries.size() == 3,"boss equipment appears in the loot feed")
 	game.factory.running = false
 	var receipt = game.loot_feed.entries.duplicate(true)
 	game._process(2)
@@ -76,7 +85,7 @@ func run():
 	for dimensions in [Vector2i(1440,940),Vector2i(960,628)]:
 		root.size = dimensions
 		await process_frame
-		check(game.inventory_button.get_rect().end.x < game.icon_buttons[1].rect.position.x,"inventory count and view switch have separate hit regions at "+str(dimensions.x))
+		check(not game.inventory_button.get_rect().intersects(game.icon_buttons[1].rect),"inventory count and view switch have separate hit regions at "+str(dimensions.x))
 		if DisplayServer.get_name() != "headless":
 			await RenderingServer.frame_post_draw
 			DirAccess.make_dir_recursive_absolute("res://build/equipment-audit")

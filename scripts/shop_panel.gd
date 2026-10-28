@@ -80,7 +80,7 @@ func _draw():
 			var gear = preload("res://scripts/equipment_catalog.gd")
 			var kind = id.trim_prefix("gear:")
 			draw_texture_rect(icons.texture(gear.profile_icon(kind)),Rect2(at+Vector2(28,105),Vector2(26,26)),false)
-			draw_string(font,at+Vector2(68,126),"Lv.%d" % gear.level(kind),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
+			draw_string(font,at+Vector2(68,126),"換装" if not gear.part_slot(kind).is_empty() else "設置",HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
 		draw_texture_rect(icons.texture("scrap"),Rect2(at+Vector2(42,162),Vector2(26,26)),false)
 		draw_string(font,at+Vector2(80,184),str(Services.price(id)),HORIZONTAL_ALIGNMENT_LEFT,-1,22,Style.INK if state.allowed[i] else Style.MUTED)
 		if state.purchased[i]: draw_texture_rect(icons.texture("victory"),Rect2(at+Vector2(126,8),Vector2(30,30)),false)

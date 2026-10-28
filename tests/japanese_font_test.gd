@@ -15,6 +15,9 @@ func run():
 	var font: FontVariation = theme.default_font
 	check(font.variation_opentype.get(TextServerManager.get_primary_interface().name_to_tag("weight")) == 600.0,"theme uses the original 600 weight through the OpenType axis tag")
 	check(font.base_font is FontFile and font.base_font.resource_path == "res://assets/fonts/NotoSansJP.ttf","theme loads bundled Noto Sans JP without OS fonts")
+	check(font.base_font.multichannel_signed_distance_field and font.base_font.msdf_size >= 96,"scaled Japanese menus use detailed MSDF glyphs rather than enlarged bitmap glyphs")
+	var native_font = preload("res://scripts/ui_style.gd").create_font()
+	check(native_font is SystemFont and native_font.multichannel_signed_distance_field,"native menu previews use the same scalable glyph rendering")
 	var sample = "日本語 全画面を終了 装備一覧 解体 倉庫 廃材 石炭 砲弾 難易度 戦車 工廠 装甲 読み込み中"
 	var glyphs = true
 	var supported: String = font.base_font.get_supported_chars()

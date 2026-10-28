@@ -1,9 +1,9 @@
 extends Node
 ## Bounded original mechanical sounds on an owned bus; never changes simulation or Master.
 const Observation = preload("res://scripts/audio_observation.gd")
-const KINDS = ["engine","machine","shot","impact","pickup","place","connect","armor","reward","combo"]
-const GAINS = {"engine":0.18,"machine":0.25,"shot":0.65,"impact":0.5,"pickup":0.3,"place":0.45,"connect":0.35,"armor":0.5,"reward":0.45,"combo":0.35}
-const PRIORITIES = {"machine":0,"place":1,"connect":1,"pickup":1,"combo":2,"shot":3,"impact":3,"armor":3,"reward":4}
+const KINDS = ["engine","machine","shot","impact","pickup","place","connect","armor","reward","combo","airdrop"]
+const GAINS = {"engine":0.18,"machine":0.25,"shot":0.65,"impact":0.5,"pickup":0.3,"place":0.45,"connect":0.35,"armor":0.5,"reward":0.45,"combo":0.35,"airdrop":0.6}
+const PRIORITIES = {"machine":0,"place":1,"connect":1,"pickup":1,"combo":2,"shot":3,"impact":3,"armor":3,"reward":4,"airdrop":4}
 var game
 var enabled = true
 var volume = 0.35

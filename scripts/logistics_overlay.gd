@@ -5,6 +5,7 @@ var notices: Dictionary = {}
 var battle_id = 0
 func add_receipt(item: String, accepted: int, lost: int = 0):
 	if accepted <= 0 and lost <= 0: return
+	if item in ["scrap","coal"] and game.loot_feed != null: game.loot_feed.push_material(item,accepted)
 	if not notices.has(item): notices[item] = {"accepted":0,"lost":0,"time":4.0}
 	notices[item].accepted += accepted
 	notices[item].lost += lost
@@ -33,7 +34,7 @@ func badges() -> Array:
 	for pos in game.factory.wrecks: result.append({"pos":pos,"code":"defeat"})
 	for pos in game.factory.cells:
 		var c = game.factory.cells[pos]
-		if game.factory.layout_version == 2 and c.kind == "gun" and pos != game.Factory.Layout.AMMO_ANCHOR: continue
+		if game.factory.layout_version == 2 and c.kind == "gun" and pos != game.factory.main_gun_anchor: continue
 		var state = game.factory.diagnostic(pos)
 		var show = state.code in ["disconnected","incompatible"]
 		show = show or (state.code == "empty" and (c.kind in ["source","coal_source","gun","engine","blast_furnace","auto_press"] or game.Factory.AUXILIARY.has(c.kind)))
@@ -46,9 +47,10 @@ func _draw():
 		var alpha = minf(1.0,battle.score.combo_time)
 		var at = Vector2(1160,128)
 		draw_string(game.font,at,"連続撃破 ×%d" % battle.score.combo,HORIZONTAL_ALIGNMENT_RIGHT,220,24,Color(game.GOLD,alpha))
+		draw_string(game.font,at+Vector2(0,26),"廃材・石炭 +%d" % battle.score.combo_drop_bonus(),HORIZONTAL_ALIGNMENT_RIGHT,220,20,Color(game.MINT,alpha))
 	for entry in badges():
 		var world_pos = game.world.cell_position(entry.pos)+Vector3(0,1.4,0)
-		if game.factory.layout_version == 2 and entry.pos == game.Factory.Layout.AMMO_ANCHOR: world_pos += Vector3(0.5,0,0.5)
+		if game.factory.layout_version == 2 and entry.pos == game.factory.main_gun_anchor: world_pos += Vector3(0.5,0,0.5)
 		if game.world.camera.is_position_behind(world_pos): continue
 		var at = game.WORLD_RECT.position+game.world.camera.unproject_position(world_pos)
 		if not game.WORLD_RECT.grow(-18).has_point(at): continue

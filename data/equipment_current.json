@@ -1,0 +1,82 @@
+{
+  "left_gun": {
+    "name": "ホチキス汎用副砲",
+    "effect": "低消費の標準副砲 / 砲弾1発"
+  },
+  "rear_gun": {
+    "name": "試製近接迎撃砲",
+    "interceptor": true,
+    "effect": "前方の敵砲弾を迎撃 / 対地攻撃不可",
+    "inspiration": "短砲身防御砲を参考にした架空の迎撃機構"
+  },
+  "long_gun": {
+    "ammo": 2,
+    "damage": 3,
+    "effect": "対装甲威力3 / 砲弾2発 / 遅い射撃間隔"
+  },
+  "mortar_gun": {
+    "damage": 2
+  },
+  "arc_gun": {
+    "shot_fuel": 0.3,
+    "effect": "2回連鎖 / 砲弾2発・燃料0.30消費"
+  },
+  "armor": {
+    "effects": {
+      "damage_reduction": 0.25,
+      "speed_bonus": -0.12
+    }
+  },
+  "skirts": {
+    "effects": {
+      "blast_reduction": 0.55,
+      "speed_bonus": -0.06
+    },
+    "effect": "爆発・地雷ダメージ −55% / 走行速度 −6%"
+  },
+  "supercharger": {
+    "effects": {
+      "speed_bonus": 0.4,
+      "fuel_bonus": 0.5
+    }
+  },
+  "economizer": {
+    "effects": {
+      "fuel_bonus": -0.35,
+      "speed_bonus": -0.08
+    }
+  },
+  "rangefinder": {
+    "effects": {
+      "range_bonus": 10.0,
+      "turn_bonus": -0.18
+    }
+  },
+  "servo": {
+    "effects": {
+      "turn_bonus": 0.8,
+      "speed_bonus": -0.06
+    }
+  },
+  "salvage_arm": {
+    "effects": {
+      "salvage_rate": 0.3333333333333333,
+      "speed_bonus": -0.12,
+      "turn_bonus": -0.15
+    }
+  },
+  "blast_fuse": {
+    "effects": {
+      "splash_bonus": 4.0,
+      "ammo_tax": 1
+    },
+    "effect": "全砲の爆発範囲 +4m / 1射あたり砲弾 +1発"
+  },
+  "drum_loader": {
+    "effects": {
+      "reload_bonus": 0.45,
+      "shot_fuel": 0.16
+    },
+    "effect": "射撃間隔 −45% / 消費砲弾1発あたり燃料0.16"
+  }
+}

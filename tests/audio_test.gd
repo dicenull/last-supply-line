@@ -39,10 +39,10 @@ func run():
 	game.set_process(false)
 	var sound = game.sound
 	check(silent() and is_equal_approx(sound.volume,0.35),"title starts silent with conservative default gain")
-	check(sound.streams.size() == 10 and sound.motor.stream.loop_end == 22050 and sound.motor.stream.format == AudioStreamWAV.FORMAT_16_BITS,"ten PCM effects and exact one-second motor loop")
+	check(sound.streams.size() == 11 and sound.motor.stream.loop_end == 22050 and sound.motor.stream.format == AudioStreamWAV.FORMAT_16_BITS,"eleven PCM effects and exact one-second motor loop")
 	for kind in sound.KINDS:
 		var stream = sound.streams[kind]
-		check(stream.get_length() > 0.1 and stream.get_length() <= 1.01,"bounded nonempty sound asset: "+kind)
+		check(stream.get_length() > 0.1 and stream.get_length() <= (2.71 if kind == "airdrop" else 1.01),"bounded nonempty sound asset: "+kind)
 	await click_at(game.menu.navigation.settings.get_rect().get_center())
 	await click_at(game.menu.mute_button.get_rect().get_center())
 	check(sound.volume == 0 and silent(),"speaker button mutes immediately")

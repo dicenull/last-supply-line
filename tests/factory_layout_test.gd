@@ -21,11 +21,10 @@ func _initialize():
 		check(f.ammo == f.ammo_capacity and f.fuel > 0,"central stocks feed magazine and rear engine: "+blueprint)
 		for p in Layout.PORTS:
 			check(f.cells[p].kind == Layout.PORTS[p] and f.cells[p].dir == Layout.DIRECTIONS.get(p,0),"fixed fitting retains identity and direction: "+str(p))
-		var before = f.layout()
-		for p in Layout.WALLS:
-			f.edit(p,"belt",0)
-			f.edit(p,"erase",0)
-		check(f.layout() == before,"central walls cannot be replaced or erased")
+		check(Layout.WALLS.all(func(p): return f.cells.has(p) and f.cells[p].kind == "armor_block" and f.cells[p].armor_hp == F.ARMOR_HITS),"central ring consists of real defense blocks")
+		var guard: Vector2i = Layout.WALLS[0]
+		f.edit(guard,"erase",0)
+		check(not f.cells.has(guard) and guard not in f.blocks,"starting armor can be removed")
 	var f = F.new(2)
 	f.auto_fire = false
 	var entries = [Vector2i(9,2),Vector2i(11,3),Vector2i(9,5),Vector2i(10,5)]

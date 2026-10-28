@@ -62,7 +62,7 @@ func run():
 	await key(KEY_1)
 	await click(screen(Vector2i(2,2)))
 	check(game.factory.cells[Vector2i(2,2)].kind == "furnace","furnace placed in 3D")
-	await key(KEY_Q)
+	await key(KEY_F)
 	check(game.factory.cells[Vector2i(2,2)].dir == 1,"3D hovered machinery rotates")
 	await click(screen(Vector2i(1,2)),MOUSE_BUTTON_RIGHT)
 	check(not game.factory.cells.has(Vector2i(1,2)),"right click removes deck equipment")

@@ -50,7 +50,7 @@ func select_item(uid: int):
 	if not game.inventory_state().editable: return
 	var item: Dictionary = game.Inventory.find_item(game.expedition,uid)
 	if item.is_empty(): return
-	if not game.Inventory.Catalog.part_slot(item.kind).is_empty():
+	if not game.Inventory.Catalog.part_slot(item.kind).is_empty() and not (game.Inventory.Catalog.part_slot(item.kind) == "cannon" and item.position != game.Inventory.STOWED):
 		game.select_equipment(uid)
 		return
 	if game.battle_mode: game.toggle_battle()
@@ -59,6 +59,7 @@ func select_item(uid: int):
 	selected_uid = uid
 	mode = "place"
 	game.inventory_panel.hide()
+	game.equipment_workspace.open_left()
 	game.factory.message = "装備の設置場所をタップ。倉庫ボタンでキャンセル。"
 	queue_redraw()
 
@@ -69,7 +70,7 @@ func cancel_placement(keep_selection: bool = false):
 	game.world.preview_equipment(game.factory,{},Vector2i(-1,-1))
 
 func blocked() -> bool:
-	return game.menu.visible or game.inventory_panel.visible or game.choice_popup.visible or game.shop_panel.visible
+	return game.menu.visible or game.inventory_panel.visible or game.choice_popup.visible or game.shop_panel.visible or (game.result_page != null and game.result_page.visible)
 
 func driving() -> bool:
 	return game.touch_enabled and not blocked() and game.battle_mode and game.started and game.factory.running and game.expedition.phase == "travel"
@@ -144,7 +145,12 @@ func handle_world_input(event) -> bool:
 			cancel_placement(true)
 		else: game.factory.message = "ここには配置できません。空いている枠をタップしてください。"
 	else:
-		var kind: String = game.factory.mounted_at(game.cell_at(event.position))
+		var cell = game.cell_at(event.position)
+		if game.factory.ports.get(cell,"") == "gun":
+			var cannon: Dictionary = game.Inventory.vehicle_parts(game.expedition).get("cannon",{})
+			if not cannon.is_empty(): select_item(cannon.uid)
+			return true
+		var kind: String = game.factory.mounted_at(cell)
 		if kind.is_empty(): return false
 		for item in game.expedition.gear_items:
 			if item.kind == kind and item.position != game.Inventory.STOWED:
@@ -166,7 +172,7 @@ func resized():
 		game.factory.running = false
 		game.clear_movement()
 		game.sound.stop_all()
-	if turned_portrait and not game.menu.visible: game.open_menu()
+	if turned_portrait and not game.menu.visible and game.expedition.phase in ["prepare","travel"]: game.open_menu()
 
 func _process(_delta): refresh()
 
@@ -176,7 +182,7 @@ func _notification(what: int):
 		release_stick()
 
 func footer_buttons_at(at: Vector2) -> Array:
-	if game.menu.visible or game.choice_popup.visible or game.shop_panel.visible: return []
+	if game.menu.visible or game.choice_popup.visible or game.shop_panel.visible or (game.result_page != null and game.result_page.visible): return []
 	if game.inventory_panel.visible and game.inventory_panel.occupied_rect().has_point(at): return []
 	var candidates: Array = []
 	for entry in game.icon_buttons:

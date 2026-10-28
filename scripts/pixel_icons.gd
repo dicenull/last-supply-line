@@ -8,7 +8,7 @@ const P = {
 	"rust":"905238", "rust_hi":"cb8651", "red":"a94735", "fire":"f39d3c", "yellow":"ffe88a",
 	"steel":"7f9e9f", "steel_hi":"c3dcce", "steel_dark":"466469", "inlet":"70d4cc", "wood":"80613e", "wood_hi":"b38d55"
 }
-const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo","disconnected","incompatible","empty","full","blocked","waiting","processing","ready","idle","sound","mute","volume_knob","menu","rich_site","hostile_site","shop","repair","settings","close","sort"]
+const KINDS = ["scrap","steel","shell","belt","furnace","press","splitter","depot","source","gun","play","pause","erase","rotate","reset","undo","save","load","example","clock","roof","roof_open","camera","battle","shield","victory","defeat","coal","fuel","refinery","engine","coal_source","move","retreat","exit","lock","road","mud","rubble","patrol","raiders","battery","autoload","cargo","disconnected","incompatible","empty","full","blocked","waiting","processing","ready","idle","sound","mute","volume_knob","menu","rich_site","hostile_site","shop","repair","settings","close","sort","back","forward"]
 var cache: Dictionary = {}
 var canvas: Image
 
@@ -76,6 +76,12 @@ func texture(kind: String) -> ImageTexture:
 	if cache.has(kind): return cache[kind]
 	canvas = Image.create(32,32,false,Image.FORMAT_RGBA8)
 	match kind:
+		"back", "forward":
+			poly([[2,16],[15,3],[15,11],[30,11],[30,22],[15,22],[15,30]],"deep")
+			poly([[5,16],[13,8],[13,14],[27,14],[27,19],[13,19],[13,25]],"steel_hi")
+			line(Vector2i(14,14),Vector2i(26,14),"white")
+			line(Vector2i(14,19),Vector2i(26,19),"steel_dark")
+			if kind == "forward": canvas.flip_x()
 		"sort":
 			for i in range(3):
 				rect(4,6+i*8,15-i*4,3,"steel_hi")
@@ -177,12 +183,21 @@ func texture(kind: String) -> ImageTexture:
 			rect(3,22,26,3,"wood_hi")
 			rect(3,26,26,2,"bronze")
 			for x in [4,27]: rivet(x,6)
-		"source":
-			poly([[3,7],[29,7],[25,20],[20,23],[20,29],[12,29],[12,23],[7,20]],"steel_dark")
-			poly([[5,8],[27,8],[23,19],[10,19]],"olive")
-			line(Vector2i(4,7),Vector2i(28,7),"steel_hi",2)
-			poly([[9,10],[14,8],[18,13],[22,10],[23,16],[11,17]],"rust_hi")
-			rect(14,23,4,5,"gold")
+		"source", "coal_source":
+			var frame = "rust" if kind == "source" else "ink"
+			plate(3,8,26,21,"bronze" if kind == "source" else "shade")
+			plate(2,4,28,6,"steel_dark")
+			for y in [4,8]: rect(2,y,28,2,frame)
+			for x in [2,28]: rect(x,4,2,6,frame)
+			for x in [3,27]: rect(x,10,2,19,frame)
+			rect(3,27,26,2,frame)
+			for x in [7,23]:
+				rect(x,5,2,23,frame)
+				for y in [7,26]: rivet(x,y)
+			plate(11,12,11,12,"ink")
+			if kind == "source":
+				for y in [15,20]: rect(13,y,7,2,"rust_hi")
+			else: poly([[16,14],[21,18],[16,22],[12,18]],"steel_hi")
 		"gun":
 			plate(3,24,25,5,"shade")
 			poly([[5,23],[7,12],[12,8],[23,10],[27,19],[24,24]],"olive")
@@ -249,7 +264,12 @@ func texture(kind: String) -> ImageTexture:
 				px(x+1,14,"steel_hi")
 			plate(5,6,23,4,"steel")
 			plate(12,3,9,3,"steel_dark")
-		"rotate", "reset", "undo":
+		"undo":
+			# A bent history arrow, separate from navigation and the rotation ring.
+			poly([[2,13],[15,2],[15,8],[24,8],[30,14],[30,29],[20,29],[20,19],[15,18],[15,24]],"deep")
+			poly([[5,13],[13,6],[13,11],[23,11],[27,15],[27,26],[23,26],[23,17],[20,15],[13,15],[13,20]],"gold_hi")
+			line(Vector2i(15,11),Vector2i(22,11),"cream")
+		"rotate", "reset":
 			# Stepped ring with a chunky arrowhead and shaded lower edge.
 			for y in range(4,29):
 				for x in range(4,29):
@@ -258,9 +278,6 @@ func texture(kind: String) -> ImageTexture:
 			line(Vector2i(14,5),Vector2i(20,5),"cream")
 			poly([[3,12],[12,3],[12,20]],"gold_hi")
 			if kind == "reset": line(Vector2i(12,12),Vector2i(20,20),"white",2)
-			if kind == "undo":
-				rect(12,14,11,4,"light")
-				poly([[9,16],[15,11],[15,21]],"white")
 		"save":
 			plate(4,3,25,27,"steel_dark")
 			plate(8,4,15,9,"steel")
@@ -420,7 +437,7 @@ func texture(kind: String) -> ImageTexture:
 			if kind == "roof_open":
 				rect(15,3,3,5,"gold_hi")
 				poly([[11,5],[20,5],[16,1]],"cream")
-		"coal", "coal_source":
+		"coal":
 			poly([[3,20],[7,9],[16,4],[24,10],[29,22],[19,28],[7,27]],"ink")
 			poly([[7,9],[16,4],[18,15],[10,20]],"shade")
 			poly([[18,15],[24,10],[29,22],[21,21]],"deep")

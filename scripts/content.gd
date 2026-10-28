@@ -39,8 +39,8 @@ const EQUIPMENT = EquipmentData.ITEMS
 const ALL_GUNS = EquipmentData.GUNS
 const GUNS = ["left_gun","right_gun","rapid_gun","long_gun","mortar_gun","rear_gun","scatter_gun","arc_gun"]
 const BLOCK_LIMITS = {"belt":80,"furnace":4,"press":4,"splitter":6,"depot":3,"refinery":3,
-	"smart_splitter":4,"priority_splitter":4,"overflow_gate":4,"router":3,"scrap_filter":6,"shell_filter":6,"fuel_filter":6,"blast_furnace":2,"auto_press":2,"fuel_depot":3,"armor_block":8}
-const STARTING_BLOCKS = {"belt":24,"furnace":2,"press":2,"splitter":2,"depot":2,"refinery":1,"armor_block":2}
+	"smart_splitter":4,"priority_splitter":4,"overflow_gate":4,"router":3,"scrap_filter":6,"shell_filter":6,"fuel_filter":6,"blast_furnace":2,"auto_press":2,"fuel_depot":3,"armor_block":17,"source":4,"coal_source":3}
+const STARTING_BLOCKS = {"belt":24,"furnace":2,"press":2,"splitter":2,"depot":2,"refinery":1,"armor_block":2,"fuel_depot":0,"source":0,"coal_source":0}
 const BUILD_COSTS = {
 	"belt":{"scrap":1,"coal":0},"furnace":{"scrap":6,"coal":1},"press":{"scrap":6,"coal":1},
 	"splitter":{"scrap":3,"coal":0},"depot":{"scrap":4,"coal":0},"refinery":{"scrap":6,"coal":2},
@@ -48,14 +48,16 @@ const BUILD_COSTS = {
 	"smart_splitter":{"scrap":6,"coal":1},"priority_splitter":{"scrap":5,"coal":1},
 	"overflow_gate":{"scrap":6,"coal":1},"router":{"scrap":7,"coal":1},
 	"scrap_filter":{"scrap":3,"coal":0},"shell_filter":{"scrap":3,"coal":0},"fuel_filter":{"scrap":3,"coal":0},
-	"blast_furnace":{"scrap":10,"coal":3},"auto_press":{"scrap":10,"coal":2},"fuel_depot":{"scrap":6,"coal":1}
+	"blast_furnace":{"scrap":10,"coal":3},"auto_press":{"scrap":10,"coal":2},"fuel_depot":{"scrap":8,"coal":3},"source":{"scrap":24,"coal":10},"coal_source":{"scrap":20,"coal":12}
 }
 const BASIC_BLOCKS = {
+	"source":{"name":"廃材備蓄ブロック","icon":"scrap","effect":"共通の廃材在庫から1秒ごとに搬出 / 初期分を含め4基まで"},
+	"coal_source":{"name":"石炭備蓄ブロック","icon":"coal","effect":"共通の石炭在庫から1秒ごとに搬出 / 初期分を含め3基まで"},
 	"belt":{"name":"搬送路","icon":"belt","effect":"素材を次のマスへ搬送"},
 	"furnace":{"name":"精錬炉","icon":"furnace","effect":"廃材から鋼材を生産"},
 	"press":{"name":"砲弾プレス","icon":"press","effect":"鋼材から砲弾を生産"},
 	"splitter":{"name":"分配器","icon":"splitter","effect":"前方と右へ交互に搬送"},
-	"depot":{"name":"備蓄庫","icon":"depot","effect":"素材を8個まで備蓄"},
+	"depot":{"name":"弾薬備蓄庫","icon":"depot","effect":"砲弾8発を備蓄・搬送"},
 	"refinery":{"name":"燃料精製機","icon":"refinery","effect":"石炭から燃料を生産"},
 	"armor_block":{"name":"防御ブロック","icon":"shield","effect":"周囲8マスを3回防護 / 車体被害半減 / 搬送不可"}
 }
@@ -96,7 +98,7 @@ const BLOCKS = {
 	"shell_filter":{"name":"砲弾フィルター","icon":"shell","base":"belt","limit":6,"effect":"砲弾だけを通す"},
 	"fuel_filter":{"name":"燃料フィルター","icon":"fuel","base":"belt","limit":6,"effect":"燃料缶だけを通す"},
 	"blast_furnace":{"name":"高炉","icon":"furnace","base":"furnace","limit":2,"effect":"廃材→鋼材 0.75秒 / 石炭1消費"},
-	"auto_press":{"name":"動力プレス","icon":"press","base":"press","limit":2,"effect":"鋼材→砲弾 1秒 / 燃料0.08消費"},
+	"auto_press":{"name":"動力プレス","icon":"press","base":"press","limit":2,"effect":"鋼材1→砲弾2 / 1秒・燃料0.30消費"},
 	"fuel_depot":{"name":"燃料備蓄庫","icon":"fuel","base":"depot","limit":3,"effect":"燃料缶8個を備蓄・搬送"}
 }
 const REWARDS = {

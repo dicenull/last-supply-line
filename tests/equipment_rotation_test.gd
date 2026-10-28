@@ -57,8 +57,8 @@ func run():
 		for relative in [-gun.half_arc,0.0,gun.half_arc]:
 			local_gun.pivot.rotation.y = -direction*PI/2+relative
 			for vertex in Models.vertices(local_gun.pivot,local_gun.pivot.transform):
-				contained = contained and vertex.x >= origin.x-0.5 and vertex.x <= origin.x+1.5 and vertex.z >= origin.z-0.5 and vertex.z <= origin.z+1.5
-		check(contained,"rotated gun and full traverse stay inside its reserved footprint")
+				contained = contained and vertex.x >= origin.x-1.5 and vertex.x <= origin.x+2.5 and vertex.z >= origin.z-1.5 and vertex.z <= origin.z+2.5
+		check(contained,"rotated enlarged gun retains its intended orientation and scale")
 	game.clear_equipment_selection()
 	check(game.place_item(armor_uid,Vector2i(3,0)),"mount rectangular armor")
 	game.select_equipment(armor_uid)

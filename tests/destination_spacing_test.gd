@@ -31,11 +31,13 @@ func run():
 		repeatable = repeatable and schema.valid_route(route) and course.destinations == replay.destinations and course.segments == replay.segments and course.hazard_sites() == replay.hazard_sites()
 		var xs = course.destinations.map(func(site): return site.position.x)
 		var zs = course.destinations.map(func(site): return site.position.z)
-		varied = varied and xs.max()-xs.min() >= 20 and zs.min() < course.trunk.back().z and zs.max() > course.trunk.back().z
+		if model.sector < 5:
+			varied = varied and xs.max()-xs.min() >= 20 and zs.min() < course.trunk.back().z and zs.max() > course.trunk.back().z
+		else: varied = varied and course.destinations.size() == 1 and course.destinations[0].get("final_base",false)
 		var obstacles = Obstacles.new()
 		for site in course.destinations:
-			obstacles.barriers.append_array(Run.Defenses.fences(site.position))
-			for at in Run.Defenses.mines(site.position):
+			obstacles.barriers.append_array(Run.Defenses.fences(site.position,site.get("final_base",false)))
+			for at in Run.Defenses.mines(site.position,site.get("final_base",false)):
 				obstacles.mines.append({"position":at,"spent":false})
 				bounded = bounded and course.bounds.grow(-5).has_point(Vector2(at.x,at.z))
 			for other in course.destinations:
@@ -48,13 +50,15 @@ func run():
 				roads_clear = roads_clear and obstacles.clear_pose(at,yaw) and obstacles.triggered(at,yaw).is_empty()
 		obstacles.free()
 	check(separated,"256 fields keep every pair of destinations at least 90m apart")
-	check(varied,"destinations vary in depth and spread to both sides of the junction")
+	check(varied,"ordinary destinations spread in both axes; final sector has one large base")
 	check(repeatable,"seed and generation version reproduce roads, rewards and hazards")
 	check(bounded,"map bounds contain every road and complete perimeter minefield")
 	check(roads_clear,"every branch and connector avoids all perimeter fences and mines")
 	var old = Run.new(42)
 	old.enable_items()
 	old.current.erase("destination_layout_version")
+	old.current.erase("map_shape_version")
+	old.current.erase("map_shape")
 	var legacy = Course.new(old.current)
 	check(schema.valid_route(old.current) and legacy.destinations[0].position.distance_to(legacy.destinations[1].position) < 70,"existing saves retain the original close destination layout")
 	old.current.destination_layout_version = 2

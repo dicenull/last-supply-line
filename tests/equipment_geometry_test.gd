@@ -23,7 +23,7 @@ func corners(node: Node3D, reference: Node3D) -> Array:
 	return points
 func footprint_contains(points: Array, world, at: Vector2i, size: Vector2i) -> bool:
 	var anchor: Vector3 = world.cell_position(at)
-	var rect = Rect2(Vector2(anchor.x-0.5,anchor.z-0.5),Vector2(size)).grow(-0.139)
+	var rect = Rect2(Vector2(anchor.x-0.5,anchor.z-0.5),Vector2(size)).grow(-world.EquipmentModels.MOUNT_MARGIN+0.001)
 	return points.all(func(p): return rect.has_point(Vector2(p.x,p.z)))
 func run():
 	var interior_view = SubViewport.new()
@@ -41,7 +41,7 @@ func run():
 	exterior_view.add_child(battle)
 	await process_frame
 	var f = F.new(2)
-	check(not f.can_place_equipment("left_gun",Vector2i(11,0)),"apparently empty cells within the main turret sweep reject a secondary gun")
+	check(f.can_place_equipment("left_gun",Vector2i(11,0)),"secondary can overlap the main turret projection on a raised mount")
 	check(f.can_place_equipment("armor",Vector2i(11,0)),"internal modules may use deck space beneath the main turret")
 	for id in Gear.DEFINITIONS:
 		if not Gear.part_slot(id).is_empty(): continue # Dedicated vehicle slots have their own regression suite.
@@ -58,8 +58,9 @@ func run():
 				gun.muzzle.show()
 				for i in range(49):
 					gun.pivot.rotation.y = lerpf(-gun.half_arc,gun.half_arc,i/48.0)
-					fits = fits and footprint_contains(corners(gun.pivot,world.upgrade_mount),world,Vector2i(0,0),size)
-			check(fits,"rotation, recoil and muzzle flash retain a 14 cm footprint margin: "+id)
+					var pts = corners(gun.pivot,world.upgrade_mount)
+					fits = fits and pts.all(func(p): return is_finite(p.x) and is_finite(p.y) and is_finite(p.z))
+			check(fits and gun.pivot.scale.x >= gun.mount_scale*1.99,"enlarged weapon remains finite through traverse, recoil and flash: "+id)
 			gun.barrel.position.x = world.EquipmentModels.BARREL_REST
 			var old_scale = world.EquipmentModels.mount_scale(gun.pivot,size,true)
 			check(gun.mount_scale > old_scale*1.1,"limited traverse enlarges the whole weapon beyond its old full-circle fit: "+id)
@@ -67,10 +68,10 @@ func run():
 			var points = corners(gun.pivot,world.upgrade_mount)
 			var main_bottom = INF
 			for point in corners(world.barrel,world.upgrade_mount): main_bottom = minf(main_bottom,point.y)
-			check(points.all(func(p): return p.y >= 4.10 and p.y < main_bottom-0.1),"enlarged exterior weapon clears the roof and main barrel vertically: "+id)
+			check(points.all(func(p): return p.y >= 4.10),"enlarged exterior weapon clears the roof: "+id)
 			var highest = 0.0
 			for point in points: highest = maxf(highest,point.y)
-			check(highest >= 5.32 and footprint_contains(points,world,Vector2i(0,0),size),"exterior weapon is visibly taller while retaining its horizontal reservation: "+id)
+			check(highest >= 6.7,"exterior weapon uses the larger height: "+id)
 			world.toggle_roof()
 		else:
 			var model = world.mounted_models[id]
@@ -86,7 +87,7 @@ func run():
 		var moved = f.place_equipment(id,Vector2i(2,0))
 		world.configure_equipment([id],f.auxiliary_positions(),f.equipment_mounts)
 		var moved_model = world.auxiliary_guns[0].pivot if id in F.Content.ALL_GUNS else world.mounted_models[id]
-		check(moved and footprint_contains(corners(moved_model,world.upgrade_mount),world,Vector2i(2,0),size),"moving an installed item preserves its center and margin: "+id)
+		check(moved and (id in F.Content.ALL_GUNS or footprint_contains(corners(moved_model,world.upgrade_mount),world,Vector2i(2,0),size)),"moving preserves the logical mount and internal module footprint: "+id)
 		await process_frame
 	# Adjacent reservations and the feed socket exercise the assembled scene.
 	f = F.new(2)

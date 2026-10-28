@@ -266,7 +266,7 @@ func build_field(world):
 static func mine_count(route: Dictionary) -> int:
 	var count = layout(route).size()*3
 	if route.get("defenses_version",0) == 1:
-		count += int(route.destination_count)*Defenses.mines(Vector3.ZERO).size()
+		count += int(route.destination_count)*Defenses.mines(Vector3.ZERO,route.get("final_base_version",0) == 1).size()
 	return count
 
 func build_destination_defenses(world):
@@ -274,7 +274,7 @@ func build_destination_defenses(world):
 		var perimeter = Node3D.new()
 		perimeter.name = "DestinationPerimeter"
 		add_child(perimeter)
-		for rect in Defenses.fences(site.position):
+		for rect in Defenses.fences(site.position,site.get("final_base",false)):
 			barriers.append(rect)
 			var center: Vector2 = rect.get_center()
 			var along_x = rect.size.x > rect.size.y
@@ -289,4 +289,4 @@ func build_destination_defenses(world):
 				world.box(perimeter,at+Vector3(0,1.5,0),Vector3(0.35,3,0.35),"machine_iron")
 				world.box(perimeter,at+Vector3(0,0.3,0),Vector3(1,0.6,1),"stone")
 			world.beam(perimeter,start+Vector3(0,0.8,0),finish+Vector3(0,2.5,0),0.09,"machine_hot",6)
-		for at in Defenses.mines(site.position): add_mine(world,at)
+		for at in Defenses.mines(site.position,site.get("final_base",false)): add_mine(world,at)

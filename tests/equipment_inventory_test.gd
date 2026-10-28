@@ -40,9 +40,9 @@ func run():
 	var reserves = game.factory.reserves.duplicate()
 	var enemy = game.battlefield.enemies[0]
 	game.battlefield.kill_enemy(enemy,game.factory,enemy.node.position)
-	check(game.factory.reserves == reserves and game.battlefield.ground_items.size() == 1,"kill leaves materials on the ground without granting them")
+	check(game.factory.reserves == reserves and game.battlefield.ground_items.size() == 2,"kill leaves materials on the ground without granting them")
 	collect_near(game,enemy.node.position)
-	check(game.expedition.gear_items.size() == inventory_count and game.factory.reserves.scrap == reserves.scrap+2 and game.factory.reserves.coal == reserves.coal,"ordinary enemy awards scrap without equipment")
+	check(game.expedition.gear_items.size() == inventory_count and game.factory.reserves.scrap == reserves.scrap+2 and game.factory.reserves.coal == reserves.coal+1,"ordinary enemy awards scrap and coal without equipment")
 	reserves = game.factory.reserves.duplicate()
 	game.battlefield.kill_enemy(enemy,game.factory,enemy.node.position)
 	check(game.expedition.gear_items.size() == inventory_count and game.factory.reserves == reserves,"same enemy cannot award twice")
@@ -66,7 +66,7 @@ func run():
 	third.role = 0
 	b.kill_enemy(third,game.factory,third.node.position)
 	collect_near(game,third.node.position)
-	check(game.factory.reserves.scrap == reserves.scrap+4 and game.factory.reserves.coal == reserves.coal+1 and game.expedition.gear_items.size() == inventory_count,"crane adds materials on the third kill without equipment")
+	check(game.factory.reserves.scrap == reserves.scrap+5 and game.factory.reserves.coal == reserves.coal+3 and game.expedition.gear_items.size() == inventory_count,"crane and second-combo bonus both add materials without equipment")
 	reserves = game.factory.reserves.duplicate()
 	var boss = b.enemies.back()
 	b.kill_enemy(boss,game.factory,boss.node.position)

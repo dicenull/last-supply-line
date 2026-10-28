@@ -72,11 +72,11 @@ func run():
 			b.movement_direction = Vector3.RIGHT
 			game._process(0.1)
 			check(b.result == 1 and b.goal.contains_position(b.player.position) and b.kills < b.total,"driving into facility clears with surviving enemies: "+label)
-			check(game.expedition.phase == "reward" and b.hull == 100 and f.wrecks.is_empty() and f.cells[destroyed].dir == 3,"entry triggers reward and full repair once: "+label)
+			check(game.expedition.phase == "reward" and b.hull == 61 and f.wrecks.is_empty() and f.cells[destroyed].dir == 3,"entry triggers reward and line repair without healing hull: "+label)
 			check(not f.running and game.destination_text() == "あと0m" and game.checkpoint.validate(game.checkpoint.snapshot(game)),"arrival stops combat and saves with enemies still alive: "+label)
 			var final_position = b.player.position
 			game._process(1.0)
-			check(b.player.position == final_position and b.hull == 100,"combat remains stopped while choosing rewards: "+label)
+			check(b.player.position == final_position and b.hull == 61,"combat remains stopped while choosing rewards: "+label)
 			# Killing every enemy outside the yard is insufficient.
 			b.result = 0
 			b.player.position = Vector3(length+4,0,12)

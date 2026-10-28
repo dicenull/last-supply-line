@@ -33,12 +33,14 @@ func refresh():
 	visible = state.get("visible",false)
 	button.disabled = not state.get("allowed",false)
 	var action_rect = RECT
+	var footer: Rect2 = state.get("footer",Rect2(16,848,1408,80))
+	action_rect.position.y = minf(action_rect.position.y,footer.position.y-action_rect.size.y-12)
 	var occupied: Rect2 = state.get("occupied",Rect2())
 	if action_rect.intersects(occupied):
 		action_rect.position.x = occupied.position.x-action_rect.size.x-12
 	button.position = action_rect.position
 	face.position = action_rect.position
-	button.tooltip_text = "一括修復 / 廃材 %d" % int(state.get("cost",0))
+	button.tooltip_text = "ライン修復 / 廃材 %d（車体HPは回復しません）" % int(state.get("cost",0))
 	face.queue_redraw()
 
 func draw_face():

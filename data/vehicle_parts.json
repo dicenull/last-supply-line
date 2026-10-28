@@ -1,7 +1,7 @@
 [
   {
     "id": "vehicle_gear",
-    "name": "標準変速機",
+    "name": "常時噛合変速機",
     "slot": "gear",
     "genre": "vehicle",
     "size": [
@@ -23,7 +23,7 @@
   },
   {
     "id": "vehicle_gear_speed",
-    "name": "高速ギア",
+    "name": "遊星歯車変速機",
     "slot": "gear",
     "genre": "vehicle",
     "size": [
@@ -47,7 +47,7 @@
   },
   {
     "id": "vehicle_gear_torque",
-    "name": "高トルクギア",
+    "name": "二重差動変速機",
     "slot": "gear",
     "genre": "vehicle",
     "size": [
@@ -71,7 +71,7 @@
   },
   {
     "id": "vehicle_engine",
-    "name": "直列エンジン",
+    "name": "直列6気筒エンジン",
     "slot": "engine",
     "genre": "vehicle",
     "size": [
@@ -93,7 +93,7 @@
   },
   {
     "id": "vehicle_engine_power",
-    "name": "大型過給エンジン",
+    "name": "HL230式V12",
     "slot": "engine",
     "genre": "vehicle",
     "size": [
@@ -116,7 +116,7 @@
   },
   {
     "id": "vehicle_engine_efficient",
-    "name": "高効率エンジン",
+    "name": "6046式双列ディーゼル",
     "slot": "engine",
     "genre": "vehicle",
     "size": [
@@ -139,7 +139,7 @@
   },
   {
     "id": "vehicle_tracks",
-    "name": "標準履帯",
+    "name": "鋼製平板履帯",
     "slot": "tracks",
     "genre": "vehicle",
     "size": [
@@ -161,7 +161,7 @@
   },
   {
     "id": "vehicle_tracks_wide",
-    "name": "幅広履帯",
+    "name": "ダックビル拡幅履帯",
     "slot": "tracks",
     "genre": "vehicle",
     "size": [
@@ -185,7 +185,7 @@
   },
   {
     "id": "vehicle_tracks_light",
-    "name": "軽量履帯",
+    "name": "ゴムパッド軽量履帯",
     "slot": "tracks",
     "genre": "vehicle",
     "size": [
@@ -208,7 +208,7 @@
   },
   {
     "id": "vehicle_cannon",
-    "name": "標準主砲",
+    "name": "6ポンド型戦車砲",
     "slot": "cannon",
     "genre": "vehicle",
     "size": [
@@ -228,11 +228,13 @@
       "main_reload_bonus": 0.08,
       "main_range_bonus": 2.0
     },
-    "ballistics": "heavy"
+    "ballistics": "heavy",
+    "ammo": 1,
+    "damage": 1
   },
   {
     "id": "vehicle_cannon_long",
-    "name": "長砲身主砲",
+    "name": "長砲身75mm型主砲",
     "slot": "cannon",
     "genre": "vehicle",
     "size": [
@@ -252,11 +254,13 @@
       "main_range_bonus": 12.0,
       "main_reload_bonus": -0.18
     },
-    "ballistics": "sniper"
+    "ballistics": "sniper",
+    "ammo": 2,
+    "damage": 4
   },
   {
     "id": "vehicle_cannon_howitzer",
-    "name": "大口径榴弾主砲",
+    "name": "105mm型榴弾主砲",
     "slot": "cannon",
     "genre": "vehicle",
     "size": [
@@ -277,6 +281,8 @@
       "main_reload_bonus": -0.22,
       "main_range_bonus": -4.0
     },
-    "ballistics": "demolition"
+    "ballistics": "demolition",
+    "ammo": 3,
+    "damage": 3
   }
 ]
