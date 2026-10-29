@@ -2,6 +2,7 @@ extends RefCounted
 ## Shared visual resources; views do not need a game controller to draw themselves.
 const BG = Color("171c18")
 const PANEL = Color("2d342b")
+const OVERLAY_PANEL = Color(0.10,0.13,0.11,0.76)
 const INK = Color("f2eddf")
 const MUTED = Color("bdc0aa")
 const GOLD = Color("e6bd73")
@@ -18,20 +19,22 @@ const ICON_MIN = 24
 const PRIMARY_ICON_SIZE = 32
 
 
-var font: Font = ThemeDB.fallback_font
+const BODY_FONT = preload("res://assets/fonts/BIZUDPGothic-Regular.ttf")
+const BOLD_FONT = preload("res://assets/fonts/BIZUDPGothic-Bold.ttf")
+const HEADING_FONT = preload("res://assets/fonts/DelaGothicOne-Regular.ttf")
+var font: Font = BODY_FONT
+var bold_font: Font = BOLD_FONT
+var heading_font: Font = HEADING_FONT
 var pixel_icons = preload("res://scripts/pixel_icons.gd").new()
 
 static func create_font() -> Font:
-	if OS.has_feature("web"):
-		return ThemeDB.get_project_theme().default_font
-	var system_font = SystemFont.new()
-	system_font.font_names = PackedStringArray(["Helvetica Neue","Hiragino Sans","sans-serif"])
-	system_font.font_weight = 600
-	# Menu frames scale independently of the viewport. MSDF keeps their glyphs
-	# sharp at fractional scales instead of enlarging a small bitmap cache.
-	system_font.multichannel_signed_distance_field = true
-	system_font.msdf_size = 96
-	return system_font
+	return BODY_FONT
+
+static func create_bold_font() -> Font:
+	return BOLD_FONT
+
+static func create_heading_font() -> Font:
+	return HEADING_FONT
 
 static func style(color: Color, border: Color = Color.TRANSPARENT) -> StyleBoxFlat:
 	var s = StyleBoxFlat.new()

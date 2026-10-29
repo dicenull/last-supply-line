@@ -89,7 +89,7 @@ func option_rect(index: int) -> Rect2:
 
 func refresh():
 	read_models()
-	visible = expedition.phase in ["craft","reward","route"] and not models_provider.call().get("cinematic",false)
+	visible = expedition.phase in ["craft","reward","route"] and not (expedition.item_mode and expedition.phase == "reward") and not models_provider.call().get("cinematic",false)
 	var crafting = expedition.phase == "craft"
 	continue_button.visible = crafting
 	for i in range(page_buttons.size()):

@@ -288,6 +288,9 @@ func spur_gear(root: Node3D, center: Vector3, radius: float, trim: String):
 	hub.rotation.x = PI/2
 
 func build_vehicle_part(root: Node3D, spec: Dictionary, trim: String):
+	if spec.has("historical_model"):
+		preload("res://scripts/historical_part_model.gd").build(self,root,spec)
+		return
 	var variant = int(spec.visual)
 	match spec.slot:
 		"gear":

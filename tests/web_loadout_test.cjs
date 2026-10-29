@@ -7,9 +7,20 @@ const assert = require('node:assert/strict');
 const base = process.env.WEB_URL || 'http://127.0.0.1:8791';
 const out = path.resolve(process.env.WEB_AUDIT_DIR || 'build/web-loadout-audit');
 const results = [], errors = [], logs = [];
+let lastActionAt = 0;
 function check(ok, label) { assert.ok(ok,label); results.push(label); console.log('PASS web loadout:',label); }
 async function readSave(page,label) {
-  await page.waitForTimeout(1800);
+  // IndexedDB sync is asynchronous and can outlive a rendered frame in headless WebGL.
+  await page.waitForFunction(async since=>{
+    if(!(await indexedDB.databases()).some(d=>d.name==='/userfs')) return false;
+    return new Promise(resolve=>{
+      const request=indexedDB.open('/userfs');
+      request.onsuccess=()=>{const db=request.result,tx=db.transaction('FILE_DATA','readonly'),cursor=tx.objectStore('FILE_DATA').openCursor();let fresh=false;
+        cursor.onsuccess=()=>{const c=cursor.result;if(c){if(String(c.key).endsWith('/run_save.mfv'))fresh=new Date(c.value.timestamp).getTime()>=since;c.continue();}};
+        tx.oncomplete=()=>{db.close();resolve(fresh);};
+      };
+    });
+  },lastActionAt,{timeout:60000,polling:250});
   const bytes = await page.evaluate(async () => {
     const info = (await indexedDB.databases()).find(d=>d.name==='/userfs');
     if (!info) return null;
@@ -37,7 +48,7 @@ async function readSave(page,label) {
   const dpr=Number(process.env.DPR||1);
   const titlePoints=JSON.parse(fs.readFileSync('build/catalog-ui/title-geometry.json'))[touch?'844':'1440'];
   const panePoints=JSON.parse(fs.readFileSync('build/loadout-ui/geometry.json'))[touch?'844':'1440'];
-  const browser=await chromium.launch({headless:false});
+  const browser=await chromium.launch({headless:true});
   try {
     const context=await browser.newContext({viewport:touch?{width:844,height:390}:{width:1440,height:940},isMobile:touch,hasTouch:touch,deviceScaleFactor:dpr});
     const page=await context.newPage();
@@ -45,11 +56,11 @@ async function readSave(page,label) {
     page.on('console',m=>{logs.push(m.type()+': '+m.text());if(m.type()==='error'||/SCRIPT ERROR|ERROR:/.test(m.text())) errors.push(m.text());});
     page.on('pageerror',e=>errors.push(e.message));
     async function load(){await page.goto(base,{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>!document.querySelector('#loading'),{},{timeout:120000});await page.waitForTimeout(1500);}
-    async function click(x,y){if(touch){await touchSession.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{id:0,x,y}]});await page.waitForTimeout(120);await touchSession.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});}else await page.mouse.click(x,y,{delay:120});await page.waitForTimeout(250);}
+    async function click(x,y){lastActionAt=Date.now();if(touch){await touchSession.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{id:0,x,y}]});await page.waitForTimeout(120);await touchSession.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});}else await page.mouse.click(x,y,{delay:120});await page.waitForTimeout(250);}
     async function game(x,y){const {width,height}=page.viewportSize(),s=Math.min(width/1440,height/940);await click((width-1440*s)/2+x*s,(height-940*s)/2+y*s);}
     async function menu(x,y){const {width,height}=page.viewportSize(),s=Math.min(Math.max(Math.min(width/1440,height/940),0.9),(width-32)/480);await click((width-480*s)/2+(x-480)*s,(height-Math.min(748*s,height-32))/2+(y-96)*s);}
     async function footer(id){await click(...panePoints.footer[id]);}
-    async function inventory(x,y){const {origin,scale}=panePoints.right;await click(origin[0]+x*scale,origin[1]+y*scale);if(x===358 && y===28 && !panePoints.narrow) await click(...panePoints.left_close);}
+    async function inventory(x,y){const {origin,scale}=panePoints.right;await click(origin[0]+x*scale,origin[1]+y*scale);}
     async function save(label){await footer('menu');await menu(700,308);const result=await readSave(page,label);await menu(700,252);return result;}
     await load();
     await click(...titlePoints.catalog);

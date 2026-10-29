@@ -36,10 +36,13 @@ Godot 4.7のローポリ3D工場構築・戦闘ゲーム。戦車の内部に弾
 - [操作・画面表示](docs/CONTROLS.md) — 全キー操作、配置プレビュー、HUD、音量
 - [ゲームルール](docs/GAMEPLAY.md) — 生産、資源、建設費、装備、敵、経路
 - [装備・ドロップ](docs/EQUIPMENT.md) — レアリティ、解体、配置、出撃後の固定
+- [史実パーツと出典](docs/HISTORICAL_PARTS.md) — 6か国・12種の機構、レア度、性能とモデル
 - [保存・再開](docs/SAVING.md) — 中断保存、出撃履歴、配置テンプレート
 - [起動・ビルド](docs/BUILDING.md) — ローカル起動、PCK・macOSアプリの書き出し
 - [Web版の手順](web/README.md) — ブラウザ版のビルド・公開
 
 ## 開発資料
+
+[AI開発者の入口](AGENTS.md) · [AI開発フロー・引き継ぎ知識](docs/AI_DEVELOPMENT.md)
 
 [設計・現行仕様](DESIGN.md) · [戦闘状態の責務](docs/BATTLE_STATE.md) · [テスト手順](TESTING.md) · [開発記録](ROADMAP.md) · [監査記録](AUDIT.md) · [今後の追加](docs/TODO.md)

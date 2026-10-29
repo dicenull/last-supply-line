@@ -50,6 +50,7 @@ func capture(name):
 	game._process(0)
 	await process_frame
 	await process_frame
+	if DisplayServer.get_name() == "headless": return
 	RenderingServer.force_draw()
 	root.get_texture().get_image().save_png("res://build/loadout-ui/"+name+".png")
 func run():
@@ -89,7 +90,7 @@ func run():
 			await process_frame
 			check(panel.get_global_rect().is_equal_approx(stable),"inventory position stays stable after opening")
 			await key(KEY_I)
-			check(not panel.visible and root.get_final_transform().is_equal_approx(original_transform),"closing I preserves game position")
+			check(not panel.visible and not left.visible and root.get_final_transform().is_equal_approx(original_transform),"closing I preserves game position")
 		game.equipment_workspace.close_all()
 		game.touch_controls.refresh()
 		await click(game.touch_controls.buttons.loadout)
@@ -98,6 +99,11 @@ func run():
 		check(panel.visible,"footer E remains clickable while a pane is open")
 		await click(game.touch_controls.buttons.warehouse)
 		check(not panel.visible,"footer E closes the right pane")
+		check(not left.visible,"closing the right pane also closes parameters")
+		game.equipment_workspace.open_left()
+		game.equipment_workspace.open_right()
+		await click(panel.close_button)
+		check(not left.visible and not panel.visible,"inventory close button closes both panes")
 		game.equipment_workspace.close_all()
 		await key(KEY_E)
 		check(panel.visible,"E opens warehouse")
@@ -163,6 +169,11 @@ func run():
 		var panel_scale = (root.get_final_transform()*panel.get_global_transform()).get_scale().x
 		var left_close = root.get_final_transform()*left.close_button.get_global_rect().get_center()
 		geometry[str(dimensions.x)] = {"footer":footer_points,"right":{"origin":[origin.x,origin.y],"scale":panel_scale,"height":panel.size.y,"page_size":panel.page_size},"narrow":game.equipment_workspace.narrow,"left_close":[left_close.x,left_close.y]}
+		# The sortie FAB moves aside for the warehouse. Browser departure happens with panes closed.
+		game.equipment_workspace.close_all()
+		game._process(0)
+		var sortie_point = root.get_final_transform()*game.start_button.get_global_rect().get_center()
+		geometry[str(dimensions.x)].footer.play = [sortie_point.x,sortie_point.y]
 		# Placement leaves the comparison visible after closing the warehouse.
 		var uid = game.expedition.gear_items[1].uid
 		game.equipment_workspace.open_right()

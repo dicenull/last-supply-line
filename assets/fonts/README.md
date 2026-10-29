@@ -1,4 +1,30 @@
-# Noto Sans JP
+# 日本語フォント
+
+現在はタイトル・クリア見出しに **Dela Gothic One**、本文・数値・操作UIに **BIZ UDPGothic Regular/Bold** を使う。PC・Web共通の `web_theme.tres` を `gui/theme/custom` から適用する。`scripts/ui_style.gd` が3つのフォントリソースを共有する。MSDF生成サイズは96。
+
+- Dela配布元: https://github.com/google/fonts/tree/main/ofl/delagothicone （原作者: https://github.com/syakuzen/DelaGothic）
+- BIZ配布元: https://github.com/google/fonts/tree/main/ofl/bizudpgothic （原作者: https://github.com/googlefonts/morisawa-biz-ud-gothic）
+- 取得日: 2026-10-29。TTFは未改変。
+- ライセンス: SIL Open Font License 1.1。各書体の `*-OFL.txt` を同梱する。
+- ページ側は `web/fonts/` の同じ3ファイルのWOFF2を使用。文字の削減なし。
+- `tools/export_web.py` がWOFF2と各書体の `*-LICENSE.txt` を配信先へコピーする。macOSのPCKにもTTFとライセンスを含める。
+
+WOFF2の再生成:
+
+```sh
+python3 -m pip install --target build/font-tools 'fonttools[woff]==4.60.1'
+PYTHONPATH=build/font-tools python3 - <<'PYFONT'
+from fontTools.ttLib import TTFont
+for name in ['DelaGothicOne-Regular', 'BIZUDPGothic-Regular', 'BIZUDPGothic-Bold']:
+    font = TTFont(f'assets/fonts/{name}.ttf')
+    font.flavor = 'woff2'
+    font.save(f'web/fonts/{name}.woff2')
+PYFONT
+```
+
+以下は以前のNoto Sans JP導入記録。現在は参照を外し、配布PCKから除外している。
+
+## Noto Sans JP（旧版）
 
 Web版はOSの日本語フォントを参照できないため、このフォントを同梱する。
 NotoSansJP.ttfはGoogle Fontsの公式リポジトリから取得した未改変の可変フォント。

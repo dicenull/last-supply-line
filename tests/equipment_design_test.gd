@@ -10,8 +10,8 @@ func check(ok: bool, label: String):
 		failures += 1
 		push_error(label)
 func _initialize():
-	check(Data.ITEMS.size() == 312 and Data.DEFINITIONS.size() == 312,"all historical item IDs remain loadable")
-	check(Data.ACTIVE_IDS.size() == 28 and not "right_gun" in Data.ACTIVE_IDS,"sixteen distinct accessories and twelve chassis parts")
+	check(Data.ITEMS.size() == 324 and Data.DEFINITIONS.size() == 324,"all historical item IDs remain loadable")
+	check(Data.ACTIVE_IDS.size() == 40 and not "right_gun" in Data.ACTIVE_IDS,"sixteen distinct accessories and twenty-four chassis parts")
 	var families = {}
 	var names = {}
 	for id in Data.ACTIVE_IDS:
@@ -29,6 +29,6 @@ func _initialize():
 	check(Data.ITEMS.rear_gun.get("interceptor",false) and not Data.ITEMS.left_gun.get("interceptor",false),"interception and direct fire have different jobs")
 	check(Data.ITEMS.skirts.effects.has("blast_reduction") and not Data.ITEMS.skirts.effects.has("damage_reduction"),"blast screens differ from universal armour")
 	check(Data.ITEMS.vehicle_cannon_long.damage == 4 and Data.ITEMS.vehicle_cannon_long.ammo == 2 and Data.ITEMS.vehicle_cannon_howitzer.ammo == 3,"main guns exchange ammo consumption for anti-armour or area power")
-	check(Catalog.models(10).size() == 28 and Catalog.models(1).size() == 28,"levels never reintroduce minor variants")
+	check(Catalog.models(10).size() == 40 and Catalog.models(1).size() == 40,"levels never reintroduce minor variants")
 	print("EQUIPMENT DESIGN RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)

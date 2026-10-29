@@ -52,13 +52,16 @@ func _initialize():
 				for offer in r.current.shop_offers:
 					var id: String = offer.trim_prefix("gear:")
 					families[Gear.family(id)] = true
-					shop_valid = shop_valid and Gear.level(id) <= sector*2 and Run.Services.price(offer) == 28+4*Gear.level(id)
+					shop_valid = shop_valid and Gear.level(id) <= sector*2 and Run.Services.price(offer) == Gear.Data.ITEMS[id].shop_price
 				shop_valid = shop_valid and families.size() == 3
 		check(rewards_valid,"clear rewards offer current designs without legacy minor variants")
 		check(shop_valid and (shops == 0 if sector == 5 else shops > 10),"ordinary shops sell three distinct families; final base has no shop: shops=%d, offers_valid=%s" % [shops,shop_valid])
-	check(seen.size() == Gear.Data.ACTIVE_IDS.size(),"all accessories and vehicle parts are obtainable through real enemy drop tables")
 	var boss_valid = true
-	for source in range(500): boss_valid = boss_valid and Gear.roll(42,source,0,true,10).rarity != "normal"
+	for source in range(8000):
+		var item = Gear.roll(42,source,source%16,true,10)
+		seen[item.kind] = true
+		boss_valid = boss_valid and item.rarity != "normal"
+	check(seen.size() == Gear.Data.ACTIVE_IDS.size(),"ordinary and boss loot together can yield every active equipment identity")
 	check(boss_valid,"boss quality never falls below uncommon at maximum level")
 	print("EQUIPMENT PROGRESSION RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)

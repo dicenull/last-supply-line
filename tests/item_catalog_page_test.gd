@@ -47,7 +47,7 @@ func run():
 		catalog.category = ""
 		catalog.page = 0
 		catalog.refresh()
-		check(catalog.ids.size() == 28,"all equipment appears independently of ownership")
+		check(catalog.ids.size() == 40,"all equipment appears independently of ownership")
 		var visited = []
 		while true:
 			for id in catalog.visible_ids:
@@ -57,14 +57,15 @@ func run():
 			check(clear,"tiles remain in the available page")
 			if catalog.next.disabled: break
 			await click(catalog.next)
-		check(visited.size() == 28,"every item reachable through pages")
+		check(visited.size() == 40,"every item reachable through pages")
 		await click(catalog.filters.vehicle)
 		await click(catalog.tiles[0])
-		check(catalog.large.model.get_meta("kind") == catalog.visible_ids[0] and catalog.heading.text == catalog.Catalog.Data.ITEMS[catalog.visible_ids[0]].name,"tile selection changes large model and item name")
+		check(catalog.large.model.get_meta("kind") == catalog.visible_ids[0] and catalog.heading.text.begins_with(catalog.Catalog.Data.ITEMS[catalog.visible_ids[0]].name),"tile selection changes large model and item name")
 		check(catalog.large.size.x > catalog.previews[0].size.x,"selected model has a larger display than the tile")
 		await process_frame
-		RenderingServer.force_draw()
-		root.get_texture().get_image().save_png("res://build/catalog-ui/catalog-%d.png" % dimensions.x)
+		if DisplayServer.get_name() != "headless":
+			RenderingServer.force_draw()
+			root.get_texture().get_image().save_png("res://build/catalog-ui/catalog-%d.png" % dimensions.x)
 		catalog.detail_page = 0
 		catalog.refresh_detail()
 		await click(catalog.detail_button)
@@ -75,6 +76,15 @@ func run():
 				await process_frame
 				check(Rect2(Vector2.ZERO,catalog.size).grow(0.1).encloses(catalog.detail.get_rect()),"long item descriptions fit without scrolling")
 				await click(catalog.detail_button)
+		var layout = {"page_size":catalog.page_size}
+		for key in ["vehicle","next","back"]:
+			var control = catalog.filters.vehicle if key == "vehicle" else catalog.next if key == "next" else catalog.back
+			var point = root.get_final_transform()*control.get_global_rect().get_center()
+			layout[key] = [point.x,point.y]
+		layout.tiles = catalog.tiles.map(func(control):
+			var point = root.get_final_transform()*control.get_global_rect().get_center()
+			return [point.x,point.y])
+		positions[str(dimensions.x)].catalog_layout = layout
 		await click(catalog.back)
 		check(title.menu.visible and not catalog.visible,"back returns to title")
 	var file = FileAccess.open("res://build/catalog-ui/title-geometry.json",FileAccess.WRITE)

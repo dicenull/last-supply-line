@@ -5,7 +5,7 @@ const Catalog = preload("res://scripts/equipment_catalog.gd")
 const Parameters = preload("res://scripts/vehicle_parameters.gd")
 const GOOD = Color("80e5a0")
 const BAD = Color("ff7070")
-const LABELS = {"speed":"走行速度","turn":"車体旋回","fuel":"走行燃費 / m","reload":"主砲 射撃間隔","range":"主砲 射程","splash":"主砲 爆発範囲","power":"主砲 威力","ammo":"主砲 消費弾数","shot_fuel":"主砲 消費燃料","damage":"被害倍率","blast_damage":"爆発被害倍率","offroad":"悪路速度倍率","turret":"砲塔旋回","salvage":"追加回収率"}
+const LABELS = {"speed":"最高速度","turn":"車体旋回","fuel":"走行燃費 / m","reload":"主砲 射撃間隔","range":"主砲 射程","splash":"主砲 爆発範囲","power":"主砲 威力","ammo":"主砲 消費弾数","shot_fuel":"主砲 消費燃料","damage":"被害倍率","blast_damage":"爆発被害倍率","offroad":"悪路速度倍率","turret":"砲塔旋回","salvage":"追加回収率"}
 var font: Font
 var state: Dictionary = {}
 var close_button: Button
@@ -41,7 +41,7 @@ func update_state(value: Dictionary):
 	close_button.size = Vector2(34,30)
 	queue_redraw()
 func _draw():
-	draw_style_box(Style.style(Style.PANEL,Style.EDGE),Rect2(Vector2.ZERO,size))
+	draw_style_box(Style.style(Style.OVERLAY_PANEL,Style.EDGE),Rect2(Vector2.ZERO,size))
 	draw_string(font,Vector2(16,30),"パラメータ  [Q]",HORIZONTAL_ALIGNMENT_LEFT,-1,19,Style.GOLD)
 	draw_string(font,Vector2(16,51),"現在値 (装備補正) (選択差)",HORIZONTAL_ALIGNMENT_LEFT,size.x-32,14,Style.MUTED)
 	var comparison: Dictionary = state.get("comparison",{})

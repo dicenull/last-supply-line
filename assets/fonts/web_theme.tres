@@ -1,10 +1,8 @@
 [gd_resource type="Theme" load_steps=3 format=3]
-
-[ext_resource type="FontFile" path="res://assets/fonts/NotoSansJP.ttf" id="1_font"]
-
-[sub_resource type="FontVariation" id="FontVariation_japanese"]
-base_font = ExtResource("1_font")
-variation_opentype = {2003265652: 600.0}
-
+[ext_resource type="FontFile" path="res://assets/fonts/BIZUDPGothic-Regular.ttf" id="1"]
+[ext_resource type="FontFile" path="res://assets/fonts/BIZUDPGothic-Bold.ttf" id="2"]
 [resource]
-default_font = SubResource("FontVariation_japanese")
+default_font = ExtResource("1")
+Button/fonts/font = ExtResource("2")
+OptionButton/fonts/font = ExtResource("2")
+MenuButton/fonts/font = ExtResource("2")

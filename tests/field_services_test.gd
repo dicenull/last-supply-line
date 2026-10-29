@@ -97,6 +97,7 @@ func run():
 	game.battlefield.hull = 70
 	game.field_actions.refresh()
 	check(game.field_actions.visible and not game.field_actions.button.get_rect().intersects(game.footer_rect()) and not game.field_actions.RECT.intersects(game.HEADER_RECT),"damage exposes repair button outside the toolbar and header")
+	check(not game.field_actions.button.get_global_rect().intersects(game.start_button.get_global_rect()),"repair action and floating sortie action have separate hit areas")
 	var hull_before = game.expedition.hull
 	var cost = Services.repair_cost(f)
 	check(cost == f.wrecks.size()*2,"hull damage never increases line repair cost")

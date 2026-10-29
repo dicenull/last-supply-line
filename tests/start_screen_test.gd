@@ -54,6 +54,7 @@ func escape():
 func capture(label: String):
 	await process_frame
 	await process_frame
+	if DisplayServer.get_name() == "headless": return
 	RenderingServer.force_draw()
 	root.get_texture().get_image().save_png("res://build/start-screen/"+label+".png")
 

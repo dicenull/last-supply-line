@@ -1,30 +1,33 @@
 # 検証手順
 
+現在の運用は **ヘッドレス・最大4並列** です。AI向けの手順と注意点は [AGENTS.md](AGENTS.md) と [AI開発フロー](docs/AI_DEVELOPMENT.md) を参照してください。本書後半の画面ありコマンド・件数・仕様は過去の検証記録を含み、現在の標準手順ではありません。
+
 ## 通常の回帰試験をまとめて実行
 
-Python 3.9以降とGodotを使います。次のランナーは初回リソースのインポートを行い、画面不要の試験を最大2プロセス、描画・音声・実入力の試験を1つずつ実行します。新しいテストが分類されていなければ停止するため、追加した試験の実行漏れを検出できます。
+Python 3.9以降とGodotを使います。ランナーは初回リソースのインポートを行い、ヘッドレス対応試験を最大4プロセスで実行します。新しいテストが分類されていなければ停止するため、追加した試験の実行漏れを検出できます。引数なしで実行するとGUI試験も起動するので、通常は必ず `--headless-only` を指定します。
 
 ```sh
-python3 tools/run_tests.py --godot /Applications/Godot.app/Contents/MacOS/Godot
-python3 tools/run_tests.py --headless-only
-python3 tools/run_tests.py --suite equipment_ui --suite equipment_bulk
-python3 tools/run_tests.py --list
+python3 tools/run_tests.py --headless-only --jobs 4 --godot /Applications/Godot.app/Contents/MacOS/Godot
+python3 tools/run_tests.py --headless-only --jobs 4 --suite equipment_ui --suite equipment_bulk
+python3 tools/run_tests.py --headless-only --jobs 4 --list
 ```
 
-`GODOT`環境変数でも実行ファイルを指定できます。ログ・集計・ソースのSHA-256を `build/test-results` へ保存し、`--output` で別の保存先を指定できます。終了コード・全項目の結果・エラー／解放警告を検査し、実行中にソースが変更された場合も失敗として知らせます。1試験の制限は既定180秒、`--timeout` で変更可能です。画面試験はログイン済みデスクトップが必要です。
+`GODOT`環境変数でも実行ファイルを指定できます。ログ・集計・ソースのSHA-256を `build/test-results` へ保存し、`--output` で別の保存先を指定できます。終了コード・全項目の結果・エラー／解放警告を検査し、実行中にソースが変更された場合も失敗として知らせます。1試験の制限は既定180秒、`--timeout` で変更可能です。描画待ち・画像取得を含む未対応試験は、ヘッドレス化してから実行してください。ヘッドレス実行をGPU描画・実音声の検証とは扱いません。
 
-通常の61スイートを対象にします。長時間試験、実終了→別プロセス再開、配布PCK、Web版はそれぞれ下記の専用手順で実行します。`crafting_test.gd` は既存試験への別名なので重複実行しません。
+スイート数と対象はランナーの `--list` で確認します。長時間試験、実終了→別プロセス再開、配布PCK、Web版はそれぞれ専用手順で実行します。`crafting_test.gd` は既存試験への別名なので重複実行しません。
 
-### 装備300型式の調整
+### 現行装備と旧型式の互換確認
 
 ```sh
 python3 tools/generate_equipment.py --check
-python3 tools/run_tests.py --suite equipment_design --suite equipment_progression --suite equipment_runtime --suite equipment_geometry
+python3 tools/run_tests.py --headless-only --jobs 4 --suite equipment_design --suite equipment_progression --suite equipment_runtime --suite equipment_geometry
 ```
 
-`equipment_design` は300種類の性能の一意性・レベル上昇・特性の代償を検査します。`equipment_progression` は全5区間のドロップ上限、全300型式の到達性、品質分布、報酬・価格を確認。`equipment_runtime` は300型式×4品質を実際に装着して射撃・旋回・移動・燃料・解体を検査し、1,200通りを含む保存を往復します。`equipment_geometry` は全300型式の実メッシュと副砲の全周旋回を占有枠と照合します。生成元・調整式・性能一覧は[装備レベルと特性](docs/EQUIPMENT_LEVELS.md)にまとめています。
+現在の新規抽選対象は28種で、旧型式のIDは保存互換のため維持しています。設計、抽選・報酬、実作用、モデル・設置範囲を上記の関連スイートで確認します。生成元・性能一覧は[装備レベルと特性](docs/EQUIPMENT_LEVELS.md)を参照してください。過去の300型式検証の記録を、現在の抽選対象や現行の検証件数と混同しないでください。
 
 ## Web版
+
+Chromiumはヘッドレスで起動します。テストが参照する `build/` 配下の座標JSON・保存Fixtureの生成元と、公開後のハッシュ照合は [AI開発フロー](docs/AI_DEVELOPMENT.md) にまとめています。Godotヘッドレス試験だけではWeb表示を検証したことにはなりません。
 
 `npm run dev:web`で起動し、別ターミナルから`WEB_URL=http://127.0.0.1:8791 npm run test:web`を実行する。Chromiumは`npx playwright install chromium`で用意。Godotが標準パスにない場合は`GODOT`環境変数で指定する。
 

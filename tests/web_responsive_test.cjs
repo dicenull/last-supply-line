@@ -7,7 +7,7 @@ const out=path.resolve(process.env.WEB_AUDIT_DIR||'build/web-responsive-audit');
 const results=[];
 (async()=>{
   fs.mkdirSync(out,{recursive:true});
-  const browser=await chromium.launch({headless:false,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
+  const browser=await chromium.launch({headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
   try {
     await Promise.all([false,true].map(async touch=>{
       const name=touch?'touch':'mouse',errors=[];

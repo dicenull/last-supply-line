@@ -17,6 +17,7 @@ func check(ok: bool, label: String):
 func capture(label):
 	await process_frame
 	await process_frame
+	if DisplayServer.get_name() == "headless": return
 	RenderingServer.force_draw()
 	root.get_texture().get_image().save_png("res://build/supply-airdrop/"+label+".png")
 func run():
@@ -55,11 +56,16 @@ func run():
 	var saved = game.checkpoint.snapshot(game)
 	check(game.checkpoint.validate(saved) and game.checkpoint.apply(game,saved),"stage reward can be saved during flight")
 	r = game.expedition
-	check(not game.airdrop.active and game.choice_popup.visible and r.reward_item(0) == offers[0],"load returns to unchanged offers without replay or reroll")
-	game.choose_run_option(0)
+	check(game.airdrop.active and game.airdrop.selecting and not game.choice_popup.visible and r.reward_item(0) == offers[0],"load returns to unchanged offers without replay or reroll")
+	var airdrop = game.airdrop
+	airdrop.model_buttons[0].pressed.emit()
+	check(airdrop.selected_index == 0 and not airdrop.acquire_button.disabled and r.gear_items.size() == stock,"clicking a model reveals details without granting the item")
+	check(game.checkpoint.write_file("res://build/supply-airdrop/web-fixture.mfv",game.checkpoint.snapshot(game)),"pending support fixture preserves the three offers for browser testing")
+	airdrop.acquire_button.pressed.emit()
 	check(r.gear_items.size() == stock+1 and r.gear_items.back().kind == offers[0].kind and r.gear_items.back().rarity == offers[0].rarity,"selected support crate grants exactly its displayed kind and rarity")
 	game.choose_run_option(0)
 	check(r.gear_items.size() == stock+1,"repeated selection cannot duplicate a reward")
+	var geometry = {}
 	var a = game.airdrop
 	for dimensions in [Vector2i(1440,940),Vector2i(844,390)]:
 		root.min_size = Vector2i(320,240)
@@ -78,11 +84,22 @@ func run():
 		check(a.get_rect().encloses(a.skip_button.get_rect()),"skip action remains on screen")
 		var before = r.gear_items.size()
 		a.skip()
-		check(not a.active and a.viewport.get_child_count() == 0 and r.gear_items.size() == before,"skip releases 3D scene and never grants extra inventory")
+		check(a.active and a.selecting and r.gear_items.size() == before,"skip enters direct model selection without granting inventory")
+		check(a.get_rect().encloses(a.detail_panel.get_rect()) and a.model_buttons.all(func(button): return a.get_rect().encloses(button.get_rect()) and not button.get_rect().intersects(a.detail_panel.get_rect())),"models and details fit and remain separate")
+		a.advance(20)
+		check(a.active and a.selected_index == -1 and a.acquire_button.disabled,"selection waits indefinitely without an automatic grant")
+		a.select_model(1)
+		check(a.detail_title.text.contains("レジェンダリー") and not a.detail.text.is_empty(),"selected model details include actual rarity and effects")
+		geometry[str(dimensions.x)] = {"models":a.model_buttons.map(func(button):
+			var center = root.get_final_transform()*button.get_global_rect().get_center()
+			return [center.x,center.y]),"acquire":[(root.get_final_transform()*a.acquire_button.get_global_rect().get_center()).x,(root.get_final_transform()*a.acquire_button.get_global_rect().get_center()).y]}
+		a.cancel()
+		check(a.viewport.get_child_count() == 0,"closing selection releases cinematic model nodes")
 		a.start(items,2)
 		a.skip()
 		check(a.active and a.age >= 4.2,"early skip jumps to item reveal")
 		a.cancel()
+	FileAccess.open("res://build/supply-airdrop/geometry.json",FileAccess.WRITE).store_string(JSON.stringify(geometry))
 	game.queue_free()
 	await process_frame
 	Fixture.clean("supply_airdrop_test")

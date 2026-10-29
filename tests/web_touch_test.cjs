@@ -32,7 +32,7 @@ async function readSave(page,label) {
 }
 (async()=>{
   fs.mkdirSync(out,{recursive:true});
-  const browser=await chromium.launch({headless:false});
+  const browser=await chromium.launch({headless:true});
   try {
     const context=await browser.newContext({viewport:{width:844,height:390},deviceScaleFactor:1,isMobile:true,hasTouch:true});
     const page=await context.newPage();

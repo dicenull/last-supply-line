@@ -1,6 +1,7 @@
 extends Control
 ## Presentation only: the expedition owns deterministic offers and grants the selected item.
 signal finished
+signal acquisition_requested(index: int)
 signal cue(kind: String)
 const Models = preload("res://scripts/item_model.gd")
 const Gear = preload("res://scripts/equipment_catalog.gd")
@@ -22,6 +23,15 @@ var models = Models.new()
 var skip_button: Button
 var overlay: Control
 var legendary = false
+var selecting = false
+var selected_index = -1
+var offers: Array = []
+var model_buttons: Array[Button] = []
+var acquire_button: Button
+var detail: Label
+var detail_title: Label
+var detail_panel: Panel
+
 
 func _ready():
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -47,10 +57,41 @@ func _ready():
 	skip_button.focus_mode = Control.FOCUS_NONE
 	skip_button.pressed.connect(skip)
 	add_child(skip_button)
+	detail_panel = Panel.new()
+	detail_panel.add_theme_stylebox_override("panel",Style.style(Color(0.05,0.09,0.10,0.92),Color("9b875f")))
+	add_child(detail_panel)
+	detail_title = Label.new()
+	detail_title.add_theme_font_override("font",Style.HEADING_FONT)
+	detail_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	detail_panel.add_child(detail_title)
+	detail = Label.new()
+	detail.add_theme_font_override("font",font)
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail_panel.add_child(detail)
+	acquire_button = Button.new()
+	acquire_button.text = "獲得"
+	acquire_button.add_theme_font_override("font",Style.HEADING_FONT)
+	acquire_button.add_theme_stylebox_override("normal",Style.style(Color("33483b"),Color("d5aa62")))
+	acquire_button.pressed.connect(func():
+		if active and selecting and selected_index >= 0 and not acquire_button.disabled:
+			acquire_button.disabled = true
+			acquisition_requested.emit(selected_index))
+	detail_panel.add_child(acquire_button)
+	for i in range(3):
+		var index = i
+		var button = Button.new()
+		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.add_theme_stylebox_override("normal",Style.style(Color.TRANSPARENT))
+		for state in ["hover","pressed"]: button.add_theme_stylebox_override(state,Style.style(Color(1,0.85,0.55,0.09),Color("d5aa62")))
+		button.pressed.connect(func(): select_model(index))
+		add_child(button)
+		model_buttons.append(button)
 	hide()
 
-func start(items: Array, sector: int, is_final: bool = false):
+func start(items: Array, sector: int, is_final: bool = false, restored: bool = false):
 	cancel()
+	offers = items.duplicate(true)
 	stage = sector
 	finale = is_final
 	legendary = items.any(func(item): return item.get("rarity","") == "legendary")
@@ -86,7 +127,8 @@ func start(items: Array, sector: int, is_final: bool = false):
 		for z in [-9,9]: models.box(scene,Vector3(x,0.12,z),Vector3(0.3,0.2,0.3),"brass")
 	build_plane()
 	for i in range(3): build_crate(i,items[i] if i < items.size() else {})
-	cue.emit("airdrop")
+	if not restored: cue.emit("airdrop")
+	if restored: age = DURATION
 	advance(0)
 
 func build_plane():
@@ -185,9 +227,13 @@ func advance(delta: float):
 	if before < 3.2 and age >= 3.2: cue.emit("impact")
 	if before < 4.0 and age >= 4.0: cue.emit("reward")
 	if age >= DURATION:
-		cancel()
-		finished.emit()
-		return
+		if not finale and not offers.is_empty():
+			selecting = true
+			age = DURATION
+		else:
+			cancel()
+			finished.emit()
+			return
 	plane.position = Vector3(lerpf(-34,42,age/3.4),14,-8)
 	plane.rotation.z = sin(age*1.4)*0.07
 	for prop in props: prop.rotation.x = age*45
@@ -231,14 +277,18 @@ func advance(delta: float):
 	skip_button.position = Vector2(size.x-skip_button.size.x-32,size.y-skip_button.size.y-24)
 	skip_button.add_theme_font_size_override("font_size",roundi(20*unit))
 	skip_button.text = ("リザルトへ" if finale else "物資を選ぶ") if age >= 4.2 else "開封へ"
+	arrange_selection(unit)
 	overlay.queue_redraw()
 
 func skip():
-	if not active: return
+	if not active or selecting: return
 	advance(4.25-age if age < 4.2 else DURATION)
 
 func cancel():
 	active = false
+	selecting = false
+	selected_index = -1
+	offers.clear()
 	hide()
 	crates.clear()
 	props.clear()
@@ -251,12 +301,65 @@ func cancel():
 func draw_titles():
 	if not active: return
 	var unit = maxf(1,0.85/Style.screen_scale(self))
+	if selecting:
+		overlay.draw_string(Style.HEADING_FONT,Vector2(24,42)*unit,"航空支援物資",HORIZONTAL_ALIGNMENT_LEFT,-1,roundi(28*unit),Style.GOLD)
+		overlay.draw_string(font,Vector2(24,68)*unit,"モデルを選択 → 詳細を確認 → 1つ獲得",HORIZONTAL_ALIGNMENT_LEFT,-1,roundi(16*unit),Style.INK)
+		return
 	var title = "作戦完遂" if finale else "ステージ %d クリア" % stage
 	overlay.draw_rect(Rect2(0,0,size.x,114*unit),Color(0.04,0.08,0.1,0.88))
 	overlay.draw_string(font,Vector2(36,35)*unit,"航空支援 / SUPPLY INBOUND",HORIZONTAL_ALIGNMENT_LEFT,-1,roundi(19*unit),Color("d5aa62"))
-	overlay.draw_string(font,Vector2(32,89)*unit,title,HORIZONTAL_ALIGNMENT_LEFT,-1,roundi(37*unit),Color("f0ead9"))
+	overlay.draw_string(preload("res://scripts/ui_style.gd").HEADING_FONT,Vector2(32,89)*unit,title,HORIZONTAL_ALIGNMENT_LEFT,-1,roundi(37*unit),Color("f0ead9"))
 	var caption = "輸送機接近 ── 投下地点を確保" if age < 1.3 else "支援物資を投下！" if age < 3.3 else "補給箱着地 ── ロック解除" if age < 4.1 else "特別支援物資 到着" if legendary else "補給完了 ── 次の戦線へ"
 	if finale and age >= 4.1: caption = "全戦線を突破 ── 作戦完遂"
 	overlay.draw_string(font,Vector2(32,size.y-42*unit),caption,HORIZONTAL_ALIGNMENT_LEFT,size.x-skip_button.size.x-90,roundi(24*unit),Color("d5aa62") if legendary else Color("f0ead9"))
 	var flash = maxf(0,1-absf(age-4.1)*5)*0.16
 	if flash > 0: overlay.draw_rect(Rect2(Vector2.ZERO,size),Color(1,0.85,0.55,flash))
+
+func select_model(index: int):
+	if not selecting or index < 0 or index >= offers.size(): return
+	selected_index = index
+	var item: Dictionary = offers[index]
+	detail_title.text = Gear.Data.ITEMS[item.kind].name+"  / "+Gear.RARITIES[item.rarity].name
+	detail_title.add_theme_color_override("font_color",Color(Gear.RARITIES[item.rarity].color))
+	detail.text = Gear.description(item)
+	acquire_button.disabled = false
+	for i in range(model_buttons.size()):
+		model_buttons[i].add_theme_stylebox_override("normal",Style.style(Color(1,0.85,0.55,0.08) if i == index else Color.TRANSPARENT,Color(Gear.RARITIES[offers[i].rarity].color) if i == index and i < offers.size() else Color.TRANSPARENT))
+
+func arrange_selection(unit: float):
+	skip_button.visible = not selecting
+	detail_panel.visible = selecting
+	for button in model_buttons: button.visible = selecting
+	if not selecting: return
+	detail_panel.position = Vector2(16*unit,size.y-152*unit)
+	detail_panel.size = Vector2(size.x-32*unit,136*unit)
+	detail_title.position = Vector2(14,10)*unit
+	detail_title.size = Vector2(detail_panel.size.x-28*unit,30*unit)
+	detail_title.add_theme_font_size_override("font_size",roundi(20*unit))
+	detail.position = Vector2(14,46)*unit
+	detail.size = Vector2(detail_panel.size.x-180*unit,80*unit)
+	detail.add_theme_font_size_override("font_size",roundi(15*unit))
+	acquire_button.position = Vector2(detail_panel.size.x-152*unit,62*unit)
+	acquire_button.size = Vector2(138,54)*unit
+	acquire_button.add_theme_font_size_override("font_size",roundi(23*unit))
+	if selected_index < 0:
+		detail_title.text = "支援物資を1つ選択"
+		detail.text = "補給箱の上のモデルをクリック／タップすると性能を確認できます。"
+		acquire_button.disabled = true
+	camera.position = Vector3(0,16,32)
+	camera.look_at(Vector3(0,3,0))
+	camera.fov = 42
+	# Place the actual 3D cargo at evenly spaced screen points above the details.
+	var area_top = 90*unit
+	var area_bottom = detail_panel.position.y-12*unit
+	for i in range(crates.size()):
+		var center = Vector2(size.x*(i+0.5)/3,lerpf(area_top,area_bottom,0.52))
+		var screen_point = center*Vector2(viewport.size)/size
+		var projected = camera.project_position(screen_point,32)
+		crates[i].node.position = projected-Vector3(0,3,0)
+		crates[i].cargo.rotation.y = -0.45
+		crates[i].cargo.scale = Vector3.ONE*2.2
+		model_buttons[i].position = Vector2(size.x*i/3+12*unit,area_top)
+		model_buttons[i].size = Vector2(size.x/3-24*unit,area_bottom-area_top)
+		model_buttons[i].visible = i < offers.size()
+		model_buttons[i].tooltip_text = Gear.Data.ITEMS[offers[i].kind].name if i < offers.size() else ""

@@ -18,7 +18,9 @@ func _ready():
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	game.inventory_panel.touch_mode = game.touch_enabled
 	game.inventory_panel.item_selected.connect(func(uid):
-		if game.touch_enabled: select_item(uid)
+		if game.selected_item_uid == uid and game.dragging_item < 0:
+			game.set_hand_free()
+		elif game.touch_enabled: select_item(uid)
 		else: game.select_equipment(uid))
 	get_window().size_changed.connect(resized)
 	refresh()

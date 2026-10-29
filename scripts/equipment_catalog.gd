@@ -69,7 +69,7 @@ static func roll(seed_value: int, source: int, role: int = 0, boss: bool = false
 	# Default preserves old seeded rolls. Modern callers supply the sector cap.
 	if max_level > 0:
 		if rng.randf() < 0.25:
-			var parts = Data.ITEMS.keys().filter(func(id): return not part_slot(id).is_empty())
+			var parts = Data.ACTIVE_IDS.filter(func(id): return not part_slot(id).is_empty() and quality(id,rarity) == rarity)
 			kind = parts[rng.randi_range(0,parts.size()-1)]
 		else: kind = choose_model(rng,kind,clampi(max_level,1,10))
 	return {"kind":kind,"rarity":rarity}
@@ -111,7 +111,7 @@ static func weapon_damage(spec: Dictionary, rarity: String = "normal") -> int:
 	return maxi(1,roundi(float(spec.get("damage",1))*RARITIES[rarity].power))
 
 static func description(item: Dictionary) -> String:
-	if item.get("stock",false): return PART_SLOTS[part_slot(item.kind)]+"・初期装備 / 基礎性能（追加補正なし）"
+	if item.get("stock",false): return PART_SLOTS[part_slot(item.kind)]+"・初期装備 / 基礎性能（追加補正なし）"+(" / "+preload("res://scripts/battle_transmission.gd").description(item.kind) if part_slot(item.kind) == "gear" else "")
 	var kind: String = item.kind
 	var power: float = RARITIES[item.rarity].power
 	if kind in Content.ALL_GUNS:
@@ -127,7 +127,9 @@ static func description(item: Dictionary) -> String:
 	var labels = {"damage_reduction":"被ダメージ","speed_bonus":"走行速度","fuel_bonus":"走行燃料消費","blast_reduction":"爆発・地雷ダメージ","turn_bonus":"砲塔旋回速度","reload_bonus":"射撃間隔","drive_turn_bonus":"車体旋回速度","main_reload_bonus":"主砲の射撃間隔"}
 	var lines = [GENRES[Data.ITEMS[kind].genre]]
 	if not part_slot(kind).is_empty(): lines = [PART_SLOTS[part_slot(kind)]+"交換パーツ"]
+	if Data.ITEMS[kind].has("country"): lines.append(Data.ITEMS[kind].country+" / "+Data.ITEMS[kind].era+" / "+Data.ITEMS[kind].vehicle)
 	if part_slot(kind) == "cannon": lines.append("対装甲威力 %d / 砲弾%d発" % [weapon_damage(Data.ITEMS[kind],item.rarity),Data.ITEMS[kind].ammo])
+	if part_slot(kind) == "gear": lines.append(preload("res://scripts/battle_transmission.gd").description(kind))
 	var values = effect_values(item)
 	for key in values:
 		var value: float = values[key]
@@ -139,9 +141,16 @@ static func description(item: Dictionary) -> String:
 		elif key == "range_bonus": lines.append("全砲の射程 +%.2fm" % value)
 		elif key == "main_range_bonus": lines.append("主砲の射程 %+.2fm" % value)
 		elif key == "main_splash_bonus": lines.append("主砲の爆発範囲 +%.2fm" % value)
-		elif key == "offroad_bonus": lines.append("悪路の速度補正 +%.0f%%" % (value*100))
+		elif key == "offroad_bonus": lines.append("悪路の速度補正 %+.0f%%" % (value*100))
 		elif key == "splash_bonus": lines.append("爆発範囲 +%.2fm" % value)
 		elif key == "salvage_rate": lines.append("敵100体あたり素材 %.1f回を追加回収（廃材2・石炭1／回）" % (value*100))
 	var rule: String = PLACEMENT_RULES.get(family(kind),"")
 	if not rule.is_empty(): lines.append("発動条件："+PLACEMENT_HINTS[rule])
 	return " / ".join(lines)
+
+static func base_rarity(kind: String) -> String:
+	return Data.ITEMS.get(kind,{}).get("base_rarity","normal")
+
+static func quality(kind: String, rolled: String) -> String:
+	var base = base_rarity(kind)
+	return base if RARITIES.keys().find(base) > RARITIES.keys().find(rolled) else rolled

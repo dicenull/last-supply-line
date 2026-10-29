@@ -11,6 +11,7 @@ func configure(right: Control):
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	warehouse = right
+	warehouse.close_requested.connect(close_all)
 	add_child(warehouse)
 	loadout = warehouse.loadout_panel
 	add_child(loadout)
@@ -28,8 +29,8 @@ func toggle_left():
 	loadout.visible = not loadout.visible
 	sync_visibility(loadout)
 func toggle_right():
-	warehouse.visible = not warehouse.visible
-	sync_visibility(warehouse)
+	if warehouse.visible: close_all()
+	else: open_right()
 func close_all():
 	warehouse.hide()
 	loadout.hide()

@@ -9,29 +9,31 @@ func check(ok: bool, label: String):
 		failures += 1
 		push_error(label)
 func run():
-	var path = ProjectSettings.get_setting("gui/theme/custom.web")
+	var path = ProjectSettings.get_setting("gui/theme/custom")
 	var theme: Theme = load(path)
-	check(theme != null and theme.default_font is FontVariation,"Web has a project-wide bundled font theme")
-	var font: FontVariation = theme.default_font
-	check(font.variation_opentype.get(TextServerManager.get_primary_interface().name_to_tag("weight")) == 600.0,"theme uses the original 600 weight through the OpenType axis tag")
-	check(font.base_font is FontFile and font.base_font.resource_path == "res://assets/fonts/NotoSansJP.ttf","theme loads bundled Noto Sans JP without OS fonts")
-	check(font.base_font.multichannel_signed_distance_field and font.base_font.msdf_size >= 96,"scaled Japanese menus use detailed MSDF glyphs rather than enlarged bitmap glyphs")
-	var native_font = preload("res://scripts/ui_style.gd").create_font()
-	check(native_font is SystemFont and native_font.multichannel_signed_distance_field,"native menu previews use the same scalable glyph rendering")
+	var Style = preload("res://scripts/ui_style.gd")
+	var font: Font = theme.default_font
+	check(font == Style.create_font(),"native and Web share the bundled UI theme")
+	check(font.resource_path.ends_with("BIZUDPGothic-Regular.ttf"),"body uses readable BIZ UDPGothic")
+	check(Style.BOLD_FONT.resource_path.ends_with("BIZUDPGothic-Bold.ttf") and Style.HEADING_FONT.resource_path.ends_with("DelaGothicOne-Regular.ttf"),"controls and display titles have distinct font roles")
+	for face in [font,Style.BOLD_FONT,Style.HEADING_FONT]:
+		check(face.multichannel_signed_distance_field and face.msdf_size >= 96,"bundled fonts remain sharp when scaled")
+	for family in ["BIZUDPGothic","DelaGothicOne"]:
+		check(FileAccess.file_exists("res://assets/fonts/"+family+"-OFL.txt"),"bundled family includes its license")
 	var sample = "日本語 全画面を終了 装備一覧 解体 倉庫 廃材 石炭 砲弾 難易度 戦車 工廠 装甲 読み込み中"
 	var glyphs = true
-	var supported: String = font.base_font.get_supported_chars()
+	var supported: String = font.get_supported_chars()
 	for character in sample: glyphs = glyphs and character in supported
 	check(glyphs,"bundled font contains Japanese glyphs for page, game and tooltips")
 	var parent = Control.new()
 	parent.theme = theme
 	root.add_child(parent)
 	for type in ["Label","Button","TooltipLabel"]:
-		var label = Label.new()
+		var label = Button.new() if type == "Button" else Label.new()
 		label.theme_type_variation = type
 		label.text = sample
 		parent.add_child(label)
-		check(label.get_theme_font("font") == font,"standard UI inherits Japanese font: "+type)
+		check(label.get_theme_font("font") == (Style.BOLD_FONT if type == "Button" else font),"standard UI inherits Japanese font: "+type)
 	parent.free()
 	print("RESULT: ",checks," checks, ",failures," failures")
 	quit(1 if failures else 0)

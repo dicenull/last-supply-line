@@ -119,7 +119,10 @@ def build():
     overrides = json.loads((ROOT / 'data/equipment_current.json').read_text())
     for item in items:
         item.update(overrides.get(item['id'], {}))
-    items += parts
+    historical = json.loads((ROOT / "data/historical_parts.json").read_text())
+    assert len(historical) == 12 and len({p["historical_model"] for p in historical}) == 12
+    assert all(p["base_rarity"] in ["normal", "uncommon", "rare", "legendary"] and p["sources"] for p in historical)
+    items += parts + historical
     assert len({i['id'] for i in items}) == len(items)
     assert len({i['name'] for i in items}) == len(items)
     return archetypes, items
@@ -174,7 +177,7 @@ def main():
         if args.check:
             if not path.exists() or path.read_text() != text: raise SystemExit(f'Out of date: {path.relative_to(ROOT)}')
         else: path.write_text(text)
-    print('EQUIPMENT DATA: 16 current accessories + 12 vehicle parts; 312 save-compatible IDs')
+    print(f'EQUIPMENT DATA: 16 current accessories + {sum(bool(i.get("slot")) for i in items)} vehicle parts; {len(items)} save-compatible IDs')
 
 
 if __name__ == '__main__': main()

@@ -43,6 +43,13 @@ func run():
 	feed.advance(4,true)
 	feed.push_material("scrap",1)
 	check(feed.entries.size() == 1 and feed.entries[0].count == 1,"expired material totals start a fresh receipt")
+	for amount in [10,99,100,9999,999999]:
+		feed.clear()
+		feed.push_material("scrap",amount)
+		feed.push_material("coal",amount)
+		feed.advance(0,true)
+		var cards = feed.receipt_rects()
+		check(cards[0].size.x-16 >= feed.font.get_string_size("+"+str(amount),HORIZONTAL_ALIGNMENT_LEFT,-1,16).x and not cards[0].intersects(cards[1]),"receipt contains the entire count without overlap: "+str(amount))
 	feed.queue_free()
 	await process_frame
 	var game = load("res://main.tscn").instantiate()

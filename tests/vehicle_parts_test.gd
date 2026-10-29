@@ -36,7 +36,7 @@ func run():
 			var uid = game.expedition.add_item({"kind":kind,"rarity":rarity})
 			check(game.equip_vehicle_part(uid) and Inventory.vehicle_parts(game.expedition)[slot].uid == uid and (previous.is_empty() or previous.position == Inventory.STOWED),"atomic swap retains the old item: "+kind+" "+rarity)
 			check(factory.cells == cells and factory.equipment_mounts == deck and factory.ammo == 7 and factory.fuel == 8,"swap preserves deck, ammunition and fuel")
-			check(not game.dismantle_item(uid) and not Inventory.can_place(game.expedition,factory,uid,Vector2i.ZERO),"installed component cannot be salvaged or placed on the deck")
+			check(not game.dismantle_item(uid) and (slot == "cannon" or not Inventory.can_place(game.expedition,factory,uid,Vector2i.ZERO)),"installed components cannot be scrapped; only the main gun supports deck relocation")
 		check(game.world.vehicle_parts[slot].kind == kind and game.battlefield.vehicle_parts[slot].kind == kind,"interior and battlefield use the same equipped model")
 		if slot in ["gear","engine"]:
 			var model = game.world.vehicle_part_visuals.get_node("Item_"+kind)
@@ -89,6 +89,8 @@ func run():
 	b.obstacles.barriers = []
 	b.player.position = Vector3.ZERO
 	b.motion.command = Vector3.RIGHT
+	b.motion.transmission.configure(selected.gear)
+	b.motion.transmission.travel(1,10,true)
 	b.move_player(factory,0.1)
 	check(is_equal_approx(b.player.position.x,0.33*effects.speed),"engine power affects actual travel")
 	b.motion.command = Vector3.BACK
@@ -98,6 +100,7 @@ func run():
 	b.player.position = Vector3(40,0,terrain.bounds.position.y+5)
 	b.player.rotation.y = 0
 	b.motion.command = Vector3.RIGHT
+	b.motion.transmission.travel(1,10,true)
 	var offroad_start: Vector3 = b.player.position
 	b.move_player(factory,0.1)
 	check(terrain.road_distance(offroad_start) > b.FieldCourse.ROAD_HALF_WIDTH and absf(b.player.position.x-offroad_start.x-0.33*effects.speed*minf(1,0.65+effects.offroad)) < 0.00001,"wide tracks reduce the real off-road movement penalty: road_distance=%.3f, travel=%.6f, expected=%.6f" % [terrain.road_distance(offroad_start),b.player.position.x-offroad_start.x,0.33*effects.speed*minf(1,0.65+effects.offroad)])

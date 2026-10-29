@@ -43,6 +43,18 @@ func badges() -> Array:
 	return result
 func _draw():
 	var battle = game.battlefield
+	if battle != null and battle.defeat_active() and not game.menu.visible:
+		var unit = maxf(1.0,0.85/preload("res://scripts/ui_style.gd").screen_scale(self))
+		draw_rect(Rect2(Vector2.ZERO,size),Color(0.08,0.02,0.01,clampf((battle.defeat_age-1.3)/3,0,0.65)))
+		if battle.defeat_age > 0.7:
+			draw_string(preload("res://scripts/ui_style.gd").HEADING_FONT,Vector2(0,size.y*0.74),"車体大破",HORIZONTAL_ALIGNMENT_CENTER,size.x,roundi(36*unit),game.DANGER)
+		return
+	if game.battle_mode and battle != null and game.expedition.phase == "travel":
+		var unit = maxf(1.0,0.85/preload("res://scripts/ui_style.gd").screen_scale(self))
+		var rect = Rect2((size.x-220*unit)/2,size.y-64*unit,220*unit,48*unit)
+		draw_style_box(game.style(Color(0.05,0.08,0.06,0.8),game.EDGE),rect)
+		var label = "駆動装備なし" if battle.empty_part_slots.any(func(slot): return slot in ["gear","engine","tracks"]) else battle.motion.transmission.label()+"  %.1f m/s" % battle.motion.speed
+		draw_string(game.font,rect.position+Vector2(12,32)*unit,label,HORIZONTAL_ALIGNMENT_LEFT,rect.size.x-24*unit,roundi(18*unit),game.INK)
 	if game.battle_mode and battle != null and battle.score.combo_visible():
 		var alpha = minf(1.0,battle.score.combo_time)
 		var at = Vector2(1160,128)

@@ -10,6 +10,8 @@ const TAB_LABELS = {"":"設置物","gear":"ギア","engine":"エンジン","trac
 const TAB_ICONS = {"":"cargo","gear":"rotate","engine":"engine","tracks":"move","cannon":"gun"}
 signal drag_requested(uid: int)
 signal item_selected(uid: int)
+signal close_requested
+var close_button: Button
 var touch_mode = false
 var page_size = 6
 var row_pitch = 82.0
@@ -97,7 +99,9 @@ func _ready():
 	for i in range(TAB_LABELS.size()):
 		var id: String = TAB_LABELS.keys()[i]
 		tabs.append(button(Rect2(16+i*72,54,68,44),TAB_LABELS[id],func(): select_tab(id)))
-	button(Rect2(336,10,40,36),"倉庫を閉じる（E）",hide)
+	close_button = button(Rect2(336,10,40,36),"一覧とパラメータを閉じる（E）",func():
+		hide()
+		close_requested.emit())
 	sort_button = button(Rect2(236,10,40,36),"品質の高い順に並べる",func(): quality_order = not quality_order; page = 0; cancel_bulk(); refresh())
 	for i in range(6):
 		var index = i
@@ -235,7 +239,7 @@ func icon(id: String, rect: Rect2, tint: Color = Color.WHITE):
 	draw_texture_rect(icons.texture(id),rect,false,tint)
 
 func _draw():
-	draw_style_box(Style.style(Style.PANEL,Style.EDGE),Rect2(Vector2.ZERO,size))
+	draw_style_box(Style.style(Style.OVERLAY_PANEL,Style.EDGE),Rect2(Vector2.ZERO,size))
 	icon("cargo",Rect2(16,10,30,30))
 	draw_string(font,Vector2(56,33),str(state.items.size()),HORIZONTAL_ALIGNMENT_LEFT,-1,20,Style.INK)
 	icon("play" if state.editable else "lock",Rect2(288,12,26,26))

@@ -52,6 +52,39 @@ const TURN_SPEED = 1.2
 const TRACK_HALF_WIDTH = 5.05
 var trail_clock = 0.0
 var shake = 0.0
+var defeat_age = -1.0
+const DEFEAT_DURATION = 3.6
+
+func defeat_active() -> bool:
+	return defeat_age >= 0 and defeat_age < DEFEAT_DURATION
+
+func begin_defeat():
+	if defeat_age >= 0: return
+	defeat_age = 0
+	motion.clear_command()
+	motion.speed = 0
+	zoom = 36
+	defeat_burst(Vector3(0,3,0),2.2)
+	update_camera()
+
+func defeat_burst(offset: Vector3, strength: float):
+	var at = player.to_global(offset)
+	impact(at,"demolition")
+	impacts.back().node.scale = Vector3.ONE*strength
+	feedback_effect("kill",at,strength)
+	shake = 1.1
+
+func advance_defeat(delta: float) -> bool:
+	if not defeat_active() or delta <= 0: return false
+	var before = defeat_age
+	defeat_age = minf(DEFEAT_DURATION,defeat_age+delta)
+	for moment in [0.4,0.95,1.5]:
+		if before < moment and defeat_age >= moment:
+			defeat_burst(Vector3(sin(moment*7)*4,2.4,cos(moment*7)*2),1.2)
+	advance_impacts(delta)
+	update_camera()
+	return not defeat_active()
+
 var target_marker: MeshInstance3D
 
 # Compatibility facade for existing scene clients. Runtime systems use the
@@ -197,9 +230,10 @@ func near_supply_point(x: float, z: float) -> bool:
 func update_camera():
 	if camera == null: return
 	var at = player.position if player != null else Vector3.ZERO
-	var target = at+Vector3(24,1.7,0)
+	var target = at+(Vector3(0,3,0) if defeat_age >= 0 else Vector3(24,1.7,0))
 	camera.position = target+Vector3(sin(yaw)*cos(pitch),sin(pitch),cos(yaw)*cos(pitch))*42
-	camera.position += Vector3(sin(progress.elapsed*71),cos(progress.elapsed*59),0)*shake
+	var clock = defeat_age if defeat_age >= 0 else progress.elapsed
+	camera.position += Vector3(sin(clock*71),cos(clock*59),0)*shake
 	camera.look_at(target,Vector3.UP)
 	camera.size = zoom
 
@@ -531,6 +565,7 @@ func update_impact(effect: Dictionary):
 func drive_plan(travel: float, turn: float) -> Dictionary:
 	var at = player.position
 	var yaw_value = player.rotation.y
+	if is_zero_approx(travel) and is_zero_approx(turn): return {"position":at,"yaw":yaw_value,"effort":0.0,"poses":[{"position":at,"yaw":yaw_value}],"contacts":[]}
 	var effort = 0.0
 	var poses = [{"position":at,"yaw":yaw_value}]
 	var contacts: Array = []
@@ -588,11 +623,33 @@ func drive_step(at: Vector3, yaw_value: float, travel: float, turn: float) -> Di
 	return {"position":destination,"effort":maxf(arc,absf(turn)*TRACK_HALF_WIDTH)}
 
 func move_player(factory, delta: float) -> float:
-	if empty_part_slots.any(func(slot): return slot in ["gear","engine","tracks"]): return 0.0
+	if delta <= 0: return 0.0
+	var origin = player.position
+	var remaining = delta
+	var effort = 0.0
+	var poses: Array = []
+	var contacts: Array = []
+	# Integrate acceleration and steering together; preserve the whole sweep for pickups.
+	while remaining > 0.00000001:
+		var step = minf(remaining,1.0/60)
+		effort += move_player_step(factory,step)
+		poses.append_array(motion.poses)
+		contacts.append_array(motion.contacts)
+		remaining -= step
+	motion.record_plan(origin,{"position":player.position,"poses":poses,"contacts":contacts},delta,route_length)
+	return effort
+
+func move_player_step(factory, delta: float) -> float:
+	if empty_part_slots.any(func(slot): return slot in ["gear","engine","tracks"]):
+		motion.transmission.reset()
+		motion.record_plan(player.position,{"position":player.position,"poses":[],"contacts":[]},delta,route_length)
+		return 0.0
 	var surface = RunState.condition(sector_config)
 	var engine_speed = combat_modifiers.get("speed",1.0)*equipment_effect("speed",(1.0+0.2*equipment_power("supercharger") if "supercharger" in installed_equipment else 1.0))
 	var road_factor = minf(1.0,0.65+equipment_effect("offroad",0.0)) if field_course != null and field_course.road_distance(player.position) > FieldCourse.ROAD_HALF_WIDTH else 1.0
-	var travel = road_factor*clampf(motion.command.x,-1,1)*delta*surface.speed*engine_speed
+	motion.transmission.configure(vehicle_parts.get("gear",{}).get("kind","vehicle_gear"))
+	var travel = road_factor*motion.transmission.travel(clampf(motion.command.x,-1,1),delta,factory.fuel > 0)*surface.speed*engine_speed
+	var requested_travel = travel
 	var turn = -clampf(motion.command.z,-1,1)*delta*TURN_SPEED*engine_speed*surface.speed/3.3*equipment_effect("drive_turn",1.0)
 	var consumption = FUEL_PER_METER*fuel_multiplier*surface.fuel*equipment_effect("fuel",(1.0-0.2*equipment_power("economizer") if "economizer" in installed_equipment else 1.0)*(1.1 if "supercharger" in installed_equipment else 1.0))
 	var plan = drive_plan(travel,turn)
@@ -611,6 +668,7 @@ func move_player(factory, delta: float) -> float:
 		plan = drive_plan(travel*low,turn*low)
 	var powered = factory.fuel > 0
 	factory.consume_fuel(plan.effort*consumption)
+	motion.transmission.applied(requested_travel,player.position.distance_to(plan.position),delta)
 	motion.record_plan(player.position,plan,delta,route_length)
 	player.position = plan.position
 	player.rotation.y = wrapf(plan.yaw,-PI,PI)
@@ -734,13 +792,7 @@ func tick_battle(factory, delta: float):
 			bolt.mark.visible = false
 			bolt.node.queue_free()
 			bolts.erase(bolt)
-	for flash in impacts.duplicate():
-		flash.life -= delta
-		update_impact(flash)
-		if flash.life <= 0:
-			flash.node.queue_free()
-			impacts.erase(flash)
-	shake = maxf(0,shake-delta)
+	advance_impacts(delta)
 	update_camera()
 	var destination = -1
 	for i in range(goals.size()):
@@ -1046,3 +1098,12 @@ func equipment_power(id: String) -> float:
 
 func equipment_effect(key: String, legacy: float) -> float:
 	return float(combat_modifiers.get("equipment_effects",{}).get(key,legacy))
+
+func advance_impacts(delta: float):
+	for flash in impacts.duplicate():
+		flash.life -= delta
+		update_impact(flash)
+		if flash.life <= 0:
+			flash.node.queue_free()
+			impacts.erase(flash)
+	shake = maxf(0,shake-delta)

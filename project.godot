@@ -31,7 +31,7 @@ textures/vram_compression/import_etc2_astc=true
 
 [gui]
 
-theme/custom.web="res://assets/fonts/web_theme.tres"
+theme/custom="res://assets/fonts/web_theme.tres"
 
 [input_devices]
 

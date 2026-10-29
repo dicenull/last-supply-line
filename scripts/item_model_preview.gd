@@ -43,13 +43,19 @@ func _ready():
 func show_item(item: Dictionary):
 	var key: String = item.kind+":"+item.rarity+":"+str(item.get("direction",0))
 	if key == signature: return
+	show_model(Models.new().build(item.kind,item.rarity),key,int(item.get("direction",0)))
+
+func show_model(node: Node3D, key: String, direction: int = 0):
+	if key == signature:
+		node.free()
+		return
 	signature = key
 	if model != null:
 		viewport.remove_child(model)
 		model.queue_free()
-	model = Models.new().build(item.kind,item.rarity)
+	model = node
 	viewport.add_child(model)
-	model.rotation.y = -int(item.get("direction",0))*PI/2
+	model.rotation.y = -direction*PI/2
 	update_resolution()
 	frame_model()
 	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE

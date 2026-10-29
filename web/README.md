@@ -2,10 +2,12 @@
 
 公開URL: https://last-supply-line.dicenull-dev.workers.dev
 
+AIによる開発・検証は [AI開発フロー](../docs/AI_DEVELOPMENT.md) を参照。テストはヘッドレスで実行し、公開前には変更後のGodotソースを書き出す。`npm run deploy:web` だけではGodotの再書き出しは行われない。公開後はHTML・PCKをmanifestと照合する。
+
 Godot 4.7.2のCompatibility / シングルスレッド版を、Cloudflare Workers Static Assetsで配信する。
 WASMの圧縮済みレスポンスだけを小さなWorkerで返し、その他は静的配信する。サーバー側のゲーム処理、データベース、Pagesは使用しない。保存先は各ブラウザのIndexedDB。
 
-日本語は同梱のNoto Sans JPを使う。ゲーム内はWeb専用の共通テーマでツールチップを含む標準UIへ適用し、Webページ側も同じフォントのWOFF2を自サイトから配信する。OSの日本語フォントや外部フォントCDNには依存しない。ライセンスは `NotoSansJP-LICENSE.txt` に同梱。`npm run test:web:font` でPC・タッチを並列確認できる。
+日本語はタイトル・クリア見出しにDela Gothic One、本文・数値・操作UIにBIZ UDPGothicを同梱する。標準UIはPCとWeb共通のテーマを使い、ページ側も同じ書体のWOFF2を自サイトから配信する。OSフォントや外部CDNには依存しない。ライセンスは `DelaGothicOne-LICENSE.txt` と `BIZUDPGothic-LICENSE.txt`。`npm run test:web:font` でPC・タッチをヘッドレス・並列確認できる。
 
 ## 初回準備
 

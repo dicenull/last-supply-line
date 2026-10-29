@@ -206,7 +206,12 @@ func reward_pool(inventory: Dictionary = {}, mount_space: bool = true) -> Array:
 func offer_rewards(inventory: Dictionary = {}, mount_space: bool = true):
 	var pool = reward_pool(inventory,mount_space)
 	reward_options.clear()
-	for i in range(mini(3,pool.size())): reward_options.append(pool.pop_at(rng.randi_range(0,pool.size()-1)))
+	for i in range(mini(3,pool.size())):
+		var eligible = pool.filter(func(id): return not item_mode or Gear.quality(id.trim_prefix("gear:"),reward_rarity(i)) == reward_rarity(i))
+		if eligible.is_empty(): break
+		var picked = eligible[rng.randi_range(0,eligible.size()-1)]
+		reward_options.append(picked)
+		pool.erase(picked)
 	phase = "reward"
 	if reward_options.is_empty(): advance_after_reward()
 

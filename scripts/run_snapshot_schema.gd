@@ -290,6 +290,7 @@ func validate_battle(b, started: bool, run: Dictionary) -> bool:
 		if not spent is bool: return invalid("mine_state")
 	for key in BATTLE_FIELDS:
 		if not numeric(b[key],-100000,1e9): return invalid("validation_56")
+	if b.has("transmission") and not preload("res://scripts/battle_transmission.gd").valid(b.transmission): return invalid("transmission")
 	if b.has("best_combo") and (not b.best_combo is int or not numeric(b.best_combo,0,b.kills)): return invalid("best_combo")
 	var count = RunState.enemy_count(run.current)
 	if b.hull < 0 or b.hull > 100 or b.kills < 0 or b.kills > count or b.result not in [-1,0,1]: return invalid("validation_57")

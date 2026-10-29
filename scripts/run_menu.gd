@@ -78,7 +78,7 @@ func _ready():
 	back_button.icon = ui.pixel_icons.texture("back")
 	back_button.expand_icon = true
 	back_button.add_theme_constant_override("icon_max_width",24)
-	back_button.add_theme_font_override("font",ui.font)
+	back_button.add_theme_font_override("font",ui.bold_font)
 	back_button.add_theme_font_size_override("font_size",18)
 	volume_slider = HSlider.new()
 	volume_slider.position = Vector2(612,344)
@@ -115,7 +115,7 @@ func _ready():
 	difficulty_select.position = Vector2(ROW_X,480)
 	difficulty_select.size = Vector2(ROW_WIDTH,44)
 	difficulty_select.focus_mode = Control.FOCUS_NONE
-	difficulty_select.add_theme_font_override("font",ui.font)
+	difficulty_select.add_theme_font_override("font",ui.bold_font)
 	difficulty_select.add_theme_font_size_override("font_size",18)
 	difficulty_select.pressed.connect(func(): difficulty_popup.show())
 	add_child(difficulty_select)
@@ -135,7 +135,7 @@ func _ready():
 	var title = Label.new()
 	title.text = "難易度を選択"
 	title.position = Vector2(548,334)
-	title.add_theme_font_override("font",ui.font)
+	title.add_theme_font_override("font",ui.bold_font)
 	title.add_theme_font_size_override("font_size",24)
 	difficulty_popup.add_child(title)
 	for i in range(3):
@@ -145,7 +145,7 @@ func _ready():
 		button.icon = ui.pixel_icons.texture("shield" if i == 0 else "battle" if i == 1 else "battery")
 		button.expand_icon = true
 		button.add_theme_constant_override("icon_max_width",24)
-		button.add_theme_font_override("font",ui.font)
+		button.add_theme_font_override("font",ui.bold_font)
 		button.add_theme_font_size_override("font_size",20)
 		button.position = Vector2(548,380+i*54)
 		button.size = Vector2(344,44)
@@ -311,10 +311,11 @@ func update_minimum_sizes():
 	volume_slider.add_theme_icon_override("grabber_highlight",knob_texture)
 	queue_redraw()
 
-func line_text(value: String, rect: Rect2, font_size: int, color: Color, alignment: int = HORIZONTAL_ALIGNMENT_LEFT, minimum: int = 0):
+func line_text(value: String, rect: Rect2, font_size: int, color: Color, alignment: int = HORIZONTAL_ALIGNMENT_LEFT, minimum: int = 0, face: Font = null):
 	font_size = UIStyle.font_size(self,font_size,minimum) if minimum > 0 else text_size(font_size)
-	var baseline = rect.position.y+(rect.size.y-ui.font.get_height(font_size))/2.0+ui.font.get_ascent(font_size)
-	draw_string(ui.font,Vector2(rect.position.x,baseline),value,alignment,rect.size.x,font_size,color)
+	if face == null: face = ui.font
+	var baseline = rect.position.y+(rect.size.y-face.get_height(font_size))/2.0+face.get_ascent(font_size)
+	draw_string(face,Vector2(rect.position.x,baseline),value,alignment,rect.size.x,font_size,color)
 
 func draw_row(button: Button, icon: String, label: String, accent: bool = false, destructive: bool = false, detail: String = ""):
 	if not button.visible: return
@@ -372,8 +373,8 @@ func draw_title():
 	draw_texture_rect(title_shade,Rect2(Vector2.ZERO,size),false)
 	draw_line(Vector2(64,76),Vector2(104,76),ui.GOLD,3)
 	line_text("MOBILE FOUNDRY VEHICLE / 1918",Rect2(120,60,size.x-180,32),16,ui.GOLD)
-	line_text("M.F.V. 03",Rect2(58,106,1000,134),112,ui.INK)
-	line_text("自走工廠",Rect2(66,244,1000,100 if portrait else 58),maxi(38,roundi(18/screen_scale)),ui.INK)
+	line_text("M.F.V. 03",Rect2(58,106,1000,134),112,ui.INK,HORIZONTAL_ALIGNMENT_LEFT,0,ui.heading_font)
+	line_text("自走工廠",Rect2(66,244,1000,100 if portrait else 58),maxi(38,roundi(18/screen_scale)),ui.INK,HORIZONTAL_ALIGNMENT_LEFT,0,ui.heading_font)
 	if not portrait: line_text("生産をつなげ。戦場を走り抜けろ。",Rect2(68,312,1000,36),18,ui.MUTED)
 	var entries = [actions[0],actions[1],navigation.settings,navigation.history,navigation.catalog,actions[4]]
 	var labels = ["はじめる","続きから","設定","出撃履歴","アイテム図鑑","終了"]

@@ -10,7 +10,7 @@ var entries: Array = []
 
 func _ready():
 	position = Vector2(32,104)
-	size = Vector2(MAX_ENTRIES*64,60)
+	size = Vector2(MAX_ENTRIES*64,76)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	hide()
@@ -49,15 +49,28 @@ func clear():
 	hide()
 	queue_redraw()
 
+func receipt_rects() -> Array[Rect2]:
+	var result: Array[Rect2] = []
+	var available = maxf(58,(get_viewport_rect().size.x-position.x-16)/scale.x)
+	var at = Vector2.ZERO
+	for entry in entries:
+		var width = maxf(58,ceilf(font.get_string_size("+"+str(entry.count),HORIZONTAL_ALIGNMENT_LEFT,-1,16).x)+16)
+		if at.x > 0 and at.x+width > available: at = Vector2(0,at.y+82)
+		result.append(Rect2(at,Vector2(width,76)))
+		at.x += width+6
+	return result
+
 func _draw():
+	var cards = receipt_rects()
 	for i in range(entries.size()):
 		var entry: Dictionary = entries[i]
-		var at = Vector2(i*64,0)
+		var card: Rect2 = cards[i]
+		var at = card.position
 		var material_receipt = entry.rarity.is_empty()
 		var tint = Color("d5aa62") if material_receipt else Color(Catalog.RARITIES[entry.rarity].color)
 		var alpha = minf(1,entry.time)
-		draw_style_box(Style.style(Color(Style.PANEL,alpha),Color(tint,alpha)),Rect2(at,Vector2(58,58)))
-		draw_texture_rect(icons.texture(entry.kind if material_receipt else Catalog.Content.EQUIPMENT[entry.kind].icon),Rect2(at+Vector2(11,5),Vector2(36,36)),false,Color(1,1,1,alpha))
+		draw_style_box(Style.style(Color(Style.PANEL,alpha),Color(tint,alpha)),card)
+		draw_texture_rect(icons.texture(entry.kind if material_receipt else Catalog.Content.EQUIPMENT[entry.kind].icon),Rect2(at+Vector2((card.size.x-36)/2,5),Vector2(36,36)),false,Color(1,1,1,alpha))
 		var rank = 0 if material_receipt else Catalog.RARITIES.keys().find(entry.rarity)+1
-		for mark in range(rank): draw_rect(Rect2(at+Vector2(5+mark*7,47),Vector2(5,5)),Color(tint,alpha))
-		draw_string(font,at+Vector2(33,52),"+"+str(entry.count),HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color(Style.INK,alpha))
+		for mark in range(rank): draw_rect(Rect2(at+Vector2((card.size.x-rank*7+2)/2+mark*7,67),Vector2(5,4)),Color(tint,alpha))
+		draw_string(font,at+Vector2(8,59),"+"+str(entry.count),HORIZONTAL_ALIGNMENT_CENTER,card.size.x-16,16,Color(Style.INK,alpha))

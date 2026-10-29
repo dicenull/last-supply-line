@@ -64,7 +64,7 @@ async function press(page, key) {
 }
 (async () => {
   fs.mkdirSync(out, {recursive:true});
-  const browser = await chromium.launch({headless:false,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
+  const browser = await chromium.launch({headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
   try {
     const context = await browser.newContext({viewport:{width:1440,height:940}});
     // Observe the actual output signal without changing or unmuting the game.

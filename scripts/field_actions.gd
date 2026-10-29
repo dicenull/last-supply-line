@@ -35,6 +35,12 @@ func refresh():
 	var action_rect = RECT
 	var footer: Rect2 = state.get("footer",Rect2(16,848,1408,80))
 	action_rect.position.y = minf(action_rect.position.y,footer.position.y-action_rect.size.y-12)
+	var primary: Rect2 = state.get("primary",Rect2())
+	if primary.has_area():
+		action_rect.position = Vector2(primary.end.x-action_rect.size.x,primary.position.y-action_rect.size.y-12)
+	var controls: Rect2 = state.get("controls",Rect2())
+	if action_rect.intersects(controls):
+		action_rect.position = Vector2(primary.position.x-action_rect.size.x-12,primary.end.y-action_rect.size.y)
 	var occupied: Rect2 = state.get("occupied",Rect2())
 	if action_rect.intersects(occupied):
 		action_rect.position.x = occupied.position.x-action_rect.size.x-12

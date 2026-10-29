@@ -14,6 +14,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADLESS = (
+    'historical_parts', 'transmission', 'construction_selection', 'placement_preview',
+    'start_screen', 'responsive_menu', 'result_ui', 'supply_airdrop', 'item_catalog_page',
+    'responsive_footer', 'field_services', 'equipment_ui', 'loadout_ui', 'footer_tools',
     'combo_loot',     'starting_resources', 'weapon_mounting', 'equipment_activation', 'emergent_builds', 'map_shapes', 'factory', 'run', 'final_base', 'rarity_geometry', 'battle_state', 'checkpoint', 'supply_recovery', 'soak', 'expansion',
     'enemy_roles', 'balance', 'tank_steering', 'touch_controls', 'local_damage', 'armor_block', 'starting_armor',
     'ballistics', 'feedback', 'arsenal_feedback', 'vehicle_collision', 'collision_slide',
@@ -24,11 +27,11 @@ HEADLESS = (
     'equipment_feedback', 'equipment_bulk', 'equipment_pilot', 'equipment_design', 'equipment_progression', 'equipment_runtime',
 )
 VISUAL = (
-    'supply_airdrop',     'weapon_mounting_ui', 'map_shapes_view', 'result_ui', 'start_screen', 'item_catalog_page', 'responsive_menu', 'responsive_footer', 'menu_pages', 'field_landscape', 'field_surface', 'field_services',
-    'pipe_connections', 'placement_preview', 'tank_ui', 'battle', 'run_ui',
+        'weapon_mounting_ui', 'map_shapes_view', 'menu_pages', 'field_landscape', 'field_surface',
+    'pipe_connections', 'tank_ui', 'battle', 'run_ui',
     'item_rewards', 'research', 'auxiliary_ports', 'menu', 'history', 'blueprint',
     'variety', 'logistics', 'audio', 'window', 'content_ui', 'phase_movement',
-    'equipment_ui', 'equipment_rotation', 'loadout_ui', 'item_models', 'footer_tools', 'equipment_audio', 'field_map',
+    'equipment_rotation', 'item_models', 'equipment_audio', 'field_map',
 )
 # These need their own invocation or are aliases; never silently count them twice.
 SPECIAL = {'crafting', 'exit_save', 'overnight_soak', 'pack_smoke'}

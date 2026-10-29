@@ -28,6 +28,7 @@ func click(button: Button, frame):
 	await settle()
 func capture(label: String):
 	await settle()
+	if DisplayServer.get_name() == "headless": return
 	RenderingServer.force_draw()
 	root.get_texture().get_image().save_png("res://build/responsive-menu/"+label+".png")
 func run():

@@ -161,17 +161,18 @@ func refresh_tiles():
 		for node in [tiles[i],previews[i],names[i]]: node.visible = i < visible_ids.size()
 		if i >= visible_ids.size(): continue
 		var id: String = visible_ids[i]
-		previews[i].show_item({"kind":id,"rarity":"normal"})
+		previews[i].show_item({"kind":id,"rarity":Catalog.base_rarity(id)})
 		names[i].text = Catalog.Data.ITEMS[id].name
+		names[i].add_theme_color_override("font_color",Color(Catalog.RARITIES[Catalog.base_rarity(id)].color))
 		tiles[i].tooltip_text = names[i].text
 		tiles[i].add_theme_stylebox_override("normal",Style.style(Style.SURFACE,Style.GOLD if id == selected else Style.EDGE))
 func refresh_detail():
 	var spec: Dictionary = Catalog.Data.ITEMS[selected]
-	heading.text = spec.name
-	large.show_item({"kind":selected,"rarity":"normal"})
+	heading.text = spec.name+" / "+Catalog.RARITIES[Catalog.base_rarity(selected)].name
+	large.show_item({"kind":selected,"rarity":Catalog.base_rarity(selected)})
 	var pages = []
 	for history in [false,true]:
-		var text: String = spec.get("inspiration","歴史上の機械構造を参考にしたゲーム用装備。")+"\n型式・性能はゲーム独自。" if history else Catalog.description({"kind":selected,"rarity":"normal"}).replace(" / ","\n")
+		var text: String = spec.get("inspiration","歴史上の機械構造を参考にしたゲーム用装備。")+"\n型式・性能はゲーム独自。" if history else Catalog.description({"kind":selected,"rarity":Catalog.base_rarity(selected)}).replace(" / ","\n")
 		var lines: Array[String] = [""]
 		for letter in text:
 			if letter == "\n":

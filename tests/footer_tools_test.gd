@@ -39,6 +39,7 @@ func capture(label):
 	game.queue_redraw()
 	await process_frame
 	await process_frame
+	if DisplayServer.get_name() == "headless": return
 	RenderingServer.force_draw()
 	root.get_texture().get_image().save_png("res://build/tabs-audit/"+label+".png")
 func run():
@@ -58,20 +59,19 @@ func run():
 		check(game.available_tools().size() == 10 and game.tool_page_count() == 5 and "erase" not in game.available_tools(),"ten starter blocks use five categories; erase is separate")
 		check(game.tool_buttons.keys() == ["belt","splitter"],"pipe tab includes the ordinary distributor")
 		check(game.TOOL_TABS.map(func(tab): return tab.name) == ["パイプ","弾薬","燃料","倉庫","装甲"],"footer has the five requested text labels")
-		var erase_rect = game.erase_button.get_rect()
-		check(game.erase_button.visible and game.icon_buttons[12].key == "0","erase has a dedicated visible zero shortcut")
+		check(not game.icon_buttons.any(func(entry): return entry.icon == "erase"),"erase has no toolbar button")
 		await capture("footer-start-"+str(dimensions.x))
 		await click(game.tool_tabs[1])
 		check(game.tool_buttons.keys() == ["furnace","press"] and game.selected == "furnace","processing tab selects its first available machine")
 		await key(KEY_2)
 		check(game.selected == "press","number keys follow the current category")
 		await key(KEY_0)
-		check(game.selected == "erase" and game.erase_button.get_rect() == erase_rect,"zero selects erase without moving its button")
+		check(game.selected == "erase","zero still selects erase")
 		await click(game.tool_tabs[3])
-		check(game.selected == "erase" and game.tool_buttons.keys() == ["depot","fuel_depot","source","coal_source"] and game.erase_button.get_rect() == erase_rect,"changing category preserves the fixed erase tool")
+		check(game.selected == "erase" and game.tool_buttons.keys() == ["depot","fuel_depot","source","coal_source"],"changing category preserves the erase shortcut selection")
 		await click(game.tool_buttons.depot)
-		await click(game.erase_button)
-		check(game.selected == "erase","dedicated erase button accepts real click")
+		await key(KEY_0)
+		check(game.selected == "erase","erase shortcut remains available after selecting a building")
 		await key(KEY_9)
 		await key(KEY_7)
 		check(game.selected == "armor_block","empty slot shortcut cannot select a hidden block")
@@ -96,7 +96,7 @@ func run():
 		check(seen == game.available_tools() and seen.size() == 19,"every unlocked block appears exactly once across five categories")
 		for index in range(game.TOOL_TABS.size()):
 			await click(game.tool_tabs[index])
-			check(game.erase_button.visible and game.erase_button.get_rect() == erase_rect,"erase position is fixed in category "+str(index))
+			check(not game.icon_buttons.any(func(entry): return entry.icon == "erase"),"no erase button returns in category "+str(index))
 			await capture("footer-all-"+str(index)+"-"+str(dimensions.x))
 		game.tool_page = 2
 		game.selected = "auto_press"
@@ -108,7 +108,8 @@ func run():
 		game.factory.unlocked_blocks.clear()
 		game._process(0)
 		await key(KEY_8)
-		check(game.tool_buttons.is_empty() and game.selected == "erase" and game.erase_button.visible,"erase remains usable even without any unlocked block")
+		if game.selected != "erase": await key(KEY_0)
+		check(game.tool_buttons.is_empty() and game.selected == "erase","erase remains usable even without any unlocked block")
 		game.factory.unlocked_blocks = Content.STARTING_BLOCKS.keys()
 		game._process(0)
 	game.queue_free()

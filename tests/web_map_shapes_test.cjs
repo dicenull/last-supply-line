@@ -9,7 +9,7 @@ const results = [];
 function check(ok,label){assert.ok(ok,label);results.push(label);console.log('PASS web map:',label);}
 (async()=>{
   fs.mkdirSync(out,{recursive:true});
-  const browser = await chromium.launch({headless:false,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
+  const browser = await chromium.launch({headless:true,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']});
   try{
     await Promise.all([false,true].map(async touch=>{
       const name = touch?'mobile':'desktop', key = touch?'844':'1440';

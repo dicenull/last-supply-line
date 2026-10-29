@@ -19,6 +19,7 @@ func reset_pose():
 	f.fuel = 12
 	f.fuel_used = 0
 	f.running = true
+	b.motion.transmission.reset()
 func run():
 	b = Battle.new()
 	b.sector_config = Run.new(42).current
@@ -40,7 +41,7 @@ func run():
 	b.player.rotation.y = PI/2
 	b.movement_direction = Vector3.RIGHT
 	b.move_player(f,0.1)
-	check(b.player.position.is_equal_approx(Vector3(40,0,-0.33)),"forward follows a ninety-degree hull heading")
+	check(b.player.position.is_equal_approx(Vector3(40,0,-3.3*0.5*0.42*0.1*0.1)),"forward follows a ninety-degree hull heading")
 	b.movement_direction = Vector3.LEFT
 	b.move_player(f,0.1)
 	check(b.player.position.is_equal_approx(Vector3(40,0,0)) and is_equal_approx(b.player.rotation.y,PI/2),"reverse backs along hull heading without turning around")

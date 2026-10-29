@@ -59,7 +59,9 @@ func refresh():
 			var label = "石炭 +24" if id == "coal" else "主砲弾 +12（装填上限まで）" if id == "shell" else Content.reward_info(id).name
 			buttons[i].tooltip_text = label+" / 廃材 "+str(Services.price(id))
 			if state.get("item_mode",false) and id.begins_with("gear:"):
-				buttons[i].tooltip_text = "アンコモン · "+buttons[i].tooltip_text+"\n"+preload("res://scripts/equipment_catalog.gd").description({"kind":id.trim_prefix("gear:"),"rarity":"uncommon"})
+				var catalog = preload("res://scripts/equipment_catalog.gd")
+				var rarity = catalog.quality(id.trim_prefix("gear:"),"uncommon")
+				buttons[i].tooltip_text = catalog.RARITIES[rarity].name+" · "+buttons[i].tooltip_text+"\n"+catalog.description({"kind":id.trim_prefix("gear:"),"rarity":rarity})
 	queue_redraw()
 
 func _draw():

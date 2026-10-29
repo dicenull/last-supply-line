@@ -3,6 +3,7 @@ extends Node3D
 const EquipmentModels = preload("res://scripts/item_model.gd")
 const MountLayout = preload("res://scripts/weapon_mount_layout.gd")
 var main_gun_anchor = Vector2i(9,3)
+const INTERIOR_WEAPON_ALPHA = 0.01
 const MOUNTED_GUN_Y = 0.62
 const EXTERIOR_GUN_HEIGHT = 1.15
 const MAIN_BARREL_HEIGHT = 1.9
@@ -36,6 +37,7 @@ var goods_pool: Array = []
 var machines: Dictionary = {}
 var camera_offset = Vector3.ZERO
 var empty_part_slots: Array = []
+var stock_track_visuals: Array[Node3D] = []
 var track_belts: Array[Node3D] = []
 var engine_shell: Array[Node3D] = []
 var yaw = 0.65
@@ -63,6 +65,8 @@ var equipment_marks_key = ""
 var mounted_models: Dictionary = {}
 var equipment_preview: Node3D
 var equipment_preview_key = ""
+var placement_range: Node3D
+var placement_range_cells: Array[Vector2i] = []
 var auxiliary_guns: Array = []
 var feedback: Node3D
 var vehicle_part_visuals: Node3D
@@ -78,7 +82,12 @@ func configure_vehicle_parts(parts: Dictionary, empty_slots: Array = []):
 	vehicle_parts = parts.duplicate(true)
 	empty_part_slots = empty_slots.duplicate()
 	barrel.visible = "cannon" not in empty_slots
-	for belt in track_belts: belt.visible = "tracks" not in empty_slots
+	var historical_tracks = F.Gear.Data.ITEMS.get(parts.get("tracks",{}).get("kind",""),{}).has("historical_model")
+	for piece in stock_track_visuals: piece.visible = not historical_tracks
+	for belt in track_belts: belt.visible = not historical_tracks and "tracks" not in empty_slots
+	for piece in barrel.get_children():
+		if piece != muzzle and piece is Node3D: piece.visible = true
+	muzzle.position.x = 4.25
 	for piece in engine_shell: piece.visible = "engine" not in empty_slots
 	if vehicle_part_visuals != null:
 		vehicle_part_visuals.get_parent().remove_child(vehicle_part_visuals)
@@ -113,6 +122,32 @@ func configure_vehicle_parts(parts: Dictionary, empty_slots: Array = []):
 			for side in [-1,1]: equipment_models.box(fittings,Vector3(3.8,0,side*0.46),Vector3(0.28,0.25,0.02),"dark")
 		elif variant == 2:
 			equipment_models.box(fittings,Vector3(0.9,0,0),Vector3(0.6,0.8,1.0),"paint")
+	if parts.has("cannon") and F.Gear.Data.ITEMS[parts.cannon.kind].has("historical_model"):
+		var item: Dictionary = parts.cannon
+		var spec: Dictionary = F.Gear.Data.ITEMS[item.kind]
+		for piece in barrel.get_children():
+			if piece != muzzle and piece is Node3D: piece.visible = false
+		var fittings = vehicle_part_visuals.get_node("CannonFittings")
+		for child in fittings.get_children():
+			fittings.remove_child(child)
+			child.queue_free()
+		var model = equipment_models.build(item.kind,item.rarity)
+		fittings.add_child(model)
+		model.scale = Vector3.ONE*2.2
+		model.position.y = -0.72*2.2
+		barrel.scale = MAIN_BARREL_SCALE
+		muzzle.position.x = float(spec.barrel_length)*2.2+0.12
+	if historical_tracks:
+		var item: Dictionary = parts.tracks
+		for side in [-1,1]:
+			var group = Node3D.new()
+			group.name = "HistoricalTrack"+str(side)
+			group.set_meta("kind",item.kind)
+			vehicle_part_visuals.add_child(group)
+			preload("res://scripts/historical_part_model.gd").track_side(equipment_models,group,F.Gear.Data.ITEMS[item.kind].historical_model,side)
+			group.position = Vector3(0,-0.2,side*5.2)
+			group.scale = Vector3(8.4,4.0,3.0)
+			equipment_models.box(group,Vector3(0,0.64,side*0.26),Vector3(0.10,0.12,0.04),F.Gear.RARITIES[item.rarity].color)
 	for slot in ["gear","engine"]:
 		if not parts.has(slot): continue
 		var model = equipment_models.build(parts[slot].kind,parts[slot].rarity)
@@ -122,7 +157,7 @@ func configure_vehicle_parts(parts: Dictionary, empty_slots: Array = []):
 		model.position = Vector3(-8.0,2.1,0) if slot == "engine" else Vector3(-7.9,2.1,3.2)
 		model.rotation.y = PI/2
 		model.scale = Vector3.ONE*(1.4 if slot == "engine" else 1.25)
-	if parts.has("tracks"):
+	if parts.has("tracks") and not historical_tracks:
 		var item: Dictionary = parts.tracks
 		# Tracks retain their base metal; only two small identification plates use quality color.
 		var variant = int(F.Gear.Data.ITEMS[item.kind].visual)
@@ -154,6 +189,7 @@ func configure_vehicle_parts(parts: Dictionary, empty_slots: Array = []):
 			empty.rotation.y = PI/2
 			empty.scale = Vector3.ONE*(1.4 if slot == "engine" else 1.25)
 	update_vehicle_part_visuals()
+	update_weapon_cutaway()
 
 func update_vehicle_part_visuals():
 	if vehicle_part_visuals == null: return
@@ -342,6 +378,8 @@ func build_equipment_gun(id: String):
 	var tip: Vector3 = pivot.get_meta("muzzle")
 	var flash = box(gun_barrel,tip-Vector3(EquipmentModels.BARREL_REST,0,0),Vector3(0.45,0.28,0.28),"arc_light" if F.Gear.family(id) == "arc_gun" else "fire")
 	flash.visible = false
+	flash.set_meta("weapon_effect",true)
+	apply_weapon_cutaway(pivot)
 	var mount = equipment_models.weapon_mount(pivot,id)
 	var height = 0.0
 	for point in EquipmentModels.vertices(pivot): height = maxf(height,point.y)
@@ -491,7 +529,7 @@ func _ready():
 	material("inlet","70d4cc",0,0.25)
 	material("outlet","ffcf65",0,0.25)
 	material("fuel","5b9b99")
-	for spec in [["turret_armor","6b7057",0.12],["turret_edge","8b8d6f",0.18],["turret_dark","41493c",0.22]]:
+	for spec in [["turret_armor","6b7057",INTERIOR_WEAPON_ALPHA],["turret_edge","8b8d6f",INTERIOR_WEAPON_ALPHA],["turret_dark","41493c",INTERIOR_WEAPON_ALPHA]]:
 		var translucent = material(spec[0],spec[1])
 		translucent.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		translucent.albedo_color.a = spec[2]
@@ -583,6 +621,8 @@ func toggle_roof():
 		for geometry in find_children("*","GeometryInstance3D",true,false):
 			if geometry.material_override == mat:
 				geometry.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if roof_closed else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	update_weapon_cutaway()
+	if placement_range != null: placement_range.hide()
 	marker.visible = false
 	placement_preview.visible = false
 	if layout_version == 2:
@@ -727,6 +767,7 @@ func track_links(parent: Node3D, profile: PackedVector2Array, z: float, width: f
 	parent.add_child(links)
 
 func track(side: int):
+	var original_children = get_children()
 	var corners = PackedVector2Array([Vector2(-9,1),Vector2(-7.3,3.4),Vector2(6.9,3.4),Vector2(9,1.45),Vector2(7,0.25),Vector2(-7.7,0.25)])
 	var profile = PackedVector2Array()
 	# Round each bend without losing the long, rhomboid WW1 silhouette.
@@ -775,6 +816,9 @@ func track(side: int):
 			var lug = box(self,Vector3(x+cos(angle)*0.62,1.35+sin(angle)*0.62,side*5.87),Vector3(0.18,0.18,0.22),"track")
 			lug.rotation.z = angle
 	box(self,Vector3(-4.0,2.52,side*5.89),Vector3(0.3,0.62,0.04),"mark")
+
+	for child in get_children():
+		if child not in original_children and child is Node3D: stock_track_visuals.append(child)
 
 func track_housing(side: int, profile: PackedVector2Array):
 	# Raised perimeter, separate service panels and suspension cast their own shadows.
@@ -1356,7 +1400,7 @@ func sync(factory, hovered: Vector2i, selected: String, direction: int, delta: f
 		goods_pool[i].scale = Vector3.ONE*1.4*float(frame.get("scale",1.0))
 		goods_pool[i].position = frame.pos
 		goods_pool[i].rotation.y = -frame.dir*PI/2
-	marker.visible = not factory.layout_locked and not roof_closed and factory.inside(hovered)
+	marker.visible = not selected.is_empty() and not factory.layout_locked and not roof_closed and factory.inside(hovered)
 	if marker.visible:
 		marker.position = cell_position(hovered)+Vector3(0,0.015,0)
 		var unavailable = F.LIMITS.has(selected) and not factory.can_place(hovered,selected)
@@ -1493,3 +1537,48 @@ func solid_mounted_materials(node: Node):
 		for pair in [["turret_armor","machine_iron"],["turret_edge","machine_bronze"],["turret_dark","dark"]]:
 			if node.material_override == mats[pair[0]]: node.material_override = mats[pair[1]]
 	for child in node.get_children(): solid_mounted_materials(child)
+
+# Clone only mounted weapon materials; library and ground-drop models stay opaque.
+func apply_weapon_cutaway(node: Node):
+	if node.get_meta("weapon_effect",false): return
+	if node is MeshInstance3D and node.material_override is StandardMaterial3D:
+		var mat: StandardMaterial3D = node.material_override
+		if not node.has_meta("cutaway_shadow"):
+			node.set_meta("cutaway_shadow",node.cast_shadow)
+			mat = mat.duplicate()
+			mat.set_meta("cutaway_alpha",mat.albedo_color.a)
+			node.material_override = mat
+		mat.albedo_color.a = float(mat.get_meta("cutaway_alpha")) if roof_closed else INTERIOR_WEAPON_ALPHA
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED if roof_closed else BaseMaterial3D.TRANSPARENCY_ALPHA
+		node.cast_shadow = node.get_meta("cutaway_shadow") if roof_closed else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for child in node.get_children(): apply_weapon_cutaway(child)
+
+func update_weapon_cutaway():
+	for gun in auxiliary_guns:
+		if gun.has("mount_scale"): apply_weapon_cutaway(gun.pivot)
+	if vehicle_part_visuals != null:
+		for id in ["MainGunCollar","CannonFittings"]:
+			var model = vehicle_part_visuals.get_node_or_null(id)
+			if model != null: apply_weapon_cutaway(model)
+
+func show_placement_range(cells: Array):
+	if placement_range == null:
+		placement_range = Node3D.new()
+		placement_range.name = "PlacementRange"
+		add_child(placement_range)
+	placement_range.visible = not roof_closed and not cells.is_empty()
+	if cells == placement_range_cells: return
+	placement_range_cells.assign(cells)
+	for child in placement_range.get_children():
+		placement_range.remove_child(child)
+		child.queue_free()
+	if cells.is_empty(): return
+	if not mats.has("placement_range"):
+		var mat = material("placement_range","79dfb2")
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color.a = 0.32
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.no_depth_test = true
+	for cell in cells:
+		var tile = box(placement_range,cell_position(cell)+Vector3(0,0.045,0),Vector3(0.86,0.025,0.86),"placement_range")
+		tile.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

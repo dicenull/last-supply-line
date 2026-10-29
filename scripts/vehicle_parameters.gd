@@ -8,7 +8,7 @@ const METRICS = {
 	"ammo":{"label":"主砲 1射の砲弾消費","unit":"発","digits":0,"lower":true},
 	"shot_fuel":{"label":"主砲 1射の燃料消費","unit":"","digits":2,"lower":true},
 	"blast_damage":{"label":"爆発・地雷 被害倍率","unit":"%","digits":1,"lower":true},
-	"speed":{"label":"走行速度","unit":"m/s","digits":2,"lower":false},
+	"speed":{"label":"最高速度","unit":"m/s","digits":2,"lower":false},
 	"turn":{"label":"車体旋回","unit":"°/s","digits":1,"lower":false},
 	"fuel":{"label":"燃料消費 / m","unit":"","digits":3,"lower":true},
 	"reload":{"label":"主砲 射撃間隔","unit":"秒","digits":2,"lower":true},

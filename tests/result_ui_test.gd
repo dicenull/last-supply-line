@@ -25,6 +25,7 @@ func click(button):
 func capture(name):
 	await process_frame
 	await process_frame
+	if DisplayServer.get_name() == "headless": return
 	RenderingServer.force_draw()
 	root.get_texture().get_image().save_png("res://build/result-ui/"+name+".png")
 func run():
@@ -66,12 +67,13 @@ func run():
 			var rect: Rect2 = root.get_final_transform()*button.get_global_rect()
 			fit = fit and Rect2(Vector2.ZERO,Vector2(dimensions)).encloses(rect)
 		check(fit,"all result controls fit without scroll: "+str(dimensions))
-		check(page.list_rect.position.y+54+(mini(page.entries.size(),page.page_size)-1)*28 <= page.list_rect.end.y-32,"list text leaves room for pager: "+str(dimensions))
+		check(page.card_rect(mini(page.entries.size(),page.page_size)-1).end.y <= page.list_rect.end.y-32,"list text leaves room for pager: "+str(dimensions))
 		await click(page.buttons[1])
 		check(page.tab == 1 and page.entries.size() == 4,"equipment tab responds to pointer input")
+		check(page.previews[0].visible and page.previews[0].model != null and page.labels[0].text == page.entries[0].label,"result equipment uses matching 3D model and label")
 		await capture("equipment-"+str(dimensions.x))
 		await click(page.buttons[0])
-		check(page.tab == 0 and page.entries.any(func(line): return line.contains("×9")),"installation list includes initial defensive ring")
+		check(page.tab == 0 and page.entries.any(func(line): return line.label.contains("×9")),"installation list includes initial defensive ring")
 		await capture("clear-"+str(dimensions.x))
 		geometry[str(dimensions.x)] = page.buttons.map(func(button):
 			var at = root.get_final_transform()*button.get_global_rect().get_center()
@@ -79,8 +81,23 @@ func run():
 	FileAccess.open("res://build/result-ui/geometry.json",FileAccess.WRITE).store_string(JSON.stringify(geometry))
 	await click(page.buttons[4])
 	check(game.expedition.phase == "prepare" and not page.visible and game.expedition.results.kills == 0,"retry starts a clean run and clears results")
-	game.expedition.phase = "won"
-	page.refresh()
+	game.toggle_running()
+	game.battlefield.kill_enemy(game.battlefield.enemies[0],game.factory,game.battlefield.enemies[0].node.position)
+	game.battlefield.progress.take_damage(1000)
+	game._process(0)
+	check(game.expedition.phase == "lost" and game.battlefield.defeat_active() and not page.visible and game.battlefield.impacts.size() > 0,"zero HP starts a vehicle explosion before defeat results")
+	var death = game.battlefield.defeat_age
+	game.open_menu()
+	game._process(1)
+	check(game.battlefield.defeat_age == death,"menu pauses destruction cinematic")
+	game.close_menu()
+	game._process(1)
+	check(game.battlefield.feedback.emitted.get("kill",0) >= 3 and not page.visible,"staggered secondary explosions precede results")
+	game._process(3)
+	check(page.visible and game.expedition.results.kills == 1 and game.expedition.hull == 0,"defeat uses the common result page with actual kills and zero HP")
+	var saved = game.checkpoint.snapshot(game)
+	check(game.checkpoint.validate(saved) and game.checkpoint.apply(game,saved) and page.visible and not game.battlefield.defeat_active(),"loading defeat goes straight to results without replay or duplicate tally")
+	check(game.checkpoint.write_file("res://build/result-ui/defeat-fixture.mfv",saved),"defeat browser fixture validates")
 	game.free()
 	check(root.content_scale_aspect == Window.CONTENT_SCALE_ASPECT_KEEP,"leaving the clear scene restores the gameplay aspect ratio")
 	Fixture.clean("result_ui_test")
